@@ -1,15 +1,15 @@
-ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base-python:3.12
+ARG BUILD_FROM
 FROM $BUILD_FROM
 
-# Instalar dependencias del sistema
-RUN apk add --no-cache gcc musl-dev libffi-dev
+# Instalar Python y dependencias
+RUN apk add --no-cache python3 py3-pip gcc musl-dev libffi-dev python3-dev
 
 # Directorio de trabajo
 WORKDIR /app
 
-# Copiar requirements primero para aprovechar cache de Docker
+# Copiar requirements primero
 COPY app/requirements.txt .
-RUN pip3 install --no-cache-dir -r requirements.txt
+RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt
 
 # Copiar el resto de la app
 COPY app/ .
