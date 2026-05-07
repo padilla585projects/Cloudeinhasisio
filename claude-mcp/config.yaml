@@ -1,14 +1,14 @@
 name: Claude MCP Server
-version: "1.0.0"
+version: "1.0.1"
 slug: claude_mcp
 description: Servidor MCP completo para Claude con acceso total a Home Assistant
 url: https://github.com/padilla585projects/Cloudeinhasisio
 arch:
   - aarch64
   - amd64
-  - armhf
-  - armv7
-  - i386
+build_from:
+  aarch64: ghcr.io/home-assistant/aarch64-base-python:3.12
+  amd64: ghcr.io/home-assistant/amd64-base-python:3.12
 startup: application
 boot: auto
 host_network: false

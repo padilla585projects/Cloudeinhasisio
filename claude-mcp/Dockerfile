@@ -1,8 +1,8 @@
-ARG BUILD_FROM
+ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base-python:3.12
 FROM $BUILD_FROM
 
-# Instalar Python y dependencias del sistema
-RUN apk add --no-cache python3 py3-pip python3-dev gcc musl-dev
+# Instalar dependencias del sistema
+RUN apk add --no-cache gcc musl-dev libffi-dev
 
 # Directorio de trabajo
 WORKDIR /app
