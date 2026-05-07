@@ -2,9 +2,7 @@ import os
 import json
 import asyncio
 import uuid
-from typing import Optional
 from fastapi import FastAPI, Request, Response
-from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
 import uvicorn
@@ -40,27 +38,29 @@ async def sse_endpoint(request: Request):
     queue = asyncio.Queue()
     sessions[session_id] = queue
 
+    # Detectar la URL base real (funciona tanto local como via ingress de Nabu Casa)
+    forwarded_prefix = request.headers.get("X-Ingress-Path", "")
+    base_url = f"{forwarded_prefix}/messages/{session_id}"
+
     async def event_generator():
-        # Enviar endpoint de mensajes al cliente
         yield {
             "event": "endpoint",
-            "data": f"/messages/{session_id}"
+            "data": base_url
         }
         try:
             while True:
                 if await request.is_disconnected():
                     break
                 try:
-                    message = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    message = await asyncio.wait_for(queue.get(), timeout=25.0)
                     yield {
                         "event": "message",
                         "data": json.dumps(message)
                     }
                 except asyncio.TimeoutError:
-                    # Keepalive ping
                     yield {
                         "event": "ping",
-                        "data": ""
+                        "data": "keepalive"
                     }
         finally:
             sessions.pop(session_id, None)
@@ -82,15 +82,16 @@ async def handle_message(session_id: str, request: Request):
             "id": msg_id,
             "result": {
                 "protocolVersion": "2024-11-05",
-                "capabilities": {
-                    "tools": {}
-                },
+                "capabilities": {"tools": {}},
                 "serverInfo": {
                     "name": "claude-ha-mcp",
-                    "version": "1.0.0"
+                    "version": "1.0.4"
                 }
             }
         }
+
+    elif method == "notifications/initialized":
+        return Response(status_code=204)
 
     elif method == "tools/list":
         response = {
@@ -105,9 +106,7 @@ async def handle_message(session_id: str, request: Request):
         params = body.get("params", {})
         tool_name = params.get("name")
         arguments = params.get("arguments", {})
-
         result = await mcp_server.execute_tool(tool_name, arguments)
-
         response = {
             "jsonrpc": "2.0",
             "id": msg_id,
@@ -120,9 +119,6 @@ async def handle_message(session_id: str, request: Request):
                 ]
             }
         }
-
-    elif method == "notifications/initialized":
-        return Response(status_code=200)
 
     else:
         response = {
@@ -140,5 +136,5 @@ async def handle_message(session_id: str, request: Request):
     return Response(status_code=202)
 
 if __name__ == "__main__":
-    print(f"🤖 Claude MCP Server arrancando en puerto {PORT}...")
+    print(f"Claude MCP Server arrancando en puerto {PORT}...")
     uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")
