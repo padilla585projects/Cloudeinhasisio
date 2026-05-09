@@ -8,8 +8,11 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
 
+// Caché de entidades: { data, expiresAt }
+let entitiesCache = null;
+
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const MODEL = process.env.MODEL || 'claude-sonnet-4-20250514';
+const MODEL = process.env.MODEL || 'claude-sonnet-4-6';
 const HA_TOKEN = process.env.HA_TOKEN;
 const HA_URL = process.env.HA_URL || 'http://supervisor/core';
 const LANGUAGE = process.env.LANGUAGE || 'es';
@@ -110,15 +113,30 @@ async function executeTool(name, input) {
     switch (name) {
 
       case 'get_entities': {
-        const states = await haGet('/states');
+        // Usar caché si está vigente (TTL 30s)
+        const now = Date.now();
+        if (!entitiesCache || now > entitiesCache.expiresAt) {
+          const raw = await haGet('/states');
+          entitiesCache = {
+            data: raw.map(e => ({
+              entity_id: e.entity_id,
+              state: e.state,
+              friendly_name: e.attributes?.friendly_name || e.entity_id
+            })),
+            expiresAt: now + 30_000
+          };
+          console.log(`[cache] Entidades actualizadas: ${entitiesCache.data.length} total`);
+        }
         const filtered = input.domain
-          ? states.filter(e => e.entity_id.startsWith(input.domain + '.'))
-          : states;
-        return filtered.map(e => ({
-          entity_id: e.entity_id,
-          state: e.state,
-          friendly_name: e.attributes?.friendly_name || e.entity_id
-        }));
+          ? entitiesCache.data.filter(e => e.entity_id.startsWith(input.domain + '.'))
+          : entitiesCache.data;
+        const limited = filtered.slice(0, 100);
+        console.log(`[get_entities] dominio="${input.domain || 'todos'}" → ${filtered.length} entidades, devolviendo ${limited.length}`);
+        return {
+          entities: limited,
+          total: filtered.length,
+          note: filtered.length > 100 ? `Mostrando 100 de ${filtered.length}. Filtra por dominio para ver más.` : undefined
+        };
       }
 
       case 'get_entity_state': {
@@ -242,34 +260,40 @@ app.post('/api/chat', async (req, res) => {
       }
 
       const data = await response.json();
+      console.log(`[claude] stop_reason=${data.stop_reason} bloques=${data.content.map(b => b.type).join(',')}`);
 
-      // Procesar bloques de contenido
+      // Procesar bloques de texto primero (streaming al frontend)
       for (const block of data.content) {
         if (block.type === 'text') {
           finalText += block.text;
           sendEvent({ type: 'text', text: block.text });
-        } else if (block.type === 'tool_use') {
-          sendEvent({ type: 'tool_start', tool: block.name, input: block.input });
-
-          const toolResult = await executeTool(block.name, block.input);
-
-          sendEvent({ type: 'tool_end', tool: block.name, result: toolResult });
-
-          // Añadir al historial para continuar el bucle
-          currentMessages.push({ role: 'assistant', content: data.content });
-          currentMessages.push({
-            role: 'user',
-            content: [{
-              type: 'tool_result',
-              tool_use_id: block.id,
-              content: JSON.stringify(toolResult)
-            }]
-          });
         }
       }
 
-      // Si no hay más tool_use, terminamos
-      if (data.stop_reason === 'end_turn' || !data.content.some(b => b.type === 'tool_use')) {
+      const toolUseBlocks = data.content.filter(b => b.type === 'tool_use');
+
+      if (toolUseBlocks.length === 0) {
+        break;
+      }
+
+      // Ejecutar todas las tools del turno y recoger resultados
+      const toolResults = [];
+      for (const block of toolUseBlocks) {
+        sendEvent({ type: 'tool_start', tool: block.name, input: block.input });
+        const toolResult = await executeTool(block.name, block.input);
+        sendEvent({ type: 'tool_end', tool: block.name, result: toolResult });
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: block.id,
+          content: JSON.stringify(toolResult)
+        });
+      }
+
+      // Un solo push del asistente + un solo push con todos los resultados
+      currentMessages.push({ role: 'assistant', content: data.content });
+      currentMessages.push({ role: 'user', content: toolResults });
+
+      if (data.stop_reason === 'end_turn') {
         break;
       }
     }

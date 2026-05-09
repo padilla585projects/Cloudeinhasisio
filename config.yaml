@@ -1,6 +1,6 @@
 name: "Claude AI Chat"
 description: "Chat con Claude IA para controlar tu Home Assistant con lenguaje natural"
-version: "1.0.0"
+version: "1.1.0"
 slug: "claude_ha_chat"
 init: false
 arch:
@@ -21,7 +21,7 @@ panel_title: Claude AI
 homeassistant_api: true
 options:
   anthropic_api_key: ""
-  model: "claude-sonnet-4-20250514"
+  model: "claude-sonnet-4-6"
   language: "es"
 schema:
   anthropic_api_key: str
