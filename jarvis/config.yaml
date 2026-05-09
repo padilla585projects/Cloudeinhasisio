@@ -1,7 +1,7 @@
 name: "Jarvis AI Agent"
-description: "Agente IA especializado en tu Home Assistant. Controla dispositivos, escribe automatizaciones, gestiona archivos, aprende de tu instalación."
+description: "Jarvis — Tu agente IA privado para Home Assistant. Controla tu casa, crea automatizaciones, edita configuración, busca en internet y aprende con cada uso."
 version: "2.1.0"
-slug: "claude_ha_chat"
+slug: "jarvis_ai_agent"
 init: false
 arch:
   - aarch64
