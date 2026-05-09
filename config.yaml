@@ -1,6 +1,6 @@
 name: "Claude AI Chat"
 description: "Chat con Claude IA para controlar tu Home Assistant con lenguaje natural"
-version: "1.1.0"
+version: "1.1.1"
 slug: "claude_ha_chat"
 init: false
 arch:

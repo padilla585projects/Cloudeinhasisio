@@ -3,6 +3,20 @@ CHANGELOG - Claude AI Chat Add-on para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v1.1.1 (2026-05-10)
+────────────────────────────────────────────────────────────────────────────────
+
+CORREGIDO:
+- Frontend usaba "/api/chat" (ruta absoluta) que con ingress iba a la API de HA
+  en vez del add-on. Cambiado a "api/chat" (relativo) para que funcione con ingress.
+  ESTO ERA LA CAUSA de que Claude no respondiera.
+- Añadido removeThinking() de seguridad tras el bucle de lectura SSE
+
+ARCHIVOS MODIFICADOS:
+- index.html (fix ruta fetch, removeThinking safety)
+- config.yaml (versión 1.1.1)
+
+────────────────────────────────────────────────────────────────────────────────
 v1.1.0 (2026-05-09)
 ────────────────────────────────────────────────────────────────────────────────
 
