@@ -1,0 +1,11 @@
+{
+  "name": "claude-ha-chat",
+  "version": "1.0.0",
+  "description": "Claude AI Chat para Home Assistant",
+  "main": "server.js",
+  "dependencies": {
+    "express": "^4.18.2",
+    "node-fetch": "^2.7.0",
+    "cors": "^2.8.5"
+  }
+}
