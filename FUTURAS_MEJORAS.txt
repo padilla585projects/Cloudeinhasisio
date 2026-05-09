@@ -1,0 +1,146 @@
+================================================================================
+FUTURAS MEJORAS — Claude AI Agent para Home Assistant
+================================================================================
+Última actualización: 2026-05-10
+
+Prioridad: 🔴 Alta | 🟡 Media | 🟢 Baja
+
+════════════════════════════════════════════════════════════════════════════════
+🔴 ALTA PRIORIDAD
+════════════════════════════════════════════════════════════════════════════════
+
+[ ] Bot de Telegram bidireccional
+    - Integrar bot de Telegram directamente en el add-on
+    - Hablar con Claude desde Telegram como si fuera el chat de HA
+    - Enviar notificaciones proactivas (alertas, sugerencias)
+    - Enviar fotos de cámaras cuando se le pida
+    - Comandos rápidos sin necesidad de abrir HA
+
+[ ] Confirmar que v2.0.0 funciona correctamente
+    - Probar scan de instalación
+    - Probar creación de automatización
+    - Probar búsqueda web
+    - Probar lectura/escritura de archivos
+    - Probar persistencia de memoria y learnings
+
+[ ] Eliminar carpeta legacy claude-mcp/
+    - Es código del proyecto MCP anterior, ya no se usa
+    - Limpiar el repo
+
+════════════════════════════════════════════════════════════════════════════════
+🟡 MEDIA PRIORIDAD
+════════════════════════════════════════════════════════════════════════════════
+
+[ ] Notificaciones proactivas
+    - Claude detecta anomalías (sensor offline, dispositivo no responde)
+    - Envía alerta al usuario (Telegram, notificación HA, o en el chat)
+    - Sugiere acciones correctivas
+
+[ ] Modo dashboard
+    - Vista rápida del estado de la casa al abrir el chat
+    - Resumen: dispositivos encendidos, temperatura, alarmas activas
+    - Sin necesidad de preguntar
+
+[ ] Backup automático antes de modificar archivos
+    - Antes de write_file en /config, hacer copia en /data/backups/
+    - Poder revertir cambios con un comando
+    - Historial de cambios en archivos
+
+[ ] Soporte multi-usuario
+    - Identificar quién habla (distintos usuarios de HA)
+    - Memoria separada por usuario
+    - Permisos diferentes por usuario
+
+[ ] Templates y blueprints
+    - Biblioteca de automatizaciones comunes
+    - Claude sugiere templates cuando el usuario pide algo común
+    - "Quiero que las luces se enciendan al atardecer" → template pre-hecho
+
+[ ] Análisis de consumo energético
+    - Leer historial de sensores de energía
+    - Generar informes: consumo por día/semana/mes
+    - Sugerir optimizaciones de consumo
+    - Detectar dispositivos que consumen de más
+
+[ ] Soporte para HACS
+    - Detectar integraciones HACS instaladas
+    - Sugerir nuevas integraciones según los dispositivos del usuario
+    - Ayudar a instalar y configurar integraciones HACS
+
+════════════════════════════════════════════════════════════════════════════════
+🟢 BAJA PRIORIDAD (futuro)
+════════════════════════════════════════════════════════════════════════════════
+
+[ ] Interfaz mejorada
+    - Markdown rendering en las respuestas de Claude
+    - Mostrar código YAML con syntax highlighting
+    - Botones de acción rápida en respuestas
+    - Modo compacto para móvil
+
+[ ] Voz
+    - Entrada por voz (speech-to-text en el navegador)
+    - Salida por voz (text-to-speech)
+    - Integración con Assist de HA
+
+[ ] Programación horaria del agente
+    - "Todos los días a las 7:00 dime el tiempo y enciende la cafetera"
+    - Tareas programadas que Claude ejecuta sin input del usuario
+    - Cron interno en el add-on
+
+[ ] Integración con cámaras
+    - Ver snapshots de cámaras
+    - Describir lo que ve (si el modelo soporta visión)
+    - Alertas basadas en lo que detecta
+
+[ ] Logs inteligentes
+    - Monitorizar logs de HA
+    - Detectar errores recurrentes
+    - Sugerir soluciones automáticamente
+    - "Tu integración X lleva 3 días fallando, ¿quieres que investigue?"
+
+[ ] Export/Import de configuración del agente
+    - Exportar memoria + learnings + configuración
+    - Importar en otra instalación
+    - Compartir "perfiles" de agente entre usuarios
+
+[ ] Plugin system
+    - Permitir añadir tools personalizadas sin modificar server.js
+    - Carpeta /config/claude_plugins/ con archivos JS
+    - Cada plugin define sus tools y se carga al arrancar
+
+[ ] Modo debug
+    - Toggle en la UI para ver el system prompt completo
+    - Ver tokens consumidos por mensaje
+    - Ver tiempos de respuesta de cada tool
+    - Monitorizar uso de API key
+
+════════════════════════════════════════════════════════════════════════════════
+IDEAS DESCARTADAS O EN EVALUACIÓN
+════════════════════════════════════════════════════════════════════════════════
+
+[?] Streaming a la API de Anthropic
+    - Ahora se usa API sin streaming (response.json()) + SSE al frontend
+    - Streaming a Anthropic daría respuesta más rápida al usuario
+    - Complicación: gestionar tool_use en modo streaming es complejo
+    - Evaluación: implementar cuando el resto esté estable
+
+[?] Base de datos en vez de JSON
+    - Ahora todo se guarda en archivos JSON planos
+    - Con muchos learnings/memoria podría ser lento
+    - SQLite sería opción si crece mucho
+    - Evaluación: no necesario hasta >1000 entradas
+
+[?] Múltiples modelos
+    - Usar Haiku para tareas simples (más rápido y barato)
+    - Usar Sonnet para tareas complejas
+    - Router que decide qué modelo usar según la complejidad
+    - Evaluación: interesante pero añade complejidad innecesaria ahora
+
+═════��══════════════════════════════════════════════════════════════════════════
+NOTAS
+════════════════════════════════════════════════════════════════════════════════
+
+- Antes de implementar cualquier mejora, actualizar ESTADO_PROYECTO.txt
+- Después de implementar, actualizar CHANGELOG.txt y subir versión
+- Telegram es la siguiente prioridad del usuario
+- El usuario quiere un agente que sea cada vez más inteligente con el uso

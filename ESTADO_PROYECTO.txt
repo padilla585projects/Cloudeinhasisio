@@ -1,0 +1,115 @@
+================================================================================
+ESTADO ACTUAL DEL PROYECTO — Claude AI Agent para Home Assistant
+================================================================================
+Última actualización: 2026-05-10
+Versión actual: 2.0.0
+
+═══ QUÉ ES ═══
+Agente IA especializado en Home Assistant. No es un chatbot simple — es un
+ingeniero domótico privado con acceso total a la instalación: dispositivos,
+archivos, automatizaciones, internet y memoria permanente.
+
+═══ STACK TÉCNICO ═══
+- Backend: Node.js + Express (CommonJS, require())
+- Frontend: HTML/CSS/JS vanilla (archivo único index.html, dark theme)
+- Modelo: Claude Sonnet 4.6 via API REST (NO streaming a Anthropic, SÍ SSE al frontend)
+- Dependencias: express, node-fetch v2.x, cors
+- Docker: Alpine + Node.js sobre ghcr.io/home-assistant/amd64-base
+- Persistencia: JSON en /data (memoria, learnings, historial, contexto casa)
+
+═══ ARCHIVOS DEL PROYECTO ═══
+repo/
+├── config.yaml              # Definición add-on HA (v2.0.0, ingress, map filesystem)
+├── Dockerfile               # Alpine + Node.js, WORKDIR /app
+├── run.sh                   # Lee config con bashio, exporta vars, lanza server.js
+├── server.js                # SERVIDOR PRINCIPAL — agente completo con 17 tools
+├── index.html               # UI del chat (dark theme, DM Sans, SSE streaming)
+├── package.json             # Dependencias npm
+├── repository.yaml          # Metadata del repositorio de add-ons HA
+├── README.md                # Documentación del proyecto
+├── CLAUDE.md                # Normas del proyecto para Claude Code
+├── CHANGELOG.txt            # Historial de cambios por versión
+├── ESTADO_PROYECTO.txt      # ESTE ARCHIVO — estado actual
+├── FUTURAS_MEJORAS.txt      # Ideas y mejoras pendientes
+├── LICENSE                  # MIT
+└── claude-mcp/              # (LEGACY) Código antiguo del servidor MCP — pendiente eliminar
+
+═══ TOOLS DISPONIBLES EN EL AGENTE (17 total) ═══
+
+Dispositivos (5):
+  - get_entities         → Lista entidades por dominio (caché 30s, máx 100)
+  - search_entities      → Búsqueda por nombre (fuzzy, normaliza acentos)
+  - get_entity_state     → Estado + atributos de una entidad
+  - call_service         → Ejecuta servicios HA (encender, apagar, etc.)
+  - get_history          → Historial de estados (máx 48h)
+
+Automatizaciones (3):
+  - get_automations      → Lista automatizaciones con estado
+  - create_automation    → Escribe YAML en automations.yaml + reload
+  - reload_config        → Recarga automations/scripts/scenes/core/all
+
+Filesystem (4):
+  - read_file            → Lee archivos en /config, /addons, /share, /media, /data
+  - write_file           → Escribe en /config, /share, /data
+  - append_file          → Añade al final de un archivo
+  - list_directory       → Lista contenido de carpetas (recursivo opcional)
+
+Internet (2):
+  - web_search           → Búsqueda DuckDuckGo (sin API key)
+  - fetch_url            → Obtiene contenido de una URL
+
+Memoria y aprendizaje (4):
+  - save_memory          → Guarda preferencia/rutina/info del usuario
+  - get_memory           → Consulta memoria (filtro por categoría/texto)
+  - delete_memory        → Elimina nota por índice
+  - learn                → Registra aprendizaje (error/success/pattern/optimization)
+
+Sistema (2):
+  - scan_installation    → Escanea toda la instalación de HA
+  - check_config         → Verifica config antes de recargar
+
+═══ CÓMO FUNCIONA EL APRENDIZAJE ═══
+1. Errores de tools se auto-registran como learnings
+2. Claude puede registrar éxitos, patrones y optimizaciones manualmente
+3. Los últimos 20 learnings se inyectan en el system prompt
+4. La memoria del usuario se inyecta completa en el system prompt
+5. El contexto de la casa (scan) se inyecta en el system prompt
+6. Resultado: el prompt crece con información relevante con cada uso
+
+═══ PERSISTENCIA ═══
+Archivos en /data (sobreviven reinicios del add-on):
+  - memory.json           → Notas del usuario (preferencias, rutinas, etc.)
+  - history.json          → Últimos 60 mensajes de conversación
+  - learnings.json        → Hasta 200 aprendizajes (errores, éxitos, patrones)
+  - house_context.json    → Resumen de la instalación (se regenera cada 2h)
+  - installation_map.json → Mapa completo de la instalación (JSON estructurado)
+
+═══ VARIABLES DE ENTORNO ═══
+  ANTHROPIC_API_KEY  → Key de Anthropic (usuario la pone en config del add-on)
+  MODEL              → claude-sonnet-4-6 (default)
+  LANGUAGE           → es (default)
+  HA_TOKEN           → ${SUPERVISOR_TOKEN} (automático, acceso completo a HA)
+  HA_URL             → http://supervisor/core
+
+═══ PERMISOS DEL ADD-ON ═══
+  config.yaml → map:
+    - config:rw    → Leer/escribir configuración de HA
+    - addons:ro    → Leer add-ons instalados
+    - share:rw     → Leer/escribir carpeta compartida
+    - media:ro     → Leer media
+
+═══ ENTORNO DE PRODUCCIÓN ═══
+  - HA accesible via Nabu Casa: https://3pijakbxlbqvfl1pqrsziqawn8bopph6.ui.nabu.casa
+  - HA tiene ~786 entidades
+  - GitHub repo: https://github.com/padilla585projects/Cloudeinhasisio
+  - Flujo de deploy: push → actualizar add-on en HA → reiniciar
+
+═══ PROBLEMAS CONOCIDOS / RESUELTOS ═══
+  [RESUELTO] v1.0.0 → Claude no respondía. Causa: fetch usaba "/api/chat" (absoluto)
+             que iba a la API de HA en vez del add-on. Fix: ruta relativa "api/chat".
+  [RESUELTO] v1.0.0 → Model ID inválido "claude-sonnet-4-20250514".
+             Fix: actualizado a "claude-sonnet-4-6".
+  [RESUELTO] v1.0.0 → Bug multi-tool duplicaba assistant message en historial.
+             Fix: un solo push por turno.
+  [RESUELTO] v1.0.0 → Historial se perdía al cambiar pestaña.
+             Fix: persistencia en servidor.
