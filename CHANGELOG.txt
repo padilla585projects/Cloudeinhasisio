@@ -3,6 +3,50 @@ CHANGELOG - Claude AI Chat Add-on para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v2.0.0 (2026-05-10) — AGENTE IA COMPLETO
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — ACCESO AL FILESYSTEM:
+- read_file: Lee cualquier archivo en /config, /addons, /share, /media, /data
+- write_file: Escribe/crea archivos en /config, /share, /data
+- append_file: Añade contenido a archivos existentes
+- list_directory: Lista archivos y carpetas (recursivo opcional)
+- config.yaml ahora monta: config:rw, addons:ro, share:rw, media:ro
+
+NUEVO — AUTOMATIZACIONES:
+- create_automation: Escribe automaciones directamente en automations.yaml
+- reload_config: Recarga automations, scripts, scenes, groups o todo
+- check_config: Verifica que la configuración es válida antes de recargar
+
+NUEVO — INTERNET:
+- web_search: Búsqueda en DuckDuckGo (no requiere API key)
+- fetch_url: Obtiene contenido de cualquier URL (docs, APIs, etc.)
+
+NUEVO — APRENDIZAJE:
+- learn: Registra errores, éxitos, patrones y optimizaciones
+- Los errores de tools se registran automáticamente como learnings
+- Los últimos 20 learnings se inyectan en el system prompt
+- Sistema de mejora continua: cuanto más se usa, más aprende
+
+NUEVO — SCAN DE INSTALACIÓN:
+- scan_installation: Escanea toda la instalación (entidades, integraciones,
+  add-ons, archivos config, info del sistema)
+- Se ejecuta al arrancar si no hay contexto o tiene +2 horas
+- Genera mapa completo inyectado en el system prompt
+
+MEJORADO:
+- System prompt reescrito: Claude ahora es un agente desarrollador experto
+- Bucle agéntico con máximo 15 iteraciones (evita loops infinitos)
+- max_tokens subido a 8192 para respuestas más completas
+- Nombre cambiado a "Claude AI Agent"
+- Supervisor API integrada (info del host, add-ons, versión HA)
+
+ARCHIVOS MODIFICADOS:
+- server.js (reescrito completo como agente)
+- config.yaml (v2.0.0, map filesystem, nuevo nombre/descripción)
+- index.html (nuevos iconos tools, título actualizado)
+
+────────────────────────────────────────────────────────────────────────────────
 v1.2.0 (2026-05-10)
 ────────────────────────────────────────────────────────────────────────────────
 

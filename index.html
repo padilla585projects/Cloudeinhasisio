@@ -386,8 +386,8 @@
 <header>
   <div class="logo">🤖</div>
   <div class="header-info">
-    <h1>Claude AI</h1>
-    <p>Home Assistant · Asistente domótico</p>
+    <h1>Claude AI Agent</h1>
+    <p>Home Assistant · Agente IA especializado</p>
   </div>
   <div class="status-dot" id="status-dot" title="Conectado"></div>
 </header>
@@ -477,14 +477,23 @@
     const icons = {
       get_entities: '📋', get_entity_state: '🔍', call_service: '⚡',
       get_automations: '🤖', toggle_automation: '🔄', get_history: '📊',
-      search_entities: '🔎', save_memory: '💾', get_memory: '🧠', delete_memory: '🗑️'
+      search_entities: '🔎', save_memory: '💾', get_memory: '🧠', delete_memory: '🗑️',
+      create_automation: '⚙️', reload_config: '🔄', read_file: '📄', write_file: '✍️',
+      append_file: '📝', list_directory: '📁', web_search: '🌐', fetch_url: '🔗',
+      learn: '🧪', scan_installation: '🏗️', check_config: '✅'
     };
     const labels = {
       get_entities: 'Consultando entidades', get_entity_state: 'Leyendo estado',
       call_service: 'Ejecutando servicio', get_automations: 'Cargando automatizaciones',
       toggle_automation: 'Gestionando automatización', get_history: 'Consultando historial',
       search_entities: 'Buscando dispositivos', save_memory: 'Guardando en memoria',
-      get_memory: 'Consultando memoria', delete_memory: 'Borrando de memoria'
+      get_memory: 'Consultando memoria', delete_memory: 'Borrando de memoria',
+      create_automation: 'Creando automatización', reload_config: 'Recargando configuración',
+      read_file: 'Leyendo archivo', write_file: 'Escribiendo archivo',
+      append_file: 'Añadiendo a archivo', list_directory: 'Listando directorio',
+      web_search: 'Buscando en internet', fetch_url: 'Consultando URL',
+      learn: 'Aprendiendo', scan_installation: 'Escaneando instalación',
+      check_config: 'Verificando configuración'
     };
 
     block.innerHTML = `

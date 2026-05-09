@@ -1,6 +1,6 @@
-name: "Claude AI Chat"
-description: "Chat con Claude IA para controlar tu Home Assistant con lenguaje natural"
-version: "1.2.0"
+name: "Claude AI Agent"
+description: "Agente IA especializado en tu Home Assistant. Controla dispositivos, escribe automatizaciones, gestiona archivos, aprende de tu instalación."
+version: "2.0.0"
 slug: "claude_ha_chat"
 init: false
 arch:
@@ -13,12 +13,17 @@ boot: auto
 ports:
   3000/tcp: 3000
 ports_description:
-  3000/tcp: "Interfaz web del chat"
+  3000/tcp: "Interfaz web del agente"
 ingress: true
 ingress_port: 3000
-panel_icon: mdi:robot
+panel_icon: mdi:robot-happy
 panel_title: Claude AI
 homeassistant_api: true
+map:
+  - config:rw
+  - addons:ro
+  - share:rw
+  - media:ro
 options:
   anthropic_api_key: ""
   model: "claude-sonnet-4-6"
