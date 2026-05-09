@@ -1,6 +1,6 @@
-name: "Claude AI Agent"
+name: "Jarvis AI Agent"
 description: "Agente IA especializado en tu Home Assistant. Controla dispositivos, escribe automatizaciones, gestiona archivos, aprende de tu instalación."
-version: "2.0.0"
+version: "2.0.1"
 slug: "claude_ha_chat"
 init: false
 arch:
@@ -17,7 +17,7 @@ ports_description:
 ingress: true
 ingress_port: 3000
 panel_icon: mdi:robot-happy
-panel_title: Claude AI
+panel_title: Jarvis
 homeassistant_api: true
 map:
   - config:rw

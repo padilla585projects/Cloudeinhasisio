@@ -755,8 +755,8 @@ async function executeTool(name, input) {
 // ── System Prompt (dinámico) ─────────────────────────────────────────────────
 
 function buildSystemPrompt() {
-  let prompt = `Eres un AGENTE IA ESPECIALIZADO en Home Assistant. Eres el desarrollador y administrador privado de esta instalación.
-Tu nombre es Claude. Tienes acceso COMPLETO al sistema: dispositivos, archivos de configuración, automatizaciones, internet.
+  let prompt = `Eres JARVIS, un AGENTE IA ESPECIALIZADO en Home Assistant. Eres el desarrollador y administrador privado de esta instalación.
+Tu nombre es Jarvis. Tienes acceso COMPLETO al sistema: dispositivos, archivos de configuración, automatizaciones, internet.
 
 ═══ TU ROL ═══
 No eres solo un chatbot — eres un ingeniero domótico experto que:
@@ -938,7 +938,7 @@ app.get('/api/health', (req, res) => {
 
 const PORT = 3000;
 app.listen(PORT, '0.0.0.0', async () => {
-  console.log(`Claude HA Agent v2.0.0 corriendo en puerto ${PORT}`);
+  console.log(`Jarvis AI Agent v2.0.1 corriendo en puerto ${PORT}`);
   console.log(`Modelo: ${MODEL} | Config: ${HA_CONFIG} | Data: ${DATA_DIR}`);
 
   // Scan inicial si no hay contexto o tiene más de 2 horas

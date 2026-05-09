@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Claude AI · Home Assistant</title>
+<title>Jarvis · Home Assistant</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -386,7 +386,7 @@
 <header>
   <div class="logo">🤖</div>
   <div class="header-info">
-    <h1>Claude AI Agent</h1>
+    <h1>Jarvis</h1>
     <p>Home Assistant · Agente IA especializado</p>
   </div>
   <div class="status-dot" id="status-dot" title="Conectado"></div>
@@ -396,7 +396,7 @@
   <div class="welcome" id="welcome">
     <div class="welcome-logo">🏠</div>
     <h2>¿Qué quieres controlar hoy?</h2>
-    <p>Soy Claude, tu asistente de inteligencia artificial. Puedo controlar todos tus dispositivos, consultar sensores y gestionar automatizaciones.</p>
+    <p>Soy Jarvis, tu agente IA especializado. Controlo dispositivos, creo automatizaciones, gestiono archivos y aprendo de tu instalación.</p>
     <div class="suggestions">
       <div class="suggestion" onclick="sendSuggestion(this)">💡 Enciende las luces del salón</div>
       <div class="suggestion" onclick="sendSuggestion(this)">🌡️ ¿Qué temperatura hace en casa?</div>
@@ -452,7 +452,7 @@
 
     const label = document.createElement('div');
     label.className = 'message-label';
-    label.textContent = role === 'user' ? 'TÚ' : 'CLAUDE';
+    label.textContent = role === 'user' ? 'TÚ' : 'JARVIS';
 
     const bubble = document.createElement('div');
     bubble.className = 'bubble';
@@ -546,7 +546,7 @@
       <div class="welcome" id="welcome">
         <div class="welcome-logo">🏠</div>
         <h2>¿Qué quieres controlar hoy?</h2>
-        <p>Soy Claude, tu asistente de inteligencia artificial. Puedo controlar todos tus dispositivos, consultar sensores y gestionar automatizaciones.</p>
+        <p>Soy Jarvis, tu agente IA especializado. Controlo dispositivos, creo automatizaciones, gestiono archivos y aprendo de tu instalación.</p>
         <div class="suggestions">
           <div class="suggestion" onclick="sendSuggestion(this)">💡 Enciende las luces del salón</div>
           <div class="suggestion" onclick="sendSuggestion(this)">🌡️ ¿Qué temperatura hace en casa?</div>
