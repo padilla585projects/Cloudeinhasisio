@@ -3,6 +3,34 @@ CHANGELOG - Claude AI Chat Add-on para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v1.2.0 (2026-05-10)
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO:
+- Memoria de conversación persistente: el historial se guarda en /data/history.json
+  y se recupera al recargar la página. Ya no se pierde al cambiar de pestaña.
+- Contexto automático de la casa: al arrancar, el add-on consulta HA y genera un
+  resumen de todos los dispositivos por dominio. Se inyecta en el system prompt
+  para que Claude sepa qué hay en tu casa sin tener que preguntar.
+- Memoria a largo plazo: Claude puede guardar preferencias y rutinas del usuario
+  con la tool save_memory. Se persisten en /data/memory.json y se inyectan en
+  el system prompt. Ejemplos: "me gusta la luz al 40%", "apaga todo a las 23h".
+- Nueva tool search_entities: busca dispositivos por nombre parcial (fuzzy).
+  Ej: "salón" encuentra todas las entidades con "salon" en el nombre.
+- Nueva tool save_memory / get_memory / delete_memory para gestión de memoria.
+- Frontend carga historial del servidor al abrir (GET api/history).
+- Botón limpiar chat también borra historial en servidor (DELETE api/history).
+
+MEJORADO:
+- System prompt dinámico: se construye con contexto de casa + memoria del usuario
+- Se instruye a Claude a guardar preferencias automáticamente cuando el usuario las expresa
+
+ARCHIVOS MODIFICADOS:
+- server.js (reescrito: memoria, historial, contexto casa, nuevas tools)
+- index.html (carga historial, limpia servidor, nuevos iconos tools)
+- config.yaml (versión 1.2.0)
+
+────────────────────────────────────────────────────────────────────────────────
 v1.1.1 (2026-05-10)
 ────────────────────────────────────────────────────────────────────────────────
 

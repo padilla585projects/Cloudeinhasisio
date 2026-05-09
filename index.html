@@ -476,12 +476,15 @@
 
     const icons = {
       get_entities: '📋', get_entity_state: '🔍', call_service: '⚡',
-      get_automations: '🤖', toggle_automation: '🔄', get_history: '📊'
+      get_automations: '🤖', toggle_automation: '🔄', get_history: '📊',
+      search_entities: '🔎', save_memory: '💾', get_memory: '🧠', delete_memory: '🗑️'
     };
     const labels = {
       get_entities: 'Consultando entidades', get_entity_state: 'Leyendo estado',
       call_service: 'Ejecutando servicio', get_automations: 'Cargando automatizaciones',
-      toggle_automation: 'Gestionando automatización', get_history: 'Consultando historial'
+      toggle_automation: 'Gestionando automatización', get_history: 'Consultando historial',
+      search_entities: 'Buscando dispositivos', save_memory: 'Guardando en memoria',
+      get_memory: 'Consultando memoria', delete_memory: 'Borrando de memoria'
     };
 
     block.innerHTML = `
@@ -525,8 +528,10 @@
     document.getElementById('clear-btn').style.display = 'block';
   }
 
-  function clearChat() {
+  async function clearChat() {
     conversationHistory = [];
+    // Borrar también en el servidor
+    try { await fetch('api/history', { method: 'DELETE' }); } catch {}
     const msgs = document.getElementById('messages');
     msgs.innerHTML = `
       <div class="welcome" id="welcome">
@@ -569,7 +574,7 @@
       const response = await fetch('api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: conversationHistory })
+        body: JSON.stringify({ messages: [{ role: 'user', content: text }] })
       });
 
       const reader = response.body.getReader();
@@ -636,7 +641,28 @@
     input.focus();
   }
 
-  // Foco inicial
+  // Cargar historial del servidor al iniciar
+  async function loadHistory() {
+    try {
+      const res = await fetch('api/history');
+      const data = await res.json();
+      if (data.messages && data.messages.length > 0) {
+        conversationHistory = data.messages;
+        for (const msg of data.messages) {
+          if (msg.role === 'user' && typeof msg.content === 'string') {
+            addMessage('user', msg.content);
+          } else if (msg.role === 'assistant' && typeof msg.content === 'string') {
+            addMessage('ai', msg.content);
+          }
+        }
+      }
+    } catch (e) {
+      console.log('No se pudo cargar historial:', e);
+    }
+  }
+
+  // Inicialización
+  loadHistory();
   document.getElementById('input').focus();
 </script>
 </body>
