@@ -1,87 +1,98 @@
-# Claude in HASIO 🤖🏠
+# Claude AI Agent para Home Assistant 🤖🏠
 
-> **Idea original y desarrollo por [padilla585projects](https://github.com/padilla585projects)**
+> **Desarrollo por [padilla585projects](https://github.com/padilla585projects)**
 
-Addon para Home Assistant que integra Claude (Anthropic) como asistente completo con acceso total a tu instalación. Permite controlar dispositivos, crear y modificar automatizaciones, leer sensores y mucho más, tanto desde el Assist de Home Assistant como desde Claude.ai.
+Add-on para Home Assistant que integra un **Agente IA completo** basado en Claude (Anthropic) directamente en el panel lateral de HA. No es solo un chatbot — es un ingeniero domótico privado con acceso total a tu instalación.
 
-## ¿Qué hace este addon?
+## Qué puede hacer
 
-- 🧠 **Claude como asistente dentro de HA** — Habla con Claude directamente desde el Assist de Home Assistant
-- 🔌 **Acceso completo a la API de HA** — Claude puede leer y modificar automatizaciones, controlar dispositivos, leer sensores, etc.
-- 🌐 **Acceso remoto desde Claude.ai** — Conecta tu Home Assistant con Claude.ai via servidor MCP
-- ⚡ **Servidor MCP nativo** — Implementación completa del protocolo MCP (Model Context Protocol)
+- 🏠 **Controlar toda tu casa** — Luces, clima, media, covers, locks, switches, escenas, scripts
+- ⚙️ **Crear automatizaciones** — Escribe YAML directamente en automations.yaml y recarga
+- 📁 **Acceso a archivos** — Lee y edita configuration.yaml, scripts, escenas y cualquier archivo
+- 🌐 **Buscar en internet** — Documentación de HA, soluciones a errores, integraciones
+- 🧠 **Memoria permanente** — Recuerda tus preferencias, rutinas y configuraciones
+- 🧪 **Aprende de sus errores** — Sistema de learnings que mejora con cada uso
+- 🔍 **Escaneo completo** — Conoce todas tus entidades, integraciones, add-ons y archivos
+- 💬 **Conversación persistente** — El historial no se pierde al cambiar de pestaña
 
-## Herramientas disponibles
+## Herramientas del agente
 
-| Herramienta | Descripción |
-|---|---|
-| `get_states` | Lista todos los dispositivos y su estado |
-| `get_state` | Estado de una entidad específica |
-| `get_automations` | Lista todas las automatizaciones |
-| `get_automation_config` | Configuración completa de una automatización |
-| `create_automation` | Crea una nueva automatización |
-| `update_automation` | Modifica una automatización existente |
-| `delete_automation` | Elimina una automatización |
-| `trigger_automation` | Dispara una automatización manualmente |
-| `enable_automation` | Habilita una automatización |
-| `disable_automation` | Deshabilita una automatización |
-| `turn_on` | Enciende cualquier entidad |
-| `turn_off` | Apaga cualquier entidad |
-| `call_service` | Llama a cualquier servicio de HA |
-| `get_history` | Historial de estados de una entidad |
-| `render_template` | Renderiza plantillas Jinja2 |
-| `reload_automations` | Recarga todas las automatizaciones |
+| Categoría | Tools |
+|-----------|-------|
+| **Dispositivos** | get_entities, search_entities, get_entity_state, call_service, get_history |
+| **Automatizaciones** | get_automations, create_automation, reload_config, check_config |
+| **Filesystem** | read_file, write_file, append_file, list_directory |
+| **Internet** | web_search, fetch_url |
+| **Memoria** | save_memory, get_memory, delete_memory |
+| **Aprendizaje** | learn (errores se registran automáticamente) |
+| **Sistema** | scan_installation |
 
 ## Instalación
 
-### 1. Añadir el repositorio a Home Assistant
+### 1. Añadir el repositorio
 
-En Home Assistant ve a:
+En Home Assistant:
 **Configuración → Complementos → Tienda de complementos → ⋮ → Repositorios**
 
-Añade esta URL:
+Añade:
 ```
 https://github.com/padilla585projects/Cloudeinhasisio
 ```
 
-### 2. Instalar el addon
+### 2. Instalar el add-on
 
-Busca **"Claude MCP Server"** en la tienda de complementos e instálalo.
+Busca **"Claude AI Agent"** en la tienda de complementos e instálalo.
 
 ### 3. Configurar
 
-En la pestaña **Configuración** del addon:
+En la pestaña **Configuración** del add-on:
 
 ```yaml
 anthropic_api_key: "sk-ant-..."   # Tu API key de Anthropic
-ha_token: ""                       # Opcional, se usa el token del supervisor automáticamente
-port: 8765
+model: "claude-sonnet-4-6"        # Modelo (default)
+language: "es"                     # Idioma
 ```
 
-### 4. Conectar con Claude.ai
+### 4. Iniciar
 
-Una vez arrancado el addon, añade el servidor MCP en Claude.ai:
+Arranca el add-on. Aparecerá **"Claude AI"** en el panel lateral de HA.
 
-**Claude.ai → Configuración → Conectores → Añadir MCP**
+La primera vez, el agente escaneará toda tu instalación para conocer tus dispositivos, integraciones y configuración.
 
-```
-URL: https://TU-NABU-CASA.ui.nabu.casa/api/hassio_ingress/claude_mcp/sse
-```
+## Cómo aprende
 
-## Requisitos
+El agente tiene un sistema de mejora continua:
 
-- Home Assistant OS o Supervised
-- Home Assistant 2025.1 o superior
-- Cuenta en [Anthropic](https://console.anthropic.com) con API key
-- Nabu Casa (para acceso remoto desde Claude.ai)
+1. **Memoria** — Guarda preferencias y patrones que expresas ("me gusta la luz al 40%")
+2. **Learnings** — Registra errores y soluciones. No repite errores.
+3. **Contexto** — Escanea tu instalación y lo inyecta en su prompt
+4. **Historial** — Mantiene la conversación entre sesiones
+
+Cuanto más lo uses, mejor conocerá tu casa y tus preferencias.
 
 ## Arquitectura
 
 ```
-Claude.ai ←──── MCP Protocol ────→ Claude MCP Addon ←──── API interna ────→ Home Assistant
-                                          ↑
-                                    Assist de HA
+Panel Lateral HA → index.html (UI chat + SSE) → server.js (Express)
+                                                      ↓           ↓          ↓
+                                               API Anthropic   API HA   Filesystem
+                                               (Claude)        (REST)   (/config)
 ```
+
+## Stack técnico
+
+- **Backend**: Node.js + Express (CommonJS)
+- **Frontend**: HTML/CSS/JS vanilla (archivo único, dark theme)
+- **Modelo**: Claude Sonnet 4.6 via API REST
+- **Streaming**: SSE (Server-Sent Events) al frontend
+- **Persistencia**: JSON en /data (memoria, learnings, historial)
+- **Docker**: Alpine + Node.js sobre ghcr.io/home-assistant/amd64-base
+
+## Requisitos
+
+- Home Assistant OS o Supervised
+- Cuenta en [Anthropic](https://console.anthropic.com) con API key
+- Recomendado: Nabu Casa (para acceso remoto)
 
 ## Licencia
 
@@ -89,7 +100,7 @@ MIT License — Ver archivo [LICENSE](LICENSE)
 
 ## Autor
 
-**padilla585projects** — Idea original y desarrollo completo.
+**padilla585projects** — Idea original y desarrollo.
 
 ---
 
