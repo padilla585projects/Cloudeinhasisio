@@ -700,16 +700,11 @@
               scrollToBottom();
 
             } else if (event.type === 'tool_start') {
-              removeThinking();
-              currentToolStatus = addToolBlock(event.tool, 'running');
+              // No mostrar bloques de tools — solo el thinking
+              if (!document.getElementById('thinking')) addThinking();
 
             } else if (event.type === 'tool_end') {
-              if (currentToolStatus) {
-                const hasError = event.result?.error;
-                currentToolStatus.textContent = hasError ? '✗ error' : '✓ listo';
-                currentToolStatus.className = 'tool-status ' + (hasError ? 'error' : 'done');
-              }
-              addThinking();
+              // Silencioso — Jarvis trabaja en background sin mostrar cada paso
 
             } else if (event.type === 'done') {
               removeThinking();
