@@ -3,6 +3,35 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v2.8.0 (2026-05-10) — CARA HOLOGRÁFICA + AGENTES INTERCONECTADOS + IDENTIDAD
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — CARA HOLOGRÁFICA 3D:
+- Cara wireframe realista flotante (esquina inferior derecha)
+- Geometría de cabeza con deformación facial (mandíbula, frente, mentón)
+- Ojos luminosos con anillos de glow que pulsan
+- Boca animada que se mueve cuando habla
+- Nariz definida con línea holográfica
+- Scanline horizontal que barre la cara (efecto sci-fi)
+- Partículas orbitando alrededor de la cabeza
+- Mini orbe wireframe en el header
+- Colores por estado: azul (idle), morado (thinking), verde (speaking)
+- Los ojos se escalan cuando piensa, la boca se mueve al hablar
+
+NUEVO — COMUNICACIÓN ENTRE AGENTES:
+- agent_communicate: Envía/recibe datos de otros agentes IA via HTTP
+- Puede hablar con cualquier API/webhook de otro agente del usuario
+- Protocolo: from=jarvis, message, data, timestamp
+- Soporte GET y POST con autenticación opcional
+- Base para ecosistema de agentes IA interconectados
+
+NUEVO — IDENTIDAD:
+- Jarvis sabe que su creador es Adrián (padilla585projects)
+- Le trata como Tony Stark → con respeto pero sin servilismo
+- Sabe que hay otros proyectos con agentes IA que pueden complementarse
+- Llama "señor" o "Adrián" según contexto
+
+────────────────────────────────────────────────────────────────────────────────
 v2.7.0 (2026-05-10) — AVATAR 3D + ANÁLISIS DE REPOS GITHUB
 ────────────────────────────────────────────────────────────────────────────────
 

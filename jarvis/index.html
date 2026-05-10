@@ -49,17 +49,41 @@
     flex-shrink: 0;
   }
 
-  .jarvis-3d-container {
-    width: 44px;
-    height: 44px;
+  .jarvis-3d-header {
+    width: 40px;
+    height: 40px;
     flex-shrink: 0;
     border-radius: 50%;
     overflow: hidden;
     cursor: pointer;
-    position: relative;
+    border: 2px solid var(--accent);
+    box-shadow: 0 0 12px rgba(108, 142, 247, 0.4);
   }
 
-  .jarvis-3d-container canvas {
+  .jarvis-3d-header canvas {
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  /* Floating 3D face widget */
+  .jarvis-face-widget {
+    position: fixed;
+    bottom: 90px;
+    right: 20px;
+    width: 120px;
+    height: 140px;
+    z-index: 1000;
+    pointer-events: none;
+    opacity: 0.9;
+    transition: opacity 0.3s, transform 0.3s;
+  }
+
+  .jarvis-face-widget.active {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+
+  .jarvis-face-widget canvas {
     width: 100% !important;
     height: 100% !important;
   }
@@ -388,13 +412,16 @@
 <body>
 
 <header>
-  <div class="jarvis-3d-container" id="jarvis-orb"></div>
+  <div class="jarvis-3d-header" id="jarvis-header-orb"></div>
   <div class="header-info">
     <h1>Jarvis</h1>
     <p id="jarvis-status-text">Listo · Home Assistant</p>
   </div>
   <div class="status-dot" id="status-dot" title="Conectado"></div>
 </header>
+
+<!-- Floating 3D face -->
+<div class="jarvis-face-widget" id="jarvis-face"></div>
 
 <div id="messages">
   <div class="welcome" id="welcome">
@@ -490,7 +517,7 @@
       install_hacs_resource: '📦', ha_knowledge: '📚', proxmox_api: '🖥️',
       get_system_logs: '📋', get_error_log: '🚨',
       telegram_send: '📨', telegram_send_image: '🖼️', telegram_get_updates: '📩',
-      analyze_github_repos: '🐙'
+      analyze_github_repos: '🐙', agent_communicate: '🤝'
     };
     const labels = {
       get_entities: 'Consultando entidades', get_entity_state: 'Leyendo estado',
@@ -512,7 +539,8 @@
       get_system_logs: 'Leyendo logs del sistema', get_error_log: 'Revisando errores',
       telegram_send: 'Enviando por Telegram', telegram_send_image: 'Enviando imagen',
       telegram_get_updates: 'Leyendo mensajes Telegram',
-      analyze_github_repos: 'Analizando repos GitHub'
+      analyze_github_repos: 'Analizando repos GitHub',
+      agent_communicate: 'Comunicando con otro agente'
     };
 
     block.innerHTML = `
@@ -703,122 +731,236 @@
   loadHistory();
   document.getElementById('input').focus();
 
-  // ── Jarvis 3D Orb (Three.js) ──────────────────────────────────────────────
+  // ── Jarvis 3D Holographic Face (Three.js) ─────────────────────────────────
   let jarvisState = 'idle'; // idle, thinking, speaking
 
   function setJarvisState(state) {
     jarvisState = state;
     const statusText = document.getElementById('jarvis-status-text');
-    if (state === 'thinking') statusText.textContent = 'Pensando...';
-    else if (state === 'speaking') statusText.textContent = 'Respondiendo...';
-    else statusText.textContent = 'Listo · Home Assistant';
+    const faceWidget = document.getElementById('jarvis-face');
+    if (state === 'thinking') {
+      statusText.textContent = 'Pensando...';
+      faceWidget.classList.add('active');
+    } else if (state === 'speaking') {
+      statusText.textContent = 'Respondiendo...';
+      faceWidget.classList.add('active');
+    } else {
+      statusText.textContent = 'Listo · Home Assistant';
+      faceWidget.classList.remove('active');
+    }
   }
 
-  (function initJarvisOrb() {
-    const container = document.getElementById('jarvis-orb');
-    if (!container || typeof THREE === 'undefined') return;
+  (function initJarvis3D() {
+    if (typeof THREE === 'undefined') return;
+
+    // ─── Mini orb for header ───
+    const headerContainer = document.getElementById('jarvis-header-orb');
+    if (headerContainer) {
+      const hs = new THREE.Scene();
+      const hc = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+      hc.position.z = 2.5;
+      const hr = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+      hr.setSize(80, 80);
+      hr.setPixelRatio(2);
+      headerContainer.appendChild(hr.domElement);
+
+      const hCore = new THREE.Mesh(
+        new THREE.SphereGeometry(0.7, 24, 24),
+        new THREE.MeshBasicMaterial({ color: 0x4a90e2, wireframe: true, transparent: true, opacity: 0.7 })
+      );
+      hs.add(hCore);
+      const hGlow = new THREE.Mesh(
+        new THREE.SphereGeometry(0.5, 16, 16),
+        new THREE.MeshBasicMaterial({ color: 0x6cb4f7, transparent: true, opacity: 0.4 })
+      );
+      hs.add(hGlow);
+
+      (function animHeader() {
+        requestAnimationFrame(animHeader);
+        hCore.rotation.y += 0.01;
+        hCore.rotation.x += 0.005;
+        const s = jarvisState === 'thinking' ? 2.5 : jarvisState === 'speaking' ? 1.8 : 1;
+        hCore.rotation.y += 0.005 * s;
+        hGlow.material.opacity = 0.3 + Math.sin(Date.now() * 0.003 * s) * 0.2;
+        hr.render(hs, hc);
+      })();
+    }
+
+    // ─── Main holographic face ───
+    const faceContainer = document.getElementById('jarvis-face');
+    if (!faceContainer) return;
 
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
-    camera.position.z = 2.8;
+    const camera = new THREE.PerspectiveCamera(40, 120/140, 0.1, 100);
+    camera.position.z = 4;
 
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-    renderer.setSize(88, 88);
+    renderer.setSize(240, 280);
     renderer.setPixelRatio(2);
-    container.appendChild(renderer.domElement);
+    faceContainer.appendChild(renderer.domElement);
 
-    // Core sphere (orbe principal)
-    const coreGeo = new THREE.SphereGeometry(0.6, 32, 32);
-    const coreMat = new THREE.MeshPhongMaterial({
-      color: 0x4a90e2,
-      emissive: 0x1a3a6e,
-      emissiveIntensity: 0.6,
-      transparent: true,
-      opacity: 0.85,
-      shininess: 100
-    });
-    const core = new THREE.Mesh(coreGeo, coreMat);
-    scene.add(core);
-
-    // Anillo orbital 1
-    const ring1Geo = new THREE.TorusGeometry(0.85, 0.015, 8, 64);
-    const ring1Mat = new THREE.MeshBasicMaterial({ color: 0x6cb4f7, transparent: true, opacity: 0.6 });
-    const ring1 = new THREE.Mesh(ring1Geo, ring1Mat);
-    ring1.rotation.x = Math.PI * 0.35;
-    scene.add(ring1);
-
-    // Anillo orbital 2
-    const ring2Geo = new THREE.TorusGeometry(0.95, 0.01, 8, 64);
-    const ring2Mat = new THREE.MeshBasicMaterial({ color: 0xa78bfa, transparent: true, opacity: 0.4 });
-    const ring2 = new THREE.Mesh(ring2Geo, ring2Mat);
-    ring2.rotation.x = Math.PI * 0.6;
-    ring2.rotation.y = Math.PI * 0.3;
-    scene.add(ring2);
-
-    // Particulas orbitales
-    const particlesGeo = new THREE.BufferGeometry();
-    const pCount = 40;
-    const pPositions = new Float32Array(pCount * 3);
-    for (let i = 0; i < pCount; i++) {
-      const angle = (i / pCount) * Math.PI * 2;
-      const radius = 0.7 + Math.random() * 0.4;
-      pPositions[i * 3] = Math.cos(angle) * radius;
-      pPositions[i * 3 + 1] = (Math.random() - 0.5) * 0.8;
-      pPositions[i * 3 + 2] = Math.sin(angle) * radius;
+    // Head shape - elongated sphere
+    const headGeo = new THREE.SphereGeometry(1, 32, 40);
+    // Deform into face shape
+    const positions = headGeo.attributes.position;
+    for (let i = 0; i < positions.count; i++) {
+      let x = positions.getX(i);
+      let y = positions.getY(i);
+      let z = positions.getZ(i);
+      // Elongate vertically
+      y *= 1.3;
+      // Flatten back
+      if (z < -0.3) z *= 0.7;
+      // Chin taper
+      if (y < -0.5) { x *= 1 - (Math.abs(y + 0.5) * 0.4); }
+      // Forehead
+      if (y > 0.7) { x *= 0.92; z *= 0.95; }
+      positions.setXYZ(i, x, y, z);
     }
-    particlesGeo.setAttribute('position', new THREE.BufferAttribute(pPositions, 3));
-    const particlesMat = new THREE.PointsMaterial({ color: 0x60a5fa, size: 0.04, transparent: true, opacity: 0.8 });
-    const particles = new THREE.Points(particlesGeo, particlesMat);
-    scene.add(particles);
+    headGeo.computeVertexNormals();
 
-    // Luces
-    const light1 = new THREE.PointLight(0x6cb4f7, 1.5, 10);
-    light1.position.set(2, 2, 3);
-    scene.add(light1);
-    const light2 = new THREE.PointLight(0xa78bfa, 0.8, 10);
-    light2.position.set(-2, -1, 2);
-    scene.add(light2);
-    scene.add(new THREE.AmbientLight(0x1a1a3e, 0.3));
+    // Wireframe head (holographic look)
+    const headWire = new THREE.Mesh(headGeo, new THREE.MeshBasicMaterial({
+      color: 0x4a9ef7, wireframe: true, transparent: true, opacity: 0.35
+    }));
+    scene.add(headWire);
+
+    // Solid transparent head (depth)
+    const headSolid = new THREE.Mesh(headGeo, new THREE.MeshPhongMaterial({
+      color: 0x1a3a6e, emissive: 0x0a1a3e, transparent: true, opacity: 0.15, side: THREE.DoubleSide
+    }));
+    scene.add(headSolid);
+
+    // Eyes - glowing points
+    const eyeGeo = new THREE.SphereGeometry(0.08, 12, 12);
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0x60d4ff, transparent: true, opacity: 0.9 });
+    const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+    leftEye.position.set(-0.28, 0.15, 0.85);
+    scene.add(leftEye);
+    const rightEye = new THREE.Mesh(eyeGeo, eyeMat.clone());
+    rightEye.position.set(0.28, 0.15, 0.85);
+    scene.add(rightEye);
+
+    // Eye glow rings
+    const eyeRingGeo = new THREE.RingGeometry(0.1, 0.14, 24);
+    const eyeRingMat = new THREE.MeshBasicMaterial({ color: 0x60d4ff, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
+    const leftEyeRing = new THREE.Mesh(eyeRingGeo, eyeRingMat);
+    leftEyeRing.position.copy(leftEye.position);
+    leftEyeRing.position.z += 0.02;
+    scene.add(leftEyeRing);
+    const rightEyeRing = new THREE.Mesh(eyeRingGeo, eyeRingMat.clone());
+    rightEyeRing.position.copy(rightEye.position);
+    rightEyeRing.position.z += 0.02;
+    scene.add(rightEyeRing);
+
+    // Mouth - animated line
+    const mouthCurve = new THREE.QuadraticBezierCurve3(
+      new THREE.Vector3(-0.2, -0.45, 0.82),
+      new THREE.Vector3(0, -0.42, 0.88),
+      new THREE.Vector3(0.2, -0.45, 0.82)
+    );
+    const mouthGeo = new THREE.TubeGeometry(mouthCurve, 12, 0.015, 8, false);
+    const mouthMat = new THREE.MeshBasicMaterial({ color: 0x60d4ff, transparent: true, opacity: 0.7 });
+    const mouth = new THREE.Mesh(mouthGeo, mouthMat);
+    scene.add(mouth);
+
+    // Nose line
+    const noseCurve = new THREE.QuadraticBezierCurve3(
+      new THREE.Vector3(0, 0.1, 0.95),
+      new THREE.Vector3(0, -0.1, 1.0),
+      new THREE.Vector3(0, -0.25, 0.9)
+    );
+    const noseGeo = new THREE.TubeGeometry(noseCurve, 8, 0.008, 6, false);
+    const noseMat = new THREE.MeshBasicMaterial({ color: 0x4a9ef7, transparent: true, opacity: 0.4 });
+    scene.add(new THREE.Mesh(noseGeo, noseMat));
+
+    // Scanline effect (horizontal line that sweeps)
+    const scanGeo = new THREE.PlaneGeometry(3, 0.02);
+    const scanMat = new THREE.MeshBasicMaterial({ color: 0x60d4ff, transparent: true, opacity: 0.3 });
+    const scanline = new THREE.Mesh(scanGeo, scanMat);
+    scanline.position.z = 1.5;
+    scene.add(scanline);
+
+    // Particle field around head
+    const particleCount = 60;
+    const particleGeo = new THREE.BufferGeometry();
+    const pPos = new Float32Array(particleCount * 3);
+    for (let i = 0; i < particleCount; i++) {
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.random() * Math.PI;
+      const r = 1.3 + Math.random() * 0.5;
+      pPos[i*3] = r * Math.sin(phi) * Math.cos(theta);
+      pPos[i*3+1] = r * Math.cos(phi) * 1.3;
+      pPos[i*3+2] = r * Math.sin(phi) * Math.sin(theta);
+    }
+    particleGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+    const particleMat = new THREE.PointsMaterial({ color: 0x6cb4f7, size: 0.025, transparent: true, opacity: 0.6 });
+    const faceParticles = new THREE.Points(particleGeo, particleMat);
+    scene.add(faceParticles);
+
+    // Lights
+    scene.add(new THREE.AmbientLight(0x1a2a4e, 0.5));
+    const frontLight = new THREE.PointLight(0x6cb4f7, 1.2, 10);
+    frontLight.position.set(0, 0, 4);
+    scene.add(frontLight);
 
     let time = 0;
     function animate() {
       requestAnimationFrame(animate);
       time += 0.016;
 
-      // Velocidad y intensidad segun estado
-      let speed = 1;
-      let pulseIntensity = 0.1;
-      if (jarvisState === 'thinking') { speed = 3; pulseIntensity = 0.4; }
-      else if (jarvisState === 'speaking') { speed = 2; pulseIntensity = 0.25; }
+      let speed = 1, intensity = 0.3;
+      if (jarvisState === 'thinking') { speed = 2.5; intensity = 0.7; }
+      else if (jarvisState === 'speaking') { speed = 1.5; intensity = 0.5; }
 
-      // Rotacion del core
-      core.rotation.y += 0.005 * speed;
-      core.rotation.x = Math.sin(time * 0.5 * speed) * 0.1;
+      // Subtle head movement
+      headWire.rotation.y = Math.sin(time * 0.3) * 0.08;
+      headWire.rotation.x = Math.sin(time * 0.2) * 0.03;
+      headSolid.rotation.copy(headWire.rotation);
 
-      // Pulse del emissive
-      coreMat.emissiveIntensity = 0.6 + Math.sin(time * 2 * speed) * pulseIntensity;
-      coreMat.opacity = 0.8 + Math.sin(time * 1.5 * speed) * 0.1;
+      // Eye pulse
+      const eyePulse = 0.7 + Math.sin(time * 2 * speed) * intensity * 0.3;
+      eyeMat.opacity = eyePulse;
+      leftEyeRing.material.opacity = eyePulse * 0.5;
+      rightEyeRing.material.opacity = eyePulse * 0.5;
 
-      // Anillos rotan
-      ring1.rotation.z += 0.008 * speed;
-      ring1.rotation.y += 0.003 * speed;
-      ring2.rotation.z -= 0.006 * speed;
-      ring2.rotation.x += 0.004 * speed;
+      // Eye scale when thinking
+      const eyeScale = jarvisState === 'thinking' ? 1 + Math.sin(time * 4) * 0.2 : 1;
+      leftEye.scale.setScalar(eyeScale);
+      rightEye.scale.setScalar(eyeScale);
 
-      // Particulas orbitan
-      particles.rotation.y += 0.004 * speed;
-      particles.rotation.x = Math.sin(time * 0.3) * 0.2;
-
-      // Color shift cuando piensa
-      if (jarvisState === 'thinking') {
-        coreMat.emissive.setHex(0x3a1a8e);
-        ring1Mat.color.setHex(0xa78bfa);
-      } else if (jarvisState === 'speaking') {
-        coreMat.emissive.setHex(0x1a5a3e);
-        ring1Mat.color.setHex(0x34d399);
+      // Mouth animation when speaking
+      if (jarvisState === 'speaking') {
+        mouth.scale.y = 1 + Math.sin(time * 8) * 0.4;
+        mouthMat.opacity = 0.6 + Math.sin(time * 6) * 0.3;
       } else {
-        coreMat.emissive.setHex(0x1a3a6e);
-        ring1Mat.color.setHex(0x6cb4f7);
+        mouth.scale.y = 1;
+        mouthMat.opacity = 0.5;
+      }
+
+      // Wireframe pulse
+      headWire.material.opacity = 0.25 + Math.sin(time * 1.5 * speed) * 0.1;
+
+      // Scanline sweep
+      scanline.position.y = Math.sin(time * 0.8 * speed) * 1.5;
+      scanMat.opacity = 0.15 + Math.sin(time * 2) * 0.1;
+
+      // Particles orbit
+      faceParticles.rotation.y += 0.002 * speed;
+
+      // Color based on state
+      if (jarvisState === 'thinking') {
+        headWire.material.color.setHex(0xa78bfa);
+        eyeMat.color.setHex(0xc4a5ff);
+        frontLight.color.setHex(0xa78bfa);
+      } else if (jarvisState === 'speaking') {
+        headWire.material.color.setHex(0x34d399);
+        eyeMat.color.setHex(0x6ee7b7);
+        frontLight.color.setHex(0x34d399);
+      } else {
+        headWire.material.color.setHex(0x4a9ef7);
+        eyeMat.color.setHex(0x60d4ff);
+        frontLight.color.setHex(0x6cb4f7);
       }
 
       renderer.render(scene, camera);

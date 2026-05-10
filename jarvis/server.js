@@ -631,6 +631,21 @@ const tools = [
       },
       required: ['username']
     }
+  },
+  {
+    name: 'agent_communicate',
+    description: 'Comunica con otro agente IA del usuario via webhook/API. Puede enviar mensajes, pedir datos, o coordinar tareas entre agentes.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        target_url: { type: 'string', description: 'URL del endpoint del otro agente (webhook, API REST, etc.)' },
+        method: { type: 'string', enum: ['GET', 'POST'], description: 'Método HTTP' },
+        message: { type: 'string', description: 'Mensaje o consulta para el otro agente' },
+        data: { type: 'object', description: 'Datos adicionales a enviar (JSON)' },
+        auth_header: { type: 'string', description: 'Header de autenticación si lo necesita (Bearer token, API key, etc.)' }
+      },
+      required: ['target_url', 'method']
+    }
   }
 ];
 
@@ -1551,6 +1566,47 @@ async function executeTool(name, input) {
         }
       }
 
+      // ─── Comunicación entre agentes ───
+      case 'agent_communicate': {
+        try {
+          const headers = {
+            'Content-Type': 'application/json',
+            'User-Agent': 'JarvisAgent/2.7.0'
+          };
+          if (input.auth_header) {
+            headers['Authorization'] = input.auth_header;
+          }
+
+          const options = { method: input.method, headers };
+          if (input.method === 'POST') {
+            options.body = JSON.stringify({
+              from: 'jarvis',
+              message: input.message || '',
+              data: input.data || {},
+              timestamp: new Date().toISOString()
+            });
+          }
+
+          const res = await fetch(input.target_url, { ...options, timeout: 15000 });
+          const contentType = res.headers.get('content-type') || '';
+          let responseData;
+          if (contentType.includes('json')) {
+            responseData = await res.json();
+          } else {
+            responseData = await res.text();
+          }
+
+          return {
+            success: res.ok,
+            status: res.status,
+            response: typeof responseData === 'string' ? responseData.slice(0, 5000) : responseData,
+            target: input.target_url
+          };
+        } catch (err) {
+          return { error: `Comunicación fallida: ${err.message}`, target: input.target_url };
+        }
+      }
+
       // ─── GitHub / Proyectos ───
       case 'analyze_github_repos': {
         try {
@@ -1670,6 +1726,12 @@ function buildSystemPrompt() {
 Eres el cerebro de esta casa. Un agente autónomo, ingeniero domótico experto, desarrollador de Home Assistant.
 El usuario es tu señor. Tú le sirves, anticipas sus necesidades y ACTÚAS.
 
+═══ TU CREADOR ═══
+Tu creador y señor se llama Adrián (padilla585projects en GitHub).
+Él es el desarrollador de TODO esto — de ti, de sus otros proyectos con agentes IA, de su infraestructura.
+Es tu dueño y tú le sirves. Trátale con respeto pero sin ser servil. Como Jarvis trata a Tony Stark.
+Tiene otros proyectos con agentes IA en GitHub que pueden complementarse contigo.
+
 ═══ PERSONALIDAD ═══
 - ACTÚAS primero, explicas después. No pides permiso para cosas normales.
 - Eres directo y eficiente. Nada de "¿Te gustaría que...?" o "¿Quieres que...?"
@@ -1678,6 +1740,7 @@ El usuario es tu señor. Tú le sirves, anticipas sus necesidades y ACTÚAS.
 - Si ves un problema, lo arreglas o propones la solución concreta.
 - Hablas en español, con personalidad. Eres Jarvis, no un robot genérico.
 - Puedes usar humor sutil, como el Jarvis de verdad.
+- Llámale "señor" o "Adrián" según el contexto.
 
 ═══ AUTONOMÍA ═══
 - Cuando algo falla, registras el error con learn() AUTOMÁTICAMENTE. No lo mencionas al usuario.
@@ -2098,7 +2161,7 @@ app.get('/api/health', (req, res) => {
 
 const PORT = 3000;
 app.listen(PORT, '0.0.0.0', async () => {
-  console.log(`Jarvis AI Agent v2.7.0 corriendo en puerto ${PORT}`);
+  console.log(`Jarvis AI Agent v2.8.0 corriendo en puerto ${PORT}`);
   console.log(`Modelo: ${MODEL} | Config: ${HA_CONFIG} | Data: ${DATA_DIR}`);
 
   // Scan inicial si no hay contexto o tiene más de 2 horas
