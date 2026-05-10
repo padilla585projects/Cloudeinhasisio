@@ -14,6 +14,7 @@ const MODEL = process.env.MODEL || 'claude-sonnet-4-6';
 const HA_TOKEN = process.env.HA_TOKEN;
 const HA_URL = process.env.HA_URL || 'http://supervisor/core';
 const LANGUAGE = process.env.LANGUAGE || 'es';
+const BG_MODEL = 'claude-haiku-4-20250414';  // Modelo económico para tareas background
 const PROXMOX_URL = process.env.PROXMOX_URL || '';  // ej: https://192.168.1.100:8006
 const PROXMOX_TOKEN = process.env.PROXMOX_TOKEN || '';  // ej: user@pam!tokenid=token-secret
 const PROXMOX_NODE = process.env.PROXMOX_NODE || 'pve';  // nombre del nodo
@@ -2973,7 +2974,7 @@ Prioridad: cosas accionables > observaciones genéricas.`;
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: MODEL,
+        model: BG_MODEL,
         max_tokens: 512,
         system: 'Eres Jarvis en modo autónomo. Piensas por ti mismo. Si tienes algo útil, usa proactive_thought. Si no, di solo "OK". Sé breve. Español.',
         tools: [tools.find(t => t.name === 'proactive_thought'), tools.find(t => t.name === 'learn'), tools.find(t => t.name === 'save_memory')],
@@ -3112,7 +3113,7 @@ async function analyzePatterns() {
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: MODEL,
+        model: BG_MODEL,
         max_tokens: 600,
         system: 'Eres Jarvis analizando patrones de vida del hogar. Detecta rutinas de los habitantes. Si encuentras un patrón claro y accionable (se podría automatizar), usa proactive_thought para sugerir la automatización. Si detectas algo que memorizar, usa save_memory. Solo patrones CLAROS con >60% de consistencia. Español. Breve.',
         tools: [tools.find(t => t.name === 'proactive_thought'), tools.find(t => t.name === 'save_memory'), tools.find(t => t.name === 'learn')],
@@ -3221,7 +3222,7 @@ async function knowledgeExpansionLoop() {
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: MODEL,
+        model: BG_MODEL,
         max_tokens: 800,
         system: 'Eres un experto técnico. Genera conocimiento estructurado y práctico. Responde SOLO con la llamada a knowledge_db. Español. Sé conciso pero completo.',
         tools: [tools.find(t => t.name === 'knowledge_db')],

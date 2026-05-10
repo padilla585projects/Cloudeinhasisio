@@ -3,6 +3,18 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.5.2 (2026-05-10) — HAIKU PARA BACKGROUND
+────────────────────────────────────────────────────────────────────────────────
+
+OPTIMIZACIÓN DE COSTES:
+- Tareas de fondo ahora usan Claude Haiku (claude-haiku-4-20250414)
+- proactiveThinkingLoop → Haiku (antes Sonnet)
+- analyzePatterns → Haiku (antes Sonnet)
+- knowledgeExpansionLoop → Haiku (antes Sonnet)
+- Chat principal sigue con Sonnet para máxima calidad
+- Reducción estimada de ~80% en tokens de fondo
+
+────────────────────────────────────────────────────────────────────────────────
 v3.3.0 (2026-05-10) — AUTO-UPDATE
 ────────────────────────────────────────────────────────────────────────────────
 
