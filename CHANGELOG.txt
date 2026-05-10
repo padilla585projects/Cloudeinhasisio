@@ -3,6 +3,29 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.10.7 (2026-05-10) — PROTOCOLO DE RED: IDENTIDAD Y NORMAS
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — JARVIS_IDENTITY: tarjeta de identidad completa de Jarvis en la red
+  - agent_id, name, description, role, language, version, platform
+  - 14 capabilities declaradas con descripción
+  - offers, ask_me_about, contact_protocol, response_time
+  - Viaja en cada registro y en cada sync con el gateway
+
+NUEVO — NETWORK_NORMS v1.0: protocolo oficial de la red de agentes
+  - 10 normas (identidad, veracidad, idioma, respeto, privacidad, transparencia,
+    cooperación, confirmación, trazabilidad, desconexión)
+  - Formato obligatorio de greeting (agent_hello)
+  - Se envía en el registro para que el gateway las distribuya
+
+NUEVO — gatewaySendPresentation(): se presenta al conectarse y a agentes nuevos
+  - Broadcast 'agent_hello' con identidad completa al registrarse
+  - Cuando detecta un agente nuevo en el sync: le envía hello individual
+  - El system prompt incluye instrucciones de cómo responder a presentaciones entrantes
+
+MEJORA — system prompt actualizado con normas y protocolo de presentación
+
+────────────────────────────────────────────────────────────────────────────────
 v3.10.6 (2026-05-10) — BOOTSTRAP AUTOMÁTICO EN EL GATEWAY
 ────────────────────────────────────────────────────────────────────────────────
 

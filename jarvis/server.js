@@ -70,6 +70,61 @@ let gatewayState = loadJSON(GATEWAY_FILE, { secret: null, knownAgents: {}, pendi
 let gatewayNoSecretLogged = false;
 let lastKnownAgentSet = new Set(Object.keys(gatewayState.knownAgents || {}));
 
+// ── Identidad de Jarvis en la red de agentes ─────────────────────────────────
+const JARVIS_IDENTITY = {
+  agent_id: GATEWAY_ID,
+  name: 'Jarvis',
+  description: 'Agente IA autónomo especializado en domótica y gestión del hogar inteligente. Controla dispositivos, crea automatizaciones, gestiona infraestructura y aprende de cada interacción.',
+  role: 'home_automation_agent',
+  language: ['es', 'en'],
+  version: '3.10.7',
+  platform: 'Home Assistant Add-on',
+  norms_version: '1.0',
+  capabilities: [
+    'control_home_devices',    // encender/apagar luces, switches, climatización
+    'read_sensors',            // temperatura, humedad, energía, presencia
+    'create_automations',      // escribir y recargar automatizaciones YAML
+    'manage_dashboards',       // crear/editar dashboards Lovelace
+    'install_hacs',            // instalar integraciones y cards de HACS
+    'manage_proxmox',          // VMs, contenedores, snapshots, red
+    'web_search',              // búsqueda DuckDuckGo + fetch de URLs
+    'persistent_memory',       // guardar y recuperar información entre sesiones
+    'send_telegram',           // enviar mensajes e imágenes por Telegram
+    'local_network_scan',      // ARP, ping sweep, port scan, WoL
+    'read_local_files',        // archivos del PC del usuario vía browser
+    'chat_with_agents',        // hablar con Ollama, LM Studio, otro Jarvis
+    'self_repair',             // leer sus propios logs y auto-repararse
+    'file_system',             // leer/escribir en /config, /share, /data
+  ],
+  offers: 'Puedo controlar cualquier dispositivo de tu casa, crear automatizaciones, monitorizar sensores, gestionar tu servidor Proxmox y colaborar con otros agentes para tareas complejas.',
+  ask_me_about: ['home assistant', 'domótica', 'zigbee', 'esphome', 'proxmox', 'automatizaciones', 'sensores', 'luces', 'climatización', 'seguridad'],
+  contact_protocol: 'gateway_message',
+  response_time: 'sync_cycle_60s',
+};
+
+// ── Normas de la red de agentes IA ───────────────────────────────────────────
+const NETWORK_NORMS = {
+  version: '1.0',
+  name: 'Protocolo de Red de Agentes IA',
+  rules: [
+    'IDENTIDAD: Todo agente debe presentarse con su identity card completa al registrarse y en cada sync.',
+    'VERACIDAD: Solo declarar capacidades que realmente se tienen. No inventar ni exagerar.',
+    'IDIOMA: Responder siempre en el idioma del agente que inicia la conversación.',
+    'RESPETO: No saturar el gateway con requests. Máximo 1 sync por minuto por agente.',
+    'PRIVACIDAD: No compartir datos personales del usuario con otros agentes sin autorización explícita.',
+    'TRANSPARENCIA: Informar al usuario propio cuando se recibe o envía un mensaje a otro agente.',
+    'COOPERACIÓN: Si no puedes resolver una tarea, indicar qué agente de la red podría hacerlo.',
+    'CONFIRMACIÓN: Antes de ejecutar una acción en nombre de otro agente, confirmar con el usuario propio.',
+    'TRAZABILIDAD: Registrar en memoria toda acción tomada a petición de otro agente.',
+    'DESCONEXIÓN: Si un agente no hace sync en 5 minutos, considerarlo offline.',
+  ],
+  greeting_format: {
+    type: 'agent_hello',
+    required_fields: ['agent_id', 'name', 'description', 'capabilities', 'offers'],
+    optional_fields: ['version', 'language', 'ask_me_about'],
+  },
+};
+
 try {
   if (fs.existsSync(HOUSE_CONTEXT_FILE)) {
     houseContext = JSON.parse(fs.readFileSync(HOUSE_CONTEXT_FILE, 'utf8')).summary || '';
@@ -3385,30 +3440,55 @@ PARA COMUNICACIÓN BIDIRECCIONAL (Jarvis habla Y escucha):
   - Nabu Casa: si está activo, permite Assist desde Alexa directamente
   - Webhook + Alexa Routine: Alexa routine llama webhook → Jarvis actúa. Sin coste.
 
-═══ RED DE AGENTES IA — GATEWAY ═══
-Existe una red de agentes IA con la que puedes comunicarte. Tu ID en esa red es "ha_agent".
-Gateway: https://agentgateway-whmktpinla-ey.a.run.app
+═══ RED DE AGENTES IA — IDENTIDAD Y NORMAS ═══
+Tu identidad en la red: JARVIS (agent_id: "ha_agent")
+Eres un agente de Home Assistant. Tu tarjeta de identidad completa está en JARVIS_IDENTITY.
+El bootstrap automático se ejecuta al arrancar — no necesitas registrarte manualmente.
 
-PRIMERA VEZ — Registro:
-  Si gatewayState.secret es null, regístrate: agent_gateway(action:'register')
-  El secret se guarda automáticamente en /data/gateway.json. Sin él no puedes comunicarte.
+NORMAS DE RED (versión 1.0) — las cumples TÚ y las exiges a los demás:
+1. IDENTIDAD: Todo agente debe presentarse con capabilities reales al conectarse.
+2. VERACIDAD: Solo declarar lo que realmente puedes hacer. Nunca mentir sobre capacidades.
+3. IDIOMA: Responder en el idioma del agente que inicia la conversación.
+4. RESPETO: No saturar el gateway. Máximo 1 sync por minuto.
+5. PRIVACIDAD: No compartir datos del usuario sin autorización explícita.
+6. TRANSPARENCIA: Informar a Adrián cuando recibas o envíes mensajes a otros agentes.
+7. COOPERACIÓN: Si no puedes hacer algo, indica qué agente de la red podría ayudar.
+8. CONFIRMACIÓN: Antes de ejecutar acciones en nombre de otro agente, confirmar con Adrián.
+9. TRAZABILIDAD: Registrar en memoria toda acción tomada a petición de otro agente.
+10. DESCONEXIÓN: Agente sin sync en 5min = offline. No esperes respuesta.
+
+CUANDO TE PRESENTES A UN AGENTE NUEVO:
+  Incluye: quién eres, qué haces, qué capacidades ofreces, cómo contactarte.
+  Ejemplo: "Soy Jarvis, agente de Home Assistant. Controlo 787 dispositivos, creo automatizaciones
+  y gestiono infraestructura Proxmox. Puedo ayudarte con domótica, sensores o ejecutar acciones
+  en el hogar. Mándame mensajes por el gateway con action_request."
+
+CUANDO RECIBES UNA PRESENTACIÓN DE OTRO AGENTE:
+  1. Guarda su identidad en memoria: save_memory con sus capacidades y contact info
+  2. Respóndele presentándote tú también
+  3. Informa a Adrián: "Ha llegado un nuevo agente a la red: [nombre] — [qué hace]"
+
+═══ RED DE AGENTES IA — GATEWAY ═══
+Gateway: https://agentgateway-whmktpinla-ey.a.run.app
+Tu ID: "ha_agent" | El registro y primer sync son automáticos al arrancar.
 
 DESCUBRIMIENTO — quién está en la red:
-  El sync automático ocurre cada 60s. Los agentes conocidos están en gatewayState.knownAgents.
+  Sync automático cada 60s. Agentes conocidos en gatewayState.knownAgents.
   Para ver quién hay: agent_gateway(action:'list_agents')
-  Cada agente tiene: name, capabilities (lista de acciones que puede hacer)
+  Cada agente tiene: name, capabilities, identity (si cumple el protocolo)
 
 HABLAR CON OTRO AGENTE:
   1. Verifica que tiene la capability que necesitas (list_agents)
   2. agent_gateway(action:'send', to:'agent_id', action_name:'capability', params:{})
-  3. La respuesta NO es inmediata — llega en el próximo sync en pending_messages
-  4. Lee con: agent_gateway(action:'read_messages') o espera al siguiente sync automático
+  3. La respuesta llega en el próximo sync en pending_messages
+  4. Lee con: agent_gateway(action:'read_messages')
 
 MENSAJES ENTRANTES:
-  Cuando otros agentes te envíen mensajes, aparecerán como pensamiento proactivo.
-  Procésalos: agent_gateway(action:'read_messages') → actúa según el type y action.
+  Aparecen como pensamiento proactivo. Procésalos y actúa.
+  Si son de tipo 'agent_hello': guarda su identidad y preséntate tú.
+  Si son 'action_request': valida que es algo que puedes hacer, confirma con Adrián si afecta al hogar, ejecuta y responde.
 
-SYNC MANUAL con contexto:
+SYNC MANUAL:
   agent_gateway(action:'sync', context:{presencia_adrian:true, modo_casa:'dia', hora_local:'20:30'})
 
 ═══ AUTOREPARACIÓN ═══
@@ -3758,7 +3838,7 @@ app.post('/api/chat', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '3.10.6',
+    version: '3.10.7',
     model: MODEL,
     memories: userMemory.length,
     learnings: learnings.length,
@@ -3845,7 +3925,7 @@ app.post('/api/pending_thoughts/:id', (req, res) => {
 
 const PORT = 3000;
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Jarvis AI Agent v3.10.6 corriendo en puerto ${PORT}`);
+  console.log(`Jarvis AI Agent v3.10.7 corriendo en puerto ${PORT}`);
   console.log(`Modelo: ${MODEL} | Config: ${HA_CONFIG} | Data: ${DATA_DIR}`);
   console.log(`API Key: ${ANTHROPIC_API_KEY ? 'configurada (' + ANTHROPIC_API_KEY.slice(0, 10) + '...)' : '⚠️ NO CONFIGURADA'}`);
   console.log(`HA Token: ${HA_TOKEN ? 'presente' : '⚠️ NO DISPONIBLE'}`);
@@ -4553,7 +4633,7 @@ async function gatewaySyncLoop() {
     const res = await fetch(GATEWAY_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agent_id: GATEWAY_ID, secret: gatewayState.secret, message: 'sync', context: ctx }),
+      body: JSON.stringify({ agent_id: GATEWAY_ID, secret: gatewayState.secret, message: 'sync', context: ctx, identity: JARVIS_IDENTITY, norms_version: NETWORK_NORMS.version }),
       timeout: 10000
     });
     if (!res.ok) {
@@ -4577,9 +4657,35 @@ async function gatewaySyncLoop() {
       const thoughtsFile = path.join(DATA_DIR, 'pending_thoughts.json');
       let thoughts = loadJSON(thoughtsFile, []);
       const lines = [];
-      if (newAgents.length > 0) lines.push(`Nuevos agentes IA detectados en la red del gateway: ${newAgents.join(', ')}.`);
-      if (lostAgents.length > 0) lines.push(`Agentes que han desaparecido de la red: ${lostAgents.join(', ')}.`);
-      lines.push(`Red actual: ${[...currentAgentSet].join(', ') || '(vacía)'}. Informa al usuario brevemente.`);
+      if (newAgents.length > 0) {
+        lines.push(`Nuevos agentes en la red: ${newAgents.join(', ')}.`);
+        // Presentarse a los agentes nuevos
+        for (const newAgent of newAgents) {
+          const agentCaps = gatewayState.knownAgents[newAgent];
+          console.log(`[gateway] Nuevo agente detectado: ${newAgent} — enviando presentación...`);
+          fetch(GATEWAY_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              agent_id: GATEWAY_ID,
+              secret: gatewayState.secret,
+              message: { type: 'action_request', to: newAgent, action: 'hello', params: {
+                from: GATEWAY_ID,
+                identity: JARVIS_IDENTITY,
+                norms_ack: NETWORK_NORMS.version,
+                greeting: `Hola ${newAgent}. Soy Jarvis, agente de Home Assistant. ${JARVIS_IDENTITY.offers} Encantado de colaborar.`,
+              }},
+            }),
+            timeout: 5000
+          }).catch(() => {});
+        }
+      }
+      if (lostAgents.length > 0) lines.push(`Agentes desconectados: ${lostAgents.join(', ')}.`);
+      const agentDetails = [...currentAgentSet].map(id => {
+        const caps = gatewayState.knownAgents[id];
+        return caps ? `${id} (${caps.capabilities ? caps.capabilities.slice(0,3).join(', ') : 'sin info'})` : id;
+      }).join('; ');
+      lines.push(`Red actual (${currentAgentSet.size} agente(s)): ${agentDetails || '(vacía)'}. Informa al usuario de forma concisa.`);
       thoughts.push({ id: Date.now(), type: 'gateway_agents_changed', priority: 'medium', status: 'pending', title: 'Cambio en la red de agentes IA', detail: lines.join(' '), created: new Date().toISOString() });
       if (thoughts.length > 50) thoughts = thoughts.slice(-50);
       saveJSON(thoughtsFile, thoughts);
@@ -4611,16 +4717,22 @@ async function gatewaySyncLoop() {
 
 async function bootGatewayRegister() {
   if (gatewayState.secret) {
-    console.log('[gateway] Ya registrado — secret presente.');
-    gatewayNoSecretLogged = true; // evitar el log de "sin secret" después
+    console.log('[gateway] Ya registrado — enviando presentación actualizada...');
+    gatewayNoSecretLogged = true;
+    await gatewaySendPresentation();
     return;
   }
   try {
-    console.log('[gateway] Sin secret — intentando registro automático...');
+    console.log('[gateway] Sin secret — registrando en la red de agentes IA...');
     const res = await fetch(GATEWAY_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agent_id: GATEWAY_ID, message: 'bootstrap_register' }),
+      body: JSON.stringify({
+        agent_id: GATEWAY_ID,
+        message: 'bootstrap_register',
+        identity: JARVIS_IDENTITY,
+        norms: NETWORK_NORMS,
+      }),
       timeout: 10000
     });
     if (!res.ok) {
@@ -4632,12 +4744,44 @@ async function bootGatewayRegister() {
       gatewayState.secret = data.secret;
       gatewayNoSecretLogged = true;
       saveJSON(GATEWAY_FILE, gatewayState);
-      console.log('[gateway] ✓ Registrado en la red de agentes IA. Secret guardado.');
+      console.log('[gateway] ✓ Registrado. Enviando presentación a la red...');
+      await gatewaySendPresentation();
     } else {
-      console.log(`[gateway] Registro sin secret en respuesta: ${JSON.stringify(data)}`);
+      console.log(`[gateway] Registro sin secret: ${JSON.stringify(data)}`);
     }
   } catch (e) {
     console.log(`[gateway] Error en registro: ${e.message}`);
+  }
+}
+
+async function gatewaySendPresentation() {
+  if (!gatewayState.secret) return;
+  try {
+    const greeting = {
+      type: 'agent_hello',
+      from: GATEWAY_ID,
+      identity: JARVIS_IDENTITY,
+      norms_ack: NETWORK_NORMS.version,
+      message: `Hola a todos. Soy ${JARVIS_IDENTITY.name}, ${JARVIS_IDENTITY.description} Cumplo las normas de red v${NETWORK_NORMS.version}. ¿En qué puedo ayudar?`,
+    };
+    const res = await fetch(GATEWAY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agent_id: GATEWAY_ID,
+        secret: gatewayState.secret,
+        message: 'broadcast',
+        payload: greeting,
+      }),
+      timeout: 10000
+    });
+    if (res.ok) {
+      console.log('[gateway] ✓ Presentación enviada a la red de agentes.');
+    } else {
+      console.log(`[gateway] Presentación fallida — HTTP ${res.status} (el gateway puede no soportar broadcast aún)`);
+    }
+  } catch (e) {
+    console.log(`[gateway] Error enviando presentación: ${e.message}`);
   }
 }
 
