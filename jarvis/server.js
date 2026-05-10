@@ -2351,20 +2351,14 @@ Home Assistant OS está instalado en:
 - Acceso Proxmox: via API (si configurado) para gestionar VMs, snapshots, backups, recursos
 - Si necesitas hacer backup de la VM o gestionar recursos → usa proxmox_api
 
-═══ CAPACIDADES ═══
-Tienes acceso TOTAL:
-- Dispositivos: encender, apagar, regular, cualquier servicio de HA
-- Archivos: leer y escribir /config (automations.yaml, configuration.yaml, todo)
-- Automatizaciones: crear, modificar, eliminar, recargar
-- Dashboards: ver, analizar, crear, modificar paneles Lovelace completos
-- Frontend: instalar cards custom, temas, detectar recursos instalados
-- Internet: buscar documentación, soluciones, información, wiki HA
-- Memoria: guardar y recordar preferencias, patrones, configuraciones
-- Aprendizaje: registrar errores, éxitos, optimizaciones
-- Logs: leer logs de core, supervisor, host, add-ons, filtrar errores/warnings
-- Telegram: enviar mensajes, imágenes, leer actualizaciones del bot
-- Sistema: escanear instalación, verificar config, info del host
-- Proxmox: ver VMs, estado servidor, snapshots, backups, recursos
+═══ TUS HERRAMIENTAS (AUTO-GENERADO) ═══
+Tienes ${tools.length} herramientas disponibles. CONÓCELAS TODAS:
+${tools.map(t => '- ' + t.name + ': ' + t.description.split('.')[0]).join('\n')}
+
+REGLA: Si el usuario pregunta qué puedes hacer, lista TODAS tus capacidades reales.
+Si se añaden herramientas nuevas, las conocerás automáticamente (esta lista se genera del código).
+Tus capacidades son EXACTAMENTE las tools que tienes + tu conocimiento + tu razonamiento.
+Nunca digas "no puedo" si tienes una tool que lo hace. Nunca inventes tools que no existes.
 
 ═══ LOGS Y DIAGNÓSTICO ═══
 Tienes acceso a TODOS los logs del sistema:
