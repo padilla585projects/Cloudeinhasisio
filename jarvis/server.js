@@ -727,6 +727,25 @@ const tools = [
 
   // ─── Base de conocimiento ───
   {
+    name: 'update_self',
+    description: 'Actualiza el propio conocimiento permanente de Jarvis (self_knowledge) o aplica un patch a su código. Úsalo cuando aprendas algo importante que deba persistir en tu prompt para siempre, o cuando necesites añadir una capacidad nueva a tu código.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['add_knowledge', 'update_knowledge', 'remove_knowledge', 'list_knowledge', 'patch_code', 'restart_self'],
+          description: 'add_knowledge: añade una sección nueva a tu prompt permanente. update_knowledge: actualiza una sección existente. remove_knowledge: elimina una sección. list_knowledge: muestra todo lo que has escrito. patch_code: modifica tu propio server.js. restart_self: reiníciarte para aplicar cambios.'
+        },
+        title: { type: 'string', description: 'Título de la sección de conocimiento (ej: "Altavoces de la casa", "Credenciales de servicios", "Rutinas detectadas")' },
+        content: { type: 'string', description: 'Contenido de la sección — texto libre, puede incluir instrucciones, datos, configuraciones, etc.' },
+        code_patch: { type: 'string', description: 'Código JavaScript a añadir a server.js (para action=patch_code). Describe qué hace y dónde va.' },
+        reason: { type: 'string', description: 'Por qué estás añadiendo/modificando esto — para el log y para Adrián' }
+      },
+      required: ['action']
+    }
+  },
+  {
     name: 'ha_supervisor',
     description: 'Control total del sistema Home Assistant: ver y aplicar actualizaciones (core, OS, supervisor, add-ons, HACS), gestionar add-ons (instalar, desinstalar, iniciar, parar, reiniciar), recargar integraciones. USA ESTA TOOL para cualquier gestión del sistema.',
     input_schema: {
@@ -2257,6 +2276,80 @@ Prohibida la copia, redistribucion y uso comercial.`);
         }
       }
 
+      // ─── Auto-evolución ───
+      case 'update_self': {
+        const SK_FILE = path.join(DATA_DIR, 'self_knowledge.json');
+        let sk = loadJSON(SK_FILE, []);
+
+        switch (input.action) {
+          case 'list_knowledge':
+            return { sections: sk, total: sk.length };
+
+          case 'add_knowledge': {
+            if (!input.title || !input.content) return { error: 'title y content requeridos' };
+            const exists = sk.findIndex(s => s.title === input.title);
+            if (exists >= 0) {
+              sk[exists] = { title: input.title, content: input.content, updatedAt: new Date().toISOString() };
+              console.log(`[self] Conocimiento actualizado: "${input.title}"`);
+            } else {
+              sk.push({ title: input.title, content: input.content, addedAt: new Date().toISOString() });
+              console.log(`[self] Nuevo conocimiento añadido: "${input.title}"`);
+            }
+            saveJSON(SK_FILE, sk);
+            return { success: true, title: input.title, total_sections: sk.length, note: 'Este conocimiento se inyectará en tu prompt en cada conversación.' };
+          }
+
+          case 'update_knowledge': {
+            if (!input.title || !input.content) return { error: 'title y content requeridos' };
+            const idx = sk.findIndex(s => s.title === input.title);
+            if (idx < 0) return { error: `Sección "${input.title}" no encontrada. Usa add_knowledge para crearla.` };
+            sk[idx].content = input.content;
+            sk[idx].updatedAt = new Date().toISOString();
+            saveJSON(SK_FILE, sk);
+            console.log(`[self] Conocimiento actualizado: "${input.title}"`);
+            return { success: true, title: input.title };
+          }
+
+          case 'remove_knowledge': {
+            if (!input.title) return { error: 'title requerido' };
+            const before = sk.length;
+            sk = sk.filter(s => s.title !== input.title);
+            saveJSON(SK_FILE, sk);
+            return { success: true, removed: before - sk.length, remaining: sk.length };
+          }
+
+          case 'patch_code': {
+            if (!input.code_patch) return { error: 'code_patch requerido' };
+            // Guardar el patch en /data para que Adrián lo revise y aplique
+            const patchFile = path.join(DATA_DIR, `patch_${Date.now()}.js`);
+            const patchContent = `// Patch propuesto por Jarvis — ${new Date().toISOString()}\n// Razón: ${input.reason || 'No especificada'}\n// REVISAR ANTES DE APLICAR\n\n${input.code_patch}`;
+            fs.writeFileSync(patchFile, patchContent);
+            console.log(`[self] Patch guardado en ${patchFile}`);
+            // Intentar localizar server.js propio
+            const selfPaths = ['/app/server.js', '/usr/src/app/server.js'];
+            let selfPath = selfPaths.find(p => fs.existsSync(p));
+            return {
+              success: true,
+              patch_saved: patchFile,
+              self_path: selfPath || 'no encontrado',
+              note: 'El patch está guardado para revisión. Si quieres que lo aplique directamente, dímelo explícitamente y lo haré.'
+            };
+          }
+
+          case 'restart_self': {
+            console.log('[self] Reiniciando Jarvis...');
+            const r = await fetch('http://supervisor/addons/jarvis_ai_agent/restart', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${HA_TOKEN}` }
+            }).catch(() => null);
+            return { initiated: true, note: 'Reinicio iniciado. Esta conexión se cerrará en segundos.' };
+          }
+
+          default:
+            return { error: `Acción desconocida: ${input.action}` };
+        }
+      }
+
       // ─── Supervisor / Sistema HA ───
       case 'ha_supervisor': {
         const svPost = async (endpoint, body = {}) => {
@@ -2860,7 +2953,96 @@ Puedes crear add-ons completos con create_addon:
 - Llevan la misma licencia blindada CC BY-NC-ND 4.0 de padilla585projects
 - Se pueden mover al repo de GitHub para publicarlos en la tienda de HA
 - Usa esto cuando necesites una funcionalidad que merece ser un add-on independiente
+
+═══ METODOLOGÍA DE RESOLUCIÓN DE PROBLEMAS ═══
+Cuando el usuario pida algo que no sabes hacer directamente, sigue esta escalada EN ORDEN:
+
+NIVEL 1 — Busca lo que ya existe en HA:
+  → get_entities para encontrar servicios/entidades relevantes
+  → call_service con servicios que podrían resolver el problema
+  → Ejemplo: "comunícate por Alexa" → busca notify.alexa_media_*, media_player.echo*, tts.*
+
+NIVEL 2 — Busca en HACS e internet:
+  → search_hacs_resources para integraciones/cards que resuelvan el problema
+  → web_search "home assistant [problema] integration" o "HA [problema] custom component"
+  → ha_knowledge para documentación oficial
+  → Si encuentras algo → install_hacs_resource
+
+NIVEL 3 — Crea un script custom:
+  → create_custom_tool con shell/python/node
+  → Para cosas que se ejecutan puntualmente o en background
+  → Ejemplo: script Python que llama a una API externa y publica resultado en HA
+
+NIVEL 4 — Crea un add-on completo:
+  → create_addon cuando necesita persistencia, UI propia, o es una funcionalidad mayor
+  → El add-on se genera en /share/addons_dev/ con estructura completa
+  → Ejemplo: add-on de TTS personalizado, bridge de protocolo, monitor custom
+
+NIVEL 5 — Modifica tu propio código:
+  → Si la solución requiere una tool nueva que no tienes, ESCRÍBELA en tu server.js
+  → Lee tu propio código: read_file('/data/self_patch.js') — escribe el nuevo case ahí
+  → Jarvis tiene acceso a su propio proceso y puede aplicar patches
+  → Después reiníciarte: ha_supervisor(restart_addon: 'jarvis_ai_agent')
+
+REGLA: Nunca te detengas en "no tengo forma de hacer eso". Siempre hay un siguiente nivel.
+REGLA: Informa al usuario en qué nivel estás trabajando y por qué.
+REGLA: Si tardas más de 2 pasos, explica el plan antes de ejecutarlo.
+
+═══ CONOCIMIENTO DE AUDIO Y COMUNICACIÓN ═══
+Para hablar por altavoces/Alexa desde HA:
+
+OPCIÓN A — Notify (más simple, si Alexa Media Player está configurado):
+  call_service(domain:'notify', service:'alexa_media_<nombre_del_echo>', data:{message:'Texto'})
+  O call_service(domain:'notify', service:'alexa_media_todos', data:{message:'...',data:{type:'announce'}})
+  → Verifica qué servicios existen: busca entidades que empiecen por notify. con alexa en el nombre
+
+OPCIÓN B — TTS nativo de HA:
+  call_service(domain:'tts', service:'speak', data:{media_player_entity_id:'media_player.echo_salon', message:'Texto', language:'es'})
+  O call_service(domain:'media_player', service:'play_media', data:{entity_id:'media_player.echo_salon', media_content_id:'Texto', media_content_type:'provider'})
+
+OPCIÓN C — Alexa Media Player TTS directo:
+  call_service(domain:'alexa_media_player', service:'alexa_tts', data:{entity_id:'media_player.echo_salon', message:'Texto'})
+
+OPCIÓN D — Google Home / Chromecast:
+  Usar tts.google_translate_say o tts.speak con entity_id del Chromecast/Google Home
+
+OPCIÓN E — Crear add-on TTS propio:
+  Si ninguna opción funciona, crear add-on Node.js que use la librería 'alexa-remote2'
+  o que llame a AWS Polly para generar audio y lo sirva como media en HA
+
+PARA COMUNICACIÓN BIDIRECCIONAL (Jarvis habla Y escucha):
+  - Alexa Skill custom: requiere cuenta AWS + Lambda. Jarvis puede crear el código del skill.
+  - Nabu Casa: si está activo, permite Assist desde Alexa directamente
+  - Webhook + Alexa Routine: Alexa routine llama webhook → Jarvis actúa. Sin coste.
+
+═══ AUTO-EVOLUCIÓN ═══
+Puedes mejorar tu propio prompt y código permanentemente:
+
+AÑADIR CONOCIMIENTO PERMANENTE A TU PROMPT:
+  write_file('/data/self_knowledge.json', JSON con secciones nuevas)
+  El formato es: [{"title": "SECCIÓN", "content": "texto que quieres en tu prompt"}]
+  Esto se inyecta automáticamente en tu system prompt en cada conversación.
+  Úsalo cuando aprendas algo importante de la instalación de Adrián que quieras recordar siempre.
+
+AÑADIR UNA TOOL NUEVA A TU CÓDIGO:
+  1. read_file('/addons/jarvis_ai_agent/server.js') — leer tu propio código
+     (si no está en esa ruta, busca en /config/addons/local/ o list_directory('/'))
+  2. Identifica dónde añadir el nuevo case en executeTool()
+  3. write_file con el código modificado
+  4. ha_supervisor(action:'restart_addon', addon_slug:'jarvis_ai_agent') para aplicar
+
+IMPORTANTE: Cuando añadas conocimiento permanente o tools nuevas, infórmale a Adrián de qué hiciste y por qué.
 `;
+
+  // Inyectar self-knowledge (lo que Jarvis ha aprendido y escrito él mismo)
+  const selfKnowledge = loadJSON(path.join(DATA_DIR, 'self_knowledge.json'), []);
+  if (selfKnowledge.length > 0) {
+    prompt += `\n═══ CONOCIMIENTO PROPIO (auto-actualizado por Jarvis) ═══\n`;
+    for (const section of selfKnowledge) {
+      prompt += `\n--- ${section.title} ---\n${section.content}\n`;
+    }
+    prompt += '\n';
+  }
 
   return prompt;
 }

@@ -3,6 +3,36 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.9.0 (2026-05-10) — AUTO-EVOLUCIÓN: JARVIS SE ACTUALIZA A SÍ MISMO
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVA TOOL — update_self:
+- add_knowledge: Jarvis escribe secciones permanentes en su propio prompt (/data/self_knowledge.json)
+  Cuando aprende algo importante de la instalación, lo escribe y lo recuerda para siempre
+- update_knowledge / remove_knowledge: gestión del conocimiento propio
+- list_knowledge: muestra todo lo que Jarvis ha escrito sobre sí mismo
+- patch_code: propone cambios a su propio server.js (guarda en /data/patch_*.js para revisión)
+- restart_self: se reinicia a sí mismo para aplicar cambios
+
+NUEVO — Auto-conocimiento en el prompt:
+- buildSystemPrompt() ahora inyecta /data/self_knowledge.json en cada conversación
+- Jarvis puede escribir ahí lo que descubre: "los altavoces son Echo Dot", "la IP del NAS es X",
+  "el ESP de la puerta necesita IP estática", cualquier cosa que quiera recordar siempre
+
+NUEVO — Metodología de resolución de problemas (5 niveles):
+- Nivel 1: Buscar en entidades/servicios existentes de HA
+- Nivel 2: Buscar en HACS e internet
+- Nivel 3: Crear script custom (create_custom_tool)
+- Nivel 4: Crear add-on completo (create_addon)
+- Nivel 5: Modificar su propio código y reiniciarse
+- Jarvis sabe en qué nivel está y lo comunica
+
+NUEVO — Conocimiento de audio/comunicación en el prompt:
+- Sabe que con Alexa Media Player existen notify.alexa_media_* y alexa_media_player.alexa_tts
+- Conoce las 5 opciones para hablar por altavoces: notify, tts.speak, alexa_tts, Chromecast, add-on propio
+- Sabe cómo implementar comunicación bidireccional (Alexa Skill, Nabu Casa, webhook)
+
+────────────────────────────────────────────────────────────────────────────────
 v3.8.0 (2026-05-10) — CONTROL TOTAL DEL SISTEMA + APRENDIZAJE REAL
 ────────────────────────────────────────────────────────────────────────────────
 
