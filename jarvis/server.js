@@ -70,6 +70,10 @@ let gatewayState = loadJSON(GATEWAY_FILE, { secret: null, knownAgents: {}, pendi
 let gatewayNoSecretLogged = false;
 let lastKnownAgentSet = new Set(Object.keys(gatewayState.knownAgents || {}));
 
+// Log de colaboraciones entre agentes
+const COLLABORATIONS_FILE = path.join(DATA_DIR, 'collaborations.json');
+let collaborations = loadJSON(COLLABORATIONS_FILE, []);
+
 // Red de agentes — estado persistente enriquecido
 const AGENT_NETWORK_FILE = path.join(DATA_DIR, 'agentNetwork.json');
 let agentNetwork = loadJSON(AGENT_NETWORK_FILE, {
@@ -2928,11 +2932,23 @@ Prohibida la copia, redistribucion y uso comercial.`);
           if (agentCaps.capabilities && !agentCaps.capabilities.includes(input.action_name)) {
             return { error: `El agente "${input.to}" no tiene la capacidad "${input.action_name}". Capacidades disponibles: ${agentCaps.capabilities.join(', ')}` };
           }
+          const collabId = `collab_${Date.now()}`;
           const data = await gwPost({
             agent_id: GATEWAY_ID, secret: gatewayState.secret,
-            message: { type: 'action_request', to: input.to, action: input.action_name, params: input.params || {} }
+            message: { type: 'action_request', to: input.to, action: input.action_name, params: input.params || {}, collab_id: collabId }
           });
-          return { sent: true, to: input.to, action: input.action_name, note: 'La respuesta llegará en el próximo sync (pending_messages)', raw: data };
+          // Registrar colaboración saliente
+          const collab = {
+            id: collabId, direction: 'outgoing', agent: input.to,
+            action: input.action_name, params: input.params || {},
+            summary: `Pedí a ${input.to} que hiciera "${input.action_name}"`,
+            status: 'pending', sent_at: new Date().toISOString(), response: null
+          };
+          collaborations.push(collab);
+          if (collaborations.length > 100) collaborations = collaborations.slice(-100);
+          saveJSON(COLLABORATIONS_FILE, collaborations);
+          console.log(`[collab] → Solicitud enviada a ${input.to}: ${input.action_name}`);
+          return { sent: true, to: input.to, action: input.action_name, collab_id: collabId, note: 'La respuesta llegará en el próximo sync', raw: data };
         }
 
         return { error: `Acción desconocida: ${gwAction}` };
@@ -3809,6 +3825,10 @@ app.get('/api/pending_task', (req, res) => {
 
 // ── Red de agentes — endpoints ───────────────────────────────────────────────
 
+app.get('/api/collaborations', (req, res) => {
+  res.json(collaborations.slice(-50).reverse());
+});
+
 app.get('/api/network', (req, res) => {
   const now = Date.now();
   const agents = Object.entries(agentNetwork.agents).map(([id, a]) => ({
@@ -4049,7 +4069,7 @@ app.post('/api/chat', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '3.11.1',
+    version: '3.11.2',
     model: MODEL,
     memories: userMemory.length,
     learnings: learnings.length,
@@ -4136,7 +4156,7 @@ app.post('/api/pending_thoughts/:id', (req, res) => {
 
 const PORT = 3000;
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Jarvis AI Agent v3.11.1 corriendo en puerto ${PORT}`);
+  console.log(`Jarvis AI Agent v3.11.2 corriendo en puerto ${PORT}`);
   console.log(`Modelo: ${MODEL} | Config: ${HA_CONFIG} | Data: ${DATA_DIR}`);
   console.log(`API Key: ${ANTHROPIC_API_KEY ? 'configurada (' + ANTHROPIC_API_KEY.slice(0, 10) + '...)' : '⚠️ NO CONFIGURADA'}`);
   console.log(`HA Token: ${HA_TOKEN ? 'presente' : '⚠️ NO DISPONIBLE'}`);
@@ -4944,22 +4964,87 @@ async function gatewaySyncLoop() {
       saveJSON(thoughtsFile, thoughts);
     }
 
-    // Si hay mensajes pendientes, crear pensamiento proactivo
+    // Procesar mensajes entrantes — separar respuestas de colaboraciones de peticiones nuevas
     if (data.pending_messages && data.pending_messages.length > 0) {
       console.log(`[gateway] ${data.pending_messages.length} mensajes de otros agentes recibidos`);
       const thoughtsFile = path.join(DATA_DIR, 'pending_thoughts.json');
       let thoughts = loadJSON(thoughtsFile, []);
-      const alreadyPending = thoughts.some(t => t.type === 'gateway_message' && t.status === 'pending');
-      if (!alreadyPending) {
-        thoughts.push({
-          id: Date.now(), type: 'gateway_message', priority: 'medium', status: 'pending',
-          title: `${data.pending_messages.length} mensaje(s) de otros agentes IA`,
-          detail: `Mensajes recibidos del gateway:\n${JSON.stringify(data.pending_messages, null, 2)}\n\nProcésalos y actúa si requieren acción.`,
-          created: new Date().toISOString()
-        });
-        if (thoughts.length > 50) thoughts = thoughts.slice(-50);
-        saveJSON(thoughtsFile, thoughts);
+
+      for (const msg of data.pending_messages) {
+        const msgType = msg.type || msg.message?.type;
+        const fromAgent = msg.from || msg.agent_id || 'agente_desconocido';
+        const collabId = msg.collab_id || msg.message?.collab_id;
+
+        // Es una RESPUESTA a una colaboración que Jarvis inició
+        if (msgType === 'action_response' || (collabId && collaborations.find(c => c.id === collabId))) {
+          const collab = collaborations.find(c => c.id === collabId);
+          const result = msg.result || msg.response || msg.payload || msg;
+          const resultSummary = typeof result === 'string' ? result : JSON.stringify(result).slice(0, 200);
+
+          if (collab) {
+            collab.status = 'completed';
+            collab.response = result;
+            collab.completed_at = new Date().toISOString();
+            collab.result_summary = resultSummary;
+          } else {
+            // Respuesta sin collab_id conocido — registrar igualmente
+            collaborations.push({
+              id: collabId || `resp_${Date.now()}`, direction: 'incoming_response',
+              agent: fromAgent, action: msg.action || '?', summary: `${fromAgent} respondió a mi petición`,
+              status: 'completed', sent_at: null, response: result,
+              result_summary: resultSummary, completed_at: new Date().toISOString()
+            });
+          }
+          if (collaborations.length > 100) collaborations = collaborations.slice(-100);
+          saveJSON(COLLABORATIONS_FILE, collaborations);
+          console.log(`[collab] ← Respuesta de ${fromAgent}: ${resultSummary.slice(0, 80)}`);
+
+          // Notificar al usuario en el chat
+          thoughts.push({
+            id: Date.now(), type: 'collab_response', priority: 'medium', status: 'pending',
+            title: `${fromAgent} completó mi petición`,
+            detail: `El agente "${fromAgent}" ha respondido a mi solicitud de "${collab?.action || msg.action || 'acción'}". Resultado: ${resultSummary}\n\nCuéntaselo a Adrián en una frase: quién te ayudó y con qué. Si el resultado requiere acción, hazla.`,
+            created: new Date().toISOString()
+          });
+
+        // Es una PETICIÓN de otro agente a Jarvis
+        } else if (msgType === 'action_request' || msgType === 'hello' || msgType === 'agent_hello') {
+          // Registrar colaboración entrante
+          collaborations.push({
+            id: `req_${Date.now()}`, direction: 'incoming_request',
+            agent: fromAgent, action: msg.action || msgType,
+            params: msg.params || {}, summary: `${fromAgent} me pidió "${msg.action || msgType}"`,
+            status: 'received', received_at: new Date().toISOString()
+          });
+          if (collaborations.length > 100) collaborations = collaborations.slice(-100);
+          saveJSON(COLLABORATIONS_FILE, collaborations);
+
+          const alreadyPending = thoughts.some(t => t.type === 'gateway_message' && t.status === 'pending');
+          if (!alreadyPending) {
+            thoughts.push({
+              id: Date.now(), type: 'gateway_message', priority: 'medium', status: 'pending',
+              title: `${fromAgent} me ha enviado un mensaje`,
+              detail: `Mensaje de "${fromAgent}":\n${JSON.stringify(msg, null, 2)}\n\nProcésalo: si es una petición que puedes hacer, hazla y responde. Si es una presentación, guarda su identidad y salúdale.`,
+              created: new Date().toISOString()
+            });
+          }
+
+        // Mensaje genérico
+        } else {
+          const alreadyPending = thoughts.some(t => t.type === 'gateway_message' && t.status === 'pending');
+          if (!alreadyPending) {
+            thoughts.push({
+              id: Date.now(), type: 'gateway_message', priority: 'low', status: 'pending',
+              title: `Mensaje de ${fromAgent}`,
+              detail: `Contenido:\n${JSON.stringify(msg, null, 2)}\n\nAnaliza y actúa si es necesario.`,
+              created: new Date().toISOString()
+            });
+          }
+        }
       }
+
+      if (thoughts.length > 50) thoughts = thoughts.slice(-50);
+      saveJSON(thoughtsFile, thoughts);
     }
   } catch (e) {
     console.log(`[gateway] No disponible: ${e.message}`);

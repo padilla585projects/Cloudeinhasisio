@@ -3,6 +3,29 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.11.2 (2026-05-10) — LOG DE COLABORACIONES ENTRE AGENTES
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — collaborations.json: trazabilidad completa de favores entre agentes
+  - Salientes (→): cuando Jarvis pide ayuda a otro agente
+  - Entrantes (←): cuando otro agente pide ayuda a Jarvis
+  - Respuestas: cuando llega el resultado de una petición anterior
+  - Estado: pending / completed / received
+  - Últimas 100 colaboraciones en /data/collaborations.json
+
+NUEVO — Notificación automática en el chat:
+  - Cuando un agente responde a una petición de Jarvis, te lo cuenta solo
+  - "X me ha ayudado con Y: resultado..." sin que tengas que preguntar
+  - Si el resultado requiere acción, Jarvis la ejecuta y lo informa
+
+NUEVO — Panel "Colaboraciones" en 🌐 Red:
+  - Historial visible: quién, en qué dirección, qué acción, qué resultado, cuándo
+  - Código de color: azul=saliente, morado=entrante
+  - Estado en tiempo real (pending/completed)
+
+NUEVO — GET /api/collaborations: endpoint para consultar el historial
+
+────────────────────────────────────────────────────────────────────────────────
 v3.11.1 (2026-05-10) — VOZ: STT + TTS + ALTAVOCES DEL HOGAR
 ────────────────────────────────────────────────────────────────────────────────
 

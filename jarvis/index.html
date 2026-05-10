@@ -1066,12 +1066,25 @@
         html += `<div style="color:var(--text2);font-size:12px;text-align:center;padding:16px 0;">Sin agentes en la red todavía.<br><span style="font-size:11px;color:var(--text3);">El sync automático ocurre cada 60s.</span></div>`;
       }
 
-      // Últimas interacciones
-      if (data.interactions?.length > 0) {
-        html += `<div style="font-size:11px;color:var(--text2);font-family:'DM Mono',monospace;margin-bottom:2px;">ÚLTIMAS INTERACCIONES</div>`;
-        for (const i of data.interactions.slice(-3).reverse()) {
-          html += `<div style="background:var(--bg3);border-radius:8px;padding:8px;font-size:11px;color:var(--text2);">
-            <span style="color:var(--accent)">${i.agent_id}</span> · ${i.summary?.slice(0,80)}
+      // Colaboraciones recientes
+      let collabs = [];
+      try { const cr = await fetch('api/collaborations'); collabs = await cr.json(); } catch(e) {}
+      if (collabs.length > 0) {
+        html += `<div style="font-size:11px;color:var(--text2);font-family:'DM Mono',monospace;margin-bottom:2px;">COLABORACIONES</div>`;
+        for (const c of collabs.slice(0, 8)) {
+          const dirIcon = c.direction === 'outgoing' ? '→' : '←';
+          const dirColor = c.direction === 'outgoing' ? 'var(--accent)' : 'var(--accent2)';
+          const statusColor = c.status === 'completed' ? 'var(--success)' : c.status === 'pending' ? 'var(--text2)' : 'var(--text3)';
+          const time = c.sent_at || c.received_at || c.completed_at;
+          const timeStr = time ? new Date(time).toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'}) : '';
+          html += `<div style="background:var(--bg3);border-radius:8px;padding:8px;border-left:2px solid ${dirColor};">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+              <span style="font-size:11px;color:${dirColor};">${dirIcon} <strong>${c.agent}</strong></span>
+              <span style="font-size:10px;color:var(--text3);">${timeStr}</span>
+            </div>
+            <div style="font-size:11px;color:var(--text);margin-bottom:2px;">${c.action || '?'}</div>
+            ${c.result_summary ? `<div style="font-size:10px;color:var(--text2);">${c.result_summary.slice(0,100)}</div>` : ''}
+            <div style="font-size:10px;color:${statusColor};margin-top:2px;">${c.status}</div>
           </div>`;
         }
       }
