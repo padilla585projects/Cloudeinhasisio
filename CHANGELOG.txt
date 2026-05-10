@@ -3,6 +3,28 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.13.4 (2026-05-10) — REWRITE RED DE AGENTES + PERMISOS
+────────────────────────────────────────────────────────────────────────────────
+
+FIX — Lógica de red de agentes completamente auditada y reescrita:
+  - gatewayQuickCheck ya NO hace ACK de mensajes que no procesa (action_response,
+    action_request, hello, agent_hello). Antes los ACKeaba y syncLoop nunca los veía.
+  - gatewaySyncLoop ahora usa processedMsgIds para deduplicación — si quick-check
+    ya procesó un mensaje, syncLoop lo salta.
+  - Eliminado manejo duplicado de agent_message en syncLoop — quick-check los
+    procesa con processAgentMessage (respuesta autónoma + Telegram + SSE push).
+  - Eliminado ACK manual al remitente en syncLoop (enviaba un mensaje redundante
+    "Mensaje recibido" que duplicaba la respuesta autónoma de quick-check).
+  - Eliminadas comprobaciones alreadyPending que suprimían thoughts legítimos.
+
+NUEVO — Sistema de permisos reforzado:
+  - Jarvis es admin de la red. Ningún agente puede auto-asignarse permisos admin.
+  - set_permission valida permisos válidos (read/write/execute/admin).
+  - processAgentMessage ahora informa a Jarvis de los permisos del agente remitente.
+  - Jarvis rechaza órdenes de código/deploy de otros agentes (es autónomo).
+  - Numa restringido a permisos 'read' por defecto al unirse.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.12.4 (2026-05-10) — TTS NATURAL CON OPENAI (VOZ NOVA)
 ────────────────────────────────────────────────────────────────────────────────
 
