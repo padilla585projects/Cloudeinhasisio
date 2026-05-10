@@ -923,8 +923,8 @@ const tools = [
       properties: {
         action: {
           type: 'string',
-          enum: ['register', 'sync', 'send', 'read_messages', 'list_agents', 'network_status', 'approve_join', 'reject_join', 'pending_joins', 'set_permission', 'broadcast', 'learn_from_interaction'],
-          description: 'register: registrarse en la red | sync: sincronizar y leer mensajes | send: enviar acción a un agente | read_messages: leer mensajes pendientes | list_agents: agentes conocidos | network_status: estado completo de la red (online/offline/permisos) | approve_join: aprobar solicitud de un agente nuevo | reject_join: rechazar solicitud | pending_joins: ver solicitudes pendientes | set_permission: dar/quitar permisos a un agente | broadcast: mensaje a todos | learn_from_interaction: guardar aprendizaje de una interacción'
+          enum: ['register', 'sync', 'send', 'read_messages', 'list_agents', 'network_status', 'approve_join', 'reject_join', 'pending_joins', 'set_permission', 'broadcast', 'learn_from_interaction', 'set_admin', 'update_agent', 'update_rules', 'status_report', 'send_message'],
+          description: 'register: registrarse en la red | sync: sincronizar y leer mensajes | send: enviar acción a un agente | read_messages: leer mensajes pendientes | list_agents: agentes conocidos | network_status: estado completo de la red (online/offline/permisos) | approve_join: aprobar solicitud de un agente nuevo | reject_join: rechazar solicitud | pending_joins: ver solicitudes pendientes | set_permission: dar/quitar permisos a un agente | broadcast: mensaje a todos | learn_from_interaction: guardar aprendizaje de una interacción | set_admin: dar/quitar admin a un agente (solo admin) | update_agent: modificar datos de un agente (nombre, capabilities, approved) | update_rules: actualizar las reglas de la red | status_report: informe completo del estado del gateway en Firestore | send_message: enviar mensaje directo de texto a un agente específico'
         },
         to: { type: 'string', description: 'agent_id del agente destino' },
         action_name: { type: 'string', description: 'Nombre de la acción a solicitar al agente destino' },
@@ -933,7 +933,11 @@ const tools = [
         request_id: { type: 'string', description: 'ID de la solicitud de join (para approve_join/reject_join)' },
         permission: { type: 'string', enum: ['read', 'write', 'admin', 'blocked'], description: 'Nivel de permiso para set_permission' },
         learning: { type: 'object', description: 'Aprendizaje a guardar (agent_id, what_learned, quality: good/bad)' },
-        message: { type: 'string', description: 'Mensaje para broadcast' }
+        message: { type: 'string', description: 'Mensaje para broadcast o send_message' },
+        enable: { type: 'boolean', description: 'Para set_admin: true=dar admin, false=quitar admin' },
+        text: { type: 'string', description: 'Texto del mensaje directo (para send_message)' },
+        updates: { type: 'object', description: 'Campos a actualizar para update_agent (name, capabilities, approved, etc.)' },
+        rules: { type: 'object', description: 'Nuevas reglas de la red para update_rules' }
       },
       required: ['action']
     }
@@ -2858,11 +2862,7 @@ Prohibida la copia, redistribucion y uso comercial.`);
           saveJSON(AGENT_NETWORK_FILE, agentNetwork);
           if (!gatewayState.secret) return { error: 'Sin secret — no puedo enviar la aprobación al gateway' };
           try {
-            await fetch(GATEWAY_URL, {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ agent_id: GATEWAY_ID, secret: gatewayState.secret, message: 'approve_join', request_id: input.request_id }),
-              timeout: 10000
-            });
+            await gwPost({ agent_id: GATEWAY_ID, secret: gatewayState.secret, message: { type: 'admin_action', action: 'approve_join', request_id: input.request_id } });
           } catch(e) { console.log('[gateway] Error enviando aprobación:', e.message); }
           console.log(`[gateway] ✓ Agente ${jr.agent_id} aprobado en la red`);
           return { approved: true, agent_id: jr.agent_id, permissions: 'read' };
@@ -2950,6 +2950,59 @@ Prohibida la copia, redistribucion y uso comercial.`);
           saveJSON(COLLABORATIONS_FILE, collaborations);
           console.log(`[collab] → Solicitud enviada a ${input.to}: ${input.action_name}`);
           return { sent: true, to: input.to, action: input.action_name, collab_id: collabId, note: 'La respuesta llegará en el próximo sync', raw: data };
+        }
+
+        // ── Acciones admin ──────────────────────────────────────────────────
+        if (gwAction === 'set_admin') {
+          if (!input.to) return { error: 'to (agent_id) es requerido' };
+          const data = await gwPost({
+            agent_id: GATEWAY_ID, secret: gatewayState.secret,
+            message: { type: 'admin_action', action: 'set_admin', target: input.to, enable: input.enable !== false }
+          });
+          const isAdmin = input.enable !== false;
+          console.log(`[gateway] ${isAdmin ? '★' : '○'} ${input.to} ${isAdmin ? 'ahora es admin' : 'ya no es admin'}`);
+          return { ok: true, agent_id: input.to, is_admin: isAdmin, raw: data };
+        }
+
+        if (gwAction === 'update_agent') {
+          if (!input.to) return { error: 'to (agent_id) es requerido' };
+          if (!input.updates) return { error: 'updates es requerido (objeto con campos a modificar)' };
+          const data = await gwPost({
+            agent_id: GATEWAY_ID, secret: gatewayState.secret,
+            message: { type: 'admin_action', action: 'update_agent', target: input.to, updates: input.updates }
+          });
+          console.log(`[gateway] Agente ${input.to} actualizado:`, input.updates);
+          return { ok: true, agent_id: input.to, updated: input.updates, raw: data };
+        }
+
+        if (gwAction === 'update_rules') {
+          if (!input.rules) return { error: 'rules es requerido (objeto con las nuevas reglas)' };
+          const data = await gwPost({
+            agent_id: GATEWAY_ID, secret: gatewayState.secret,
+            message: { type: 'admin_action', action: 'update_rules', rules: input.rules }
+          });
+          console.log('[gateway] Reglas de red actualizadas');
+          return { ok: true, rules: input.rules, raw: data };
+        }
+
+        if (gwAction === 'status_report') {
+          const data = await gwPost({
+            agent_id: GATEWAY_ID, secret: gatewayState.secret,
+            message: { type: 'admin_action', action: 'status_report' }
+          });
+          return { ok: true, report: data };
+        }
+
+        if (gwAction === 'send_message') {
+          if (!input.to) return { error: 'to (agent_id) es requerido' };
+          const msgText = input.text || input.message || '';
+          if (!msgText) return { error: 'text o message son requeridos para send_message' };
+          const data = await gwPost({
+            agent_id: GATEWAY_ID, secret: gatewayState.secret,
+            message: { type: 'agent_message', to: input.to, text: msgText }
+          });
+          console.log(`[gateway] 💬 Mensaje directo enviado a ${input.to}: "${msgText.slice(0, 60)}"`);
+          return { sent: true, to: input.to, text: msgText, raw: data };
         }
 
         return { error: `Acción desconocida: ${gwAction}` };
