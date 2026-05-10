@@ -89,7 +89,7 @@ function findAgentByKey(apiKey) {
   return null;
 }
 
-const JARVIS_VERSION = '3.14.4';
+const JARVIS_VERSION = '3.14.5';
 
 const NETWORK_NORMS = {
   version: '2.0',
@@ -1867,35 +1867,85 @@ async function executeTool(name, input) {
 
       case 'get_repairs': {
         try {
-          // API del Supervisor: /resolution/info
-          const resolution = await supervisorGet('/resolution/info');
-          const data = resolution.data || resolution;
+          const result = { issues: [], unhealthy: [], unsupported: [], sources: [] };
 
-          const issues = (data.issues || []).map(issue => ({
-            uuid: issue.uuid,
-            type: issue.type,
-            context: issue.context,
-            reference: issue.reference,
-            severity: issue.severity || 'warning',
-            suggestions: (issue.suggestions || []).map(s => ({
-              uuid: s.uuid,
-              type: s.type,
-              context: s.context,
-              reference: s.reference
-            }))
-          }));
+          // 1. Intentar API del Supervisor: /resolution/info
+          try {
+            const resolution = await supervisorGet('/resolution/info');
+            const data = resolution.data || resolution;
+            result.sources.push('supervisor');
+            result.unhealthy = data.unhealthy || [];
+            result.unsupported = data.unsupported || [];
+            if (data.issues) {
+              result.issues.push(...data.issues.map(issue => ({
+                uuid: issue.uuid,
+                type: issue.type,
+                context: issue.context,
+                reference: issue.reference,
+                severity: issue.severity || 'warning',
+                source: 'supervisor',
+                suggestions: (issue.suggestions || []).map(s => ({
+                  uuid: s.uuid, type: s.type, context: s.context, reference: s.reference
+                }))
+              })));
+            }
+          } catch (e1) {
+            // Supervisor no disponible, probar alternativas
+            result.sources.push('supervisor:error(' + e1.message + ')');
+          }
 
-          const unhealthy = data.unhealthy || [];
-          const unsupported = data.unsupported || [];
+          // 2. Intentar API de HA Core: /api/repairs/issues
+          try {
+            const repairs = await haGet('/repairs/issues');
+            const repairIssues = repairs.issues || repairs.data?.issues || (Array.isArray(repairs) ? repairs : []);
+            result.sources.push('core_repairs');
+            for (const r of repairIssues) {
+              result.issues.push({
+                type: r.domain || r.type || 'unknown',
+                context: r.issue_id || r.context,
+                reference: r.translation_key || r.reference,
+                severity: r.severity || r.is_fixable ? 'fixable' : 'warning',
+                source: 'core',
+                learn_more: r.learn_more_url || null,
+                is_fixable: r.is_fixable || false,
+                dismissed: r.dismissed_version ? true : false,
+                created: r.created || null
+              });
+            }
+          } catch (e2) {
+            result.sources.push('core_repairs:error(' + e2.message + ')');
+          }
+
+          // 3. Buscar entidades de tipo "issue_registry" o "repairs" como fallback
+          try {
+            const states = await haGet('/states');
+            const repairEntities = states.filter(s =>
+              s.entity_id.startsWith('repair.') ||
+              (s.attributes && s.attributes.device_class === 'problem')
+            );
+            if (repairEntities.length > 0) {
+              result.sources.push('entities');
+              for (const e of repairEntities.slice(0, 20)) {
+                result.issues.push({
+                  type: 'entity_problem',
+                  context: e.entity_id,
+                  reference: e.attributes.friendly_name || e.entity_id,
+                  severity: e.state === 'on' ? 'active' : 'resolved',
+                  source: 'entity'
+                });
+              }
+            }
+          } catch {}
 
           return {
-            issues_count: issues.length,
-            issues,
-            unhealthy_reasons: unhealthy,
-            unsupported_reasons: unsupported,
-            system_healthy: unhealthy.length === 0,
-            system_supported: unsupported.length === 0,
-            tip: issues.length > 0
+            issues_count: result.issues.length,
+            issues: result.issues,
+            unhealthy_reasons: result.unhealthy,
+            unsupported_reasons: result.unsupported,
+            system_healthy: result.unhealthy.length === 0,
+            system_supported: result.unsupported.length === 0,
+            sources_checked: result.sources,
+            tip: result.issues.length > 0
               ? 'Revisa cada issue y sugiere al usuario cómo resolver. Algunos se arreglan con call_service o reload_config.'
               : 'No hay reparaciones pendientes — el sistema está limpio ✓'
           };

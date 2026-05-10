@@ -3,6 +3,17 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.14.5 (2026-05-11) — Fix get_repairs: fallback multi-endpoint
+────────────────────────────────────────────────────────────────────────────────
+
+get_repairs ahora prueba 3 fuentes de datos en cascada:
+  1. Supervisor API (/resolution/info) — issues del supervisor
+  2. HA Core API (/api/repairs/issues) — reparaciones del panel
+  3. Entidades con device_class "problem" — como fallback
+Si una fuente falla, continúa con la siguiente. Ya no devuelve
+"sin acceso" cuando un endpoint no está disponible.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.14.4 (2026-05-11) — Notificaciones y Reparaciones de HA
 ────────────────────────────────────────────────────────────────────────────────
 
