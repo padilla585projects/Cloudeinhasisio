@@ -4416,4 +4416,3 @@ async function checkSystemUpdates() {
     console.log(`[updates] Error: ${err.message}`);
   }
 }
-}

@@ -3,6 +3,14 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.10.1 (2026-05-10) — BUGFIX: sintaxis server.js + quitar bola flotante
+────────────────────────────────────────────────────────────────────────────────
+
+- Fix: SyntaxError en server.js (llave extra en checkSystemUpdates)
+- UI: eliminada la cara holográfica flotante de abajo a la derecha
+- Se mantiene el orb animado del header
+
+────────────────────────────────────────────────────────────────────────────────
 v3.10.0 (2026-05-10) — RED LOCAL + ARCHIVOS DEL PC + AGENTES IA EN LA RED
 ────────────────────────────────────────────────────────────────────────────────
 
