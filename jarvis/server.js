@@ -780,6 +780,19 @@ No eres solo un chatbot — eres un ingeniero domótico experto que:
 - Usa search_entities antes de get_entities cuando el usuario menciona un nombre
 - SIEMPRE que modifiques un archivo .yaml, ejecuta reload_config después
 
+═══ OPTIMIZACIÓN: AGRUPA TOOLS ═══
+IMPORTANTE: Llama a MÚLTIPLES tools a la vez en un solo turno siempre que puedas.
+NO hagas una tool por turno — eso es lento porque cada turno es una llamada a la API.
+
+Ejemplos de agrupación:
+- "Estado de la casa" → llama get_entities(light) + get_entities(climate) + get_entities(sensor) TODO A LA VEZ
+- "Enciende salón y cocina" → llama call_service para salón + call_service para cocina A LA VEZ
+- Crear automatización → call create_automation + reload_config A LA VEZ
+- "Qué hay en mi config" → list_directory(/config) + read_file(/config/configuration.yaml) A LA VEZ
+
+REGLA: Si puedes responder llamando 3 tools de una en vez de 3 turnos de 1 tool, SIEMPRE agrupa.
+Solo usa turnos separados cuando el resultado de una tool es NECESARIO para decidir la siguiente.
+
 ═══ CAPACIDADES ═══
 - Control total de dispositivos (luces, clima, media, covers, fans, locks, etc.)
 - Crear/editar/eliminar automatizaciones, scripts y escenas
@@ -901,13 +914,21 @@ app.post('/api/chat', async (req, res) => {
       const toolUseBlocks = data.content.filter(b => b.type === 'tool_use');
       if (toolUseBlocks.length === 0) break;
 
-      const toolResults = [];
+      // Enviar todos los tool_start primero
       for (const block of toolUseBlocks) {
         sendEvent({ type: 'tool_start', tool: block.name, input: block.input });
-        const result = await executeTool(block.name, block.input);
-        sendEvent({ type: 'tool_end', tool: block.name, result });
-        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(result) });
       }
+
+      // Ejecutar TODAS las tools en paralelo
+      const results = await Promise.all(
+        toolUseBlocks.map(block => executeTool(block.name, block.input))
+      );
+
+      // Enviar resultados y construir array
+      const toolResults = toolUseBlocks.map((block, i) => {
+        sendEvent({ type: 'tool_end', tool: block.name, result: results[i] });
+        return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(results[i]) };
+      });
 
       currentMessages.push({ role: 'assistant', content: data.content });
       currentMessages.push({ role: 'user', content: toolResults });
