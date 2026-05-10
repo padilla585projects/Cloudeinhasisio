@@ -2854,6 +2854,14 @@ app.listen(PORT, '0.0.0.0', () => {
   // Timers — todos empiezan después de dar tiempo al sistema
   setInterval(updateLiveContext, 60_000);
 
+  // Observador de patrones — cada 10min captura snapshot del estado
+  setInterval(captureStateSnapshot, 10 * 60_000);
+  setTimeout(captureStateSnapshot, 60_000);
+
+  // Análisis de patrones — cada 6h analiza los snapshots y detecta rutinas
+  setInterval(analyzePatterns, 6 * 3600_000);
+  setTimeout(analyzePatterns, 30 * 60_000);
+
   // Bucle proactivo — cada 15min (ahorra tokens)
   setInterval(proactiveThinkingLoop, 15 * 60_000);
   setTimeout(proactiveThinkingLoop, 5 * 60_000);
@@ -2990,6 +2998,154 @@ Prioridad: cosas accionables > observaciones genéricas.`;
     console.log(`[proactive] Pensamiento completo. ${toolCalls.length} acciones tomadas.`);
   } catch (err) {
     console.log(`[proactive] Error: ${err.message}`);
+  }
+}
+
+// ── Observador de patrones — aprende de los habitantes ──────────────────────
+
+const PATTERNS_FILE = path.join(DATA_DIR, 'state_snapshots.json');
+const ROUTINES_FILE = path.join(DATA_DIR, 'detected_routines.json');
+
+async function captureStateSnapshot() {
+  try {
+    const states = await haGet('/states');
+    const now = new Date();
+
+    // Capturar solo lo relevante para detectar rutinas
+    const snapshot = {
+      ts: now.toISOString(),
+      hour: now.getHours(),
+      minute: now.getMinutes(),
+      dayOfWeek: now.getDay(), // 0=domingo
+      lights: states.filter(e => e.entity_id.startsWith('light.') && e.state === 'on')
+        .map(e => e.entity_id),
+      switches: states.filter(e => e.entity_id.startsWith('switch.') && e.state === 'on')
+        .map(e => e.entity_id),
+      climate: states.filter(e => e.entity_id.startsWith('climate.'))
+        .map(e => ({ id: e.entity_id, state: e.state, temp: e.attributes?.current_temperature })),
+      media: states.filter(e => e.entity_id.startsWith('media_player.') && e.state === 'playing')
+        .map(e => ({ id: e.entity_id, source: e.attributes?.media_title || e.attributes?.source })),
+      presence: states.filter(e => e.entity_id.startsWith('person.'))
+        .map(e => ({ id: e.entity_id, state: e.state })),
+      covers: states.filter(e => e.entity_id.startsWith('cover.'))
+        .map(e => ({ id: e.entity_id, state: e.state }))
+    };
+
+    // Guardar en array (máx 1000 snapshots = ~7 días a 10min)
+    let snapshots = loadJSON(PATTERNS_FILE, []);
+    snapshots.push(snapshot);
+    if (snapshots.length > 1000) snapshots = snapshots.slice(-1000);
+    saveJSON(PATTERNS_FILE, snapshots);
+
+  } catch (err) {
+    console.log(`[patterns] Error capturando snapshot: ${err.message}`);
+  }
+}
+
+async function analyzePatterns() {
+  try {
+    if (!ANTHROPIC_API_KEY) return;
+
+    const snapshots = loadJSON(PATTERNS_FILE, []);
+    if (snapshots.length < 50) {
+      console.log(`[patterns] Solo ${snapshots.length} snapshots, necesito al menos 50 para analizar.`);
+      return;
+    }
+
+    console.log(`[patterns] Analizando ${snapshots.length} snapshots para detectar rutinas...`);
+
+    // Agrupar por hora del día para detectar patrones
+    const byHour = {};
+    for (const snap of snapshots) {
+      const h = snap.hour;
+      if (!byHour[h]) byHour[h] = [];
+      byHour[h].push(snap);
+    }
+
+    // Generar resumen estadístico (no enviar todos los snapshots a Claude)
+    let summary = 'ANÁLISIS DE ACTIVIDAD DEL HOGAR (snapshots cada 10min):\n\n';
+
+    for (let h = 0; h < 24; h++) {
+      const hourSnaps = byHour[h] || [];
+      if (hourSnaps.length === 0) continue;
+
+      // Entidades más frecuentes encendidas a esa hora
+      const lightFreq = {};
+      const switchFreq = {};
+      let presenceHome = 0;
+      let mediaPlaying = 0;
+
+      for (const snap of hourSnaps) {
+        for (const l of snap.lights) { lightFreq[l] = (lightFreq[l] || 0) + 1; }
+        for (const s of snap.switches) { switchFreq[s] = (switchFreq[s] || 0) + 1; }
+        if (snap.presence.some(p => p.state === 'home')) presenceHome++;
+        if (snap.media.length > 0) mediaPlaying++;
+      }
+
+      const total = hourSnaps.length;
+      const topLights = Object.entries(lightFreq).filter(([,c]) => c > total * 0.5).map(([id, c]) => `${id}(${Math.round(c/total*100)}%)`);
+      const topSwitches = Object.entries(switchFreq).filter(([,c]) => c > total * 0.5).map(([id, c]) => `${id}(${Math.round(c/total*100)}%)`);
+
+      if (topLights.length > 0 || topSwitches.length > 0 || presenceHome > total * 0.3) {
+        summary += `${String(h).padStart(2,'0')}:00 — `;
+        if (presenceHome > 0) summary += `casa:${Math.round(presenceHome/total*100)}% `;
+        if (topLights.length > 0) summary += `luces:[${topLights.slice(0, 3).join(', ')}] `;
+        if (topSwitches.length > 0) summary += `switches:[${topSwitches.slice(0, 3).join(', ')}] `;
+        if (mediaPlaying > total * 0.3) summary += `media:${Math.round(mediaPlaying/total*100)}% `;
+        summary += '\n';
+      }
+    }
+
+    // Rutinas ya detectadas (para no repetir)
+    const existingRoutines = loadJSON(ROUTINES_FILE, []);
+    const existingTitles = existingRoutines.map(r => r.title).join(', ');
+
+    summary += `\nRUTINAS YA DETECTADAS: ${existingTitles || '(ninguna todavía)'}\n`;
+    summary += `\nDatos: ${snapshots.length} snapshots en ${Math.round((Date.now() - new Date(snapshots[0].ts).getTime()) / 3600_000)}h\n`;
+
+    // Pedir a Claude que detecte patrones
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 600,
+        system: 'Eres Jarvis analizando patrones de vida del hogar. Detecta rutinas de los habitantes. Si encuentras un patrón claro y accionable (se podría automatizar), usa proactive_thought para sugerir la automatización. Si detectas algo que memorizar, usa save_memory. Solo patrones CLAROS con >60% de consistencia. Español. Breve.',
+        tools: [tools.find(t => t.name === 'proactive_thought'), tools.find(t => t.name === 'save_memory'), tools.find(t => t.name === 'learn')],
+        messages: [{ role: 'user', content: summary }]
+      })
+    });
+
+    if (!response.ok) {
+      console.log(`[patterns] Error API: ${response.status}`);
+      return;
+    }
+
+    const data = await response.json();
+    const toolCalls = data.content.filter(b => b.type === 'tool_use');
+
+    for (const tc of toolCalls) {
+      const result = await executeTool(tc.name, tc.input);
+      // Guardar rutinas detectadas
+      if (tc.name === 'proactive_thought') {
+        existingRoutines.push({ title: tc.input.title, detectedAt: new Date().toISOString(), detail: tc.input.detail });
+        saveJSON(ROUTINES_FILE, existingRoutines.slice(-50));
+      }
+    }
+
+    if (data.usage) {
+      apiUsage.calls++;
+      apiUsage.inputTokens += data.usage.input_tokens || 0;
+      apiUsage.outputTokens += data.usage.output_tokens || 0;
+    }
+
+    console.log(`[patterns] Análisis completo. ${toolCalls.length} patrones/acciones detectados.`);
+  } catch (err) {
+    console.log(`[patterns] Error: ${err.message}`);
   }
 }
 
