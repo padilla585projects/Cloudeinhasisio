@@ -2862,13 +2862,13 @@ app.listen(PORT, '0.0.0.0', () => {
   setInterval(analyzePatterns, 6 * 3600_000);
   setTimeout(analyzePatterns, 30 * 60_000);
 
-  // Bucle proactivo — cada 15min (ahorra tokens)
-  setInterval(proactiveThinkingLoop, 15 * 60_000);
-  setTimeout(proactiveThinkingLoop, 5 * 60_000);
+  // Bucle proactivo — cada 30min
+  setInterval(proactiveThinkingLoop, 30 * 60_000);
+  setTimeout(proactiveThinkingLoop, 10 * 60_000);
 
-  // Bucle de aprendizaje — cada 2h investiga y almacena conocimiento
-  setInterval(knowledgeExpansionLoop, 2 * 3600_000);
-  setTimeout(knowledgeExpansionLoop, 10 * 60_000);
+  // Bucle de aprendizaje — cada 4h investiga y almacena conocimiento
+  setInterval(knowledgeExpansionLoop, 4 * 3600_000);
+  setTimeout(knowledgeExpansionLoop, 20 * 60_000);
 
   // Auto-update — empieza a los 2 minutos
   setInterval(checkSelfUpdate, 2 * 60_000);
