@@ -3,6 +3,16 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.12.3 (2026-05-10) — PROMPT: JARVIS CONOCE SU CAPACIDAD DE AUTO-EVOLUCIÓN
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO en system prompt — sección AUTO-EVOLUCIÓN:
+  - Jarvis conoce el flujo completo: leer → modificar → escribir → bump versión → update_addon.
+  - Conoce sus archivos clave (server.js, index.html, config.yaml) y sus rutas en GitHub.
+  - Reglas de modificación: leer siempre antes, subir archivo completo, versión siempre.
+  - Si el usuario pide una capacidad nueva, Jarvis la implementa solo sin pedir ayuda.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.12.2 (2026-05-10) — JARVIS PUEDE MODIFICAR SU PROPIO CÓDIGO EN GITHUB
 ────────────────────────────────────────────────────────────────────────────────
 
