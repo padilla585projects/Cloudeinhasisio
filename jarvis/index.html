@@ -644,95 +644,117 @@
     }
   }
 
+  // Cola de mensajes — permite enviar mientras Jarvis piensa
+  const messageQueue = [];
+  let isProcessing = false;
+
   async function sendMessage() {
-    if (isStreaming) return;
     const input = document.getElementById('input');
     const text = input.value.trim();
     if (!text) return;
 
     input.value = '';
     input.style.height = 'auto';
-    isStreaming = true;
-    document.getElementById('send-btn').disabled = true;
 
+    // Mostrar mensaje del usuario inmediatamente
     addMessage('user', text);
     conversationHistory.push({ role: 'user', content: text });
 
-    setJarvisState('thinking');
-    addThinking();
+    // Añadir a la cola
+    messageQueue.push(text);
 
-    let aiText = '';
-    let aiBubble = null;
-    let currentToolStatus = null;
-
-    try {
-      const response = await fetch('api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: [{ role: 'user', content: text }] })
-      });
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop();
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          try {
-            const event = JSON.parse(line.slice(6));
-
-            if (event.type === 'text') {
-              removeThinking();
-              setJarvisState('speaking');
-              if (!aiBubble) {
-                aiBubble = addMessage('ai', '');
-              }
-              aiText += event.text;
-              aiBubble.textContent = aiText;
-              scrollToBottom();
-
-            } else if (event.type === 'tool_start') {
-              // No mostrar bloques de tools — solo el thinking
-              if (!document.getElementById('thinking')) addThinking();
-
-            } else if (event.type === 'tool_end') {
-              // Silencioso — Jarvis trabaja en background sin mostrar cada paso
-
-            } else if (event.type === 'done') {
-              removeThinking();
-              setJarvisState('idle');
-
-            } else if (event.type === 'error') {
-              removeThinking();
-              setJarvisState('idle');
-              addMessage('ai', `⚠️ Error: ${event.error}`);
-            }
-          } catch {}
-        }
-      }
-
-      removeThinking();
-      if (aiText) {
-        conversationHistory.push({ role: 'assistant', content: aiText });
-      }
-
-    } catch (err) {
-      removeThinking();
-      setJarvisState('idle');
-      addMessage('ai', `⚠️ Error de conexión: ${err.message}`);
+    // Si ya está procesando, el mensaje se procesará cuando termine el actual
+    if (isProcessing) {
+      scrollToBottom();
+      return;
     }
 
+    // Procesar cola
+    processQueue();
+  }
+
+  async function processQueue() {
+    if (isProcessing || messageQueue.length === 0) return;
+    isProcessing = true;
+    isStreaming = true;
+
+    while (messageQueue.length > 0) {
+      const text = messageQueue.shift();
+
+      setJarvisState('thinking');
+      addThinking();
+
+      let aiText = '';
+      let aiBubble = null;
+
+      try {
+        const response = await fetch('api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: [{ role: 'user', content: text }] })
+        });
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            try {
+              const event = JSON.parse(line.slice(6));
+
+              if (event.type === 'text') {
+                removeThinking();
+                setJarvisState('speaking');
+                if (!aiBubble) {
+                  aiBubble = addMessage('ai', '');
+                }
+                aiText += event.text;
+                aiBubble.textContent = aiText;
+                scrollToBottom();
+
+              } else if (event.type === 'tool_start') {
+                if (!document.getElementById('thinking')) addThinking();
+
+              } else if (event.type === 'tool_end') {
+                // Silencioso
+
+              } else if (event.type === 'done') {
+                removeThinking();
+                setJarvisState('idle');
+
+              } else if (event.type === 'error') {
+                removeThinking();
+                setJarvisState('idle');
+                addMessage('ai', `⚠️ Error: ${event.error}`);
+              }
+            } catch {}
+          }
+        }
+
+        removeThinking();
+        if (aiText) {
+          conversationHistory.push({ role: 'assistant', content: aiText });
+        }
+
+      } catch (err) {
+        removeThinking();
+        setJarvisState('idle');
+        addMessage('ai', `⚠️ Error de conexión: ${err.message}`);
+      }
+    }
+
+    isProcessing = false;
     isStreaming = false;
-    document.getElementById('send-btn').disabled = false;
-    input.focus();
+    document.getElementById('input').focus();
   }
 
   // Cargar historial del servidor al iniciar
