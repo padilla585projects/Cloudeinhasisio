@@ -3,6 +3,30 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.2.0 (2026-05-10) — BASE DE CONOCIMIENTO + SCRIPTS DE SINCRONIZACIÓN
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — BASE DE CONOCIMIENTO (knowledge_db):
+- Tool knowledge_db con acciones: add, query, update, delete, connect, list_categories, export
+- Almacena: conceptos, configuraciones, protocolos, soluciones, diagramas
+- Cada entrada tiene: título, categoría, contenido, tags, conexiones, imágenes, fuente, importancia
+- Conexiones bidireccionales entre conceptos (grafos de conocimiento)
+- Categorías: industrial, domotica, networking, programacion, hardware, energia,
+  seguridad, protocolos, integraciones, soluciones
+- Persiste en /data/knowledge/ (sobrevive reinicios)
+- Jarvis guarda conocimiento AUTOMÁTICAMENTE cuando aprende algo nuevo
+- Búsqueda por texto libre, categoría y tags
+
+NUEVO — SCRIPTS DE SINCRONIZACIÓN MULTI-MÁQUINA:
+- sync.ps1 (Windows/PowerShell): pull, push, watch mode
+- sync.sh (Linux/Mac/bash): pull, push, watch mode
+- Modo watch: monitoriza cada 30s y hace pull automático
+- Modo push: commit + push rápido desde cualquier máquina
+- Permite trabajar desde PC, Surface, portátil... siempre con última versión
+
+MEJORA — System prompt con instrucciones de knowledge_db automática
+
+────────────────────────────────────────────────────────────────────────────────
 v3.1.0 (2026-05-10) — EQUIPO DE AGENTES + CONOCIMIENTO INDUSTRIAL
 ────────────────────────────────────────────────────────────────────────────────
 

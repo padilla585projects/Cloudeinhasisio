@@ -711,6 +711,37 @@ const tools = [
       },
       required: ['type', 'title', 'detail', 'priority']
     }
+  },
+
+  // ─── Base de conocimiento ───
+  {
+    name: 'knowledge_db',
+    description: 'Base de datos de conocimiento de Jarvis. Almacena y consulta todo lo que aprende: conceptos, conexiones, diagramas, configuraciones, protocolos, soluciones. Cada entrada tiene categoría, tags, conexiones con otras entradas, e imágenes opcionales.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['add', 'query', 'update', 'delete', 'connect', 'list_categories', 'export'], description: 'Acción a realizar' },
+        entry: {
+          type: 'object',
+          description: 'Entrada de conocimiento (para add/update)',
+          properties: {
+            title: { type: 'string', description: 'Título del conocimiento' },
+            category: { type: 'string', description: 'Categoría: industrial, domotica, networking, programacion, hardware, energia, seguridad, protocolos, integraciones, soluciones, otro' },
+            content: { type: 'string', description: 'Contenido principal — explicación, configuración, código, etc.' },
+            tags: { type: 'array', items: { type: 'string' }, description: 'Tags para búsqueda (ej: ["modbus", "siemens", "plc"])' },
+            connections: { type: 'array', items: { type: 'string' }, description: 'IDs o títulos de entradas relacionadas' },
+            images: { type: 'array', items: { type: 'string' }, description: 'Rutas o URLs de imágenes/diagramas asociados' },
+            source: { type: 'string', description: 'Fuente de la información (URL, doc, experiencia, etc.)' },
+            importance: { type: 'string', enum: ['low', 'medium', 'high', 'critical'], description: 'Importancia del conocimiento' }
+          }
+        },
+        query: { type: 'string', description: 'Búsqueda por texto libre (para action=query)' },
+        category: { type: 'string', description: 'Filtrar por categoría (para action=query/list_categories)' },
+        id: { type: 'string', description: 'ID de la entrada (para update/delete/connect)' },
+        connect_to: { type: 'string', description: 'ID de la entrada a conectar (para action=connect)' }
+      },
+      required: ['action']
+    }
   }
 ];
 
@@ -2038,6 +2069,142 @@ Prohibida la copia, redistribucion y uso comercial.`);
         }
       }
 
+      // ─── Base de conocimiento ───
+      case 'knowledge_db': {
+        const KB_DIR = path.join(DATA_DIR, 'knowledge');
+        const KB_INDEX = path.join(KB_DIR, 'index.json');
+        if (!fs.existsSync(KB_DIR)) fs.mkdirSync(KB_DIR, { recursive: true });
+
+        let index = loadJSON(KB_INDEX, { entries: [], categories: {}, totalEntries: 0 });
+
+        switch (input.action) {
+          case 'add': {
+            if (!input.entry || !input.entry.title) return { error: 'Se requiere entry.title' };
+            const id = `kb_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            const entry = {
+              id,
+              title: input.entry.title,
+              category: input.entry.category || 'otro',
+              content: input.entry.content || '',
+              tags: input.entry.tags || [],
+              connections: input.entry.connections || [],
+              images: input.entry.images || [],
+              source: input.entry.source || 'experiencia',
+              importance: input.entry.importance || 'medium',
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            };
+
+            // Guardar entrada individual como archivo
+            saveJSON(path.join(KB_DIR, `${id}.json`), entry);
+
+            // Actualizar índice
+            index.entries.push({ id, title: entry.title, category: entry.category, tags: entry.tags, importance: entry.importance });
+            if (!index.categories[entry.category]) index.categories[entry.category] = 0;
+            index.categories[entry.category]++;
+            index.totalEntries++;
+            saveJSON(KB_INDEX, index);
+
+            console.log(`[knowledge] +${entry.title} (${entry.category}) [${entry.tags.join(',')}]`);
+            return { success: true, id, message: `Conocimiento guardado: "${entry.title}" en ${entry.category}` };
+          }
+
+          case 'query': {
+            const q = (input.query || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+            const cat = input.category;
+            let results = index.entries;
+
+            if (cat) results = results.filter(e => e.category === cat);
+            if (q) {
+              results = results.filter(e => {
+                const text = `${e.title} ${(e.tags || []).join(' ')}`.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+                return text.includes(q) || q.split(' ').some(word => text.includes(word));
+              });
+            }
+
+            // Cargar contenido completo de los resultados (máx 20)
+            const detailed = results.slice(0, 20).map(e => {
+              try {
+                return loadJSON(path.join(KB_DIR, `${e.id}.json`), e);
+              } catch { return e; }
+            });
+
+            return { results: detailed, total: results.length, showing: detailed.length };
+          }
+
+          case 'update': {
+            if (!input.id) return { error: 'Se requiere id' };
+            const filePath = path.join(KB_DIR, `${input.id}.json`);
+            if (!fs.existsSync(filePath)) return { error: 'Entrada no encontrada' };
+            const existing = loadJSON(filePath, {});
+            const updated = { ...existing, ...input.entry, id: input.id, updatedAt: new Date().toISOString() };
+            saveJSON(filePath, updated);
+
+            // Actualizar índice
+            const idx = index.entries.findIndex(e => e.id === input.id);
+            if (idx !== -1) {
+              index.entries[idx] = { id: input.id, title: updated.title, category: updated.category, tags: updated.tags, importance: updated.importance };
+              saveJSON(KB_INDEX, index);
+            }
+            return { success: true, message: `Actualizado: "${updated.title}"` };
+          }
+
+          case 'delete': {
+            if (!input.id) return { error: 'Se requiere id' };
+            const fp = path.join(KB_DIR, `${input.id}.json`);
+            if (fs.existsSync(fp)) fs.unlinkSync(fp);
+            const oldCat = (index.entries.find(e => e.id === input.id) || {}).category;
+            index.entries = index.entries.filter(e => e.id !== input.id);
+            if (oldCat && index.categories[oldCat]) index.categories[oldCat]--;
+            index.totalEntries = index.entries.length;
+            saveJSON(KB_INDEX, index);
+            return { success: true, message: 'Entrada eliminada' };
+          }
+
+          case 'connect': {
+            if (!input.id || !input.connect_to) return { error: 'Se requiere id y connect_to' };
+            const fp1 = path.join(KB_DIR, `${input.id}.json`);
+            const fp2 = path.join(KB_DIR, `${input.connect_to}.json`);
+            if (!fs.existsSync(fp1)) return { error: 'Entrada origen no encontrada' };
+
+            const e1 = loadJSON(fp1, {});
+            if (!e1.connections) e1.connections = [];
+            if (!e1.connections.includes(input.connect_to)) e1.connections.push(input.connect_to);
+            saveJSON(fp1, e1);
+
+            // Conexión bidireccional
+            if (fs.existsSync(fp2)) {
+              const e2 = loadJSON(fp2, {});
+              if (!e2.connections) e2.connections = [];
+              if (!e2.connections.includes(input.id)) e2.connections.push(input.id);
+              saveJSON(fp2, e2);
+            }
+            return { success: true, message: `Conectado: "${e1.title}" ↔ "${input.connect_to}"` };
+          }
+
+          case 'list_categories': {
+            return { categories: index.categories, totalEntries: index.totalEntries };
+          }
+
+          case 'export': {
+            // Exportar toda la base como resumen
+            const all = index.entries.map(e => {
+              try { return loadJSON(path.join(KB_DIR, `${e.id}.json`), e); }
+              catch { return e; }
+            });
+            const byCat = {};
+            for (const e of all) {
+              if (!byCat[e.category]) byCat[e.category] = [];
+              byCat[e.category].push({ title: e.title, tags: e.tags, importance: e.importance, connections: e.connections });
+            }
+            return { knowledge_base: byCat, totalEntries: all.length, categories: Object.keys(byCat).length };
+          }
+
+          default:
+            return { error: `Acción desconocida: ${input.action}` };
+        }
+      }
+
       default:
         return { error: `Tool desconocida: ${name}` };
     }
@@ -2136,6 +2303,27 @@ SI NO SABES ALGO → lo buscas con ha_knowledge o web_search. NUNCA inventes.
 SI FALTA UNA HERRAMIENTA → la buscas con search_hacs_resources y la instalas con install_hacs_resource.
 SI NO EXISTE LA HERRAMIENTA → la CREAS tú con create_custom_tool (shell, python o node).
 Tu filosofía: ENCONTRAR LA SOLUCIÓN o CREARLA. NUNCA decir "no se puede".
+
+═══ BASE DE CONOCIMIENTO ═══
+Tienes una base de datos propia donde guardas TODO lo que aprendes:
+- knowledge_db(add): Guarda conceptos, configuraciones, protocolos, soluciones, diagramas
+- knowledge_db(query): Busca en tu base por texto, categoría o tags
+- knowledge_db(connect): Relaciona conceptos entre sí (ej: "Modbus" ↔ "Inversor solar")
+- knowledge_db(export): Exporta toda la base para resumen
+
+CUÁNDO GUARDAR CONOCIMIENTO (hazlo AUTOMÁTICAMENTE):
+- Cuando aprendes algo nuevo de HA, industrial, protocolos, hardware → knowledge_db(add)
+- Cuando descubres cómo se conectan dos cosas → knowledge_db(connect)
+- Cuando buscas en internet y encuentras info útil → guárdala
+- Cuando resuelves un problema complejo → guarda la solución completa
+- Cuando el usuario te explica algo de su instalación → guárdalo
+- Cuando analizas un protocolo industrial → guarda detalles (pinout, registros, configuración)
+- Imágenes: si encuentras diagramas útiles, guarda la URL en images[]
+
+CATEGORÍAS: industrial, domotica, networking, programacion, hardware, energia, seguridad, protocolos, integraciones, soluciones, otro
+
+La base vive en /data/knowledge/ y PERSISTE entre reinicios. Es tu cerebro a largo plazo.
+Usa TAGS para hacer la búsqueda potente. Conecta entradas relacionadas SIEMPRE.
 
 ═══ HERRAMIENTAS CUSTOM ═══
 Si no encuentras una herramienta que haga lo que necesitas, CRÉALA:
@@ -2598,7 +2786,7 @@ app.post('/api/pending_thoughts/:id', (req, res) => {
 
 const PORT = 3000;
 app.listen(PORT, '0.0.0.0', async () => {
-  console.log(`Jarvis AI Agent v3.1.0 corriendo en puerto ${PORT}`);
+  console.log(`Jarvis AI Agent v3.2.0 corriendo en puerto ${PORT}`);
   console.log(`Modelo: ${MODEL} | Config: ${HA_CONFIG} | Data: ${DATA_DIR}`);
 
   // Scan inicial si no hay contexto o tiene más de 2 horas
