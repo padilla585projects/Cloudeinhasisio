@@ -3,6 +3,36 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.14.1 (2026-05-10) — Normas de red, descubrimiento y presentaciones
+────────────────────────────────────────────────────────────────────────────────
+
+NORMAS DE RED v2.0:
+  - 10 reglas que todo agente debe cumplir: identidad, autenticación, permisos,
+    veracidad, privacidad, transparencia, respeto, confirmación, trazabilidad, admin.
+  - Se envían automáticamente al agente cuando se registra.
+
+DESCUBRIMIENTO — GET /api/agents/discover:
+  - Endpoint público (sin auth) que devuelve identidad de Jarvis, normas y
+    instrucciones de cómo unirse a la red.
+  - bootAgentScan ahora también busca /api/agents/discover en la red local
+    para encontrar otros agentes compatibles con el protocolo.
+  - /api/health incluye agent_type e identity para que scanners lo detecten.
+
+PRESENTACIONES:
+  - El registro ahora acepta description y capabilities del agente.
+  - La respuesta del registro incluye normas + identidad de Jarvis.
+  - Adrián recibe por Telegram la presentación completa del agente nuevo.
+  - Agentes duplicados son rechazados (409 Conflict).
+
+UI:
+  - Panel de red muestra descripción y capabilities de cada agente.
+  - /api/agents/status devuelve datos enriquecidos.
+
+JARVIS_IDENTITY restaurado:
+  - Nombre, versión, capabilities, role: gateway_admin, endpoints.
+  - NETWORK_NORMS como constante del servidor.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.14.0 (2026-05-10) — REWRITE: Jarvis es el gateway de la red de agentes
 ────────────────────────────────────────────────────────────────────────────────
 

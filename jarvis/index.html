@@ -1065,9 +1065,11 @@
               <span style="font-size:12px;font-weight:500;color:var(--text);">${agent.name}</span>
               <span style="font-size:10px;color:${agent.online?'var(--success)':'var(--text3)'};">${agent.online?'Online':''+lastSeen}</span>
             </div>
+            ${agent.description?`<div style="font-size:10px;color:var(--text2);margin-bottom:4px;">${agent.description}</div>`:''}
+            ${agent.capabilities?.length>0?`<div style="font-size:10px;color:var(--text3);margin-bottom:4px;">${agent.capabilities.slice(0,5).join(' · ')}</div>`:''}
             <div style="display:flex;justify-content:space-between;align-items:center;">
               <span style="font-size:10px;color:${permColor};">${agent.permissions}</span>
-              <span style="font-size:10px;color:var(--text3);">${agent.callback_url ? 'callback' : 'sin callback'}</span>
+              <span style="font-size:10px;color:var(--text3);">${agent.has_callback ? 'callback' : 'sin callback'}</span>
             </div>
           </div>`;
         }
