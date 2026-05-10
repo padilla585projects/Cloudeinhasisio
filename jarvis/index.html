@@ -830,8 +830,9 @@
 
   async function checkTTSAvailable() {
     try {
-      const r = await fetch('api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: '' }) });
-      ttsAvailable = r.status !== 503;
+      const r = await fetch('api/tts/status');
+      const d = await r.json();
+      ttsAvailable = !!d.available;
     } catch { ttsAvailable = false; }
   }
   checkTTSAvailable();

@@ -4259,6 +4259,11 @@ app.get('/api/cost', (req, res) => {
   });
 });
 
+// TTS status — informa si OpenAI TTS está disponible
+app.get('/api/tts/status', (req, res) => {
+  res.json({ available: !!OPENAI_API_KEY });
+});
+
 // TTS via OpenAI — devuelve audio/mpeg listo para reproducir
 app.post('/api/tts', async (req, res) => {
   const { text, voice = 'nova', model = 'tts-1' } = req.body || {};
