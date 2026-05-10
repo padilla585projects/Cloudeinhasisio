@@ -159,7 +159,8 @@ console.log(`[init] Memoria: ${userMemory.length} notas | Historial: ${conversat
 
 // Limitar historial
 function saveHistory() {
-  if (conversationHistory.length > 30) conversationHistory = conversationHistory.slice(-30);
+  const histLimit = saverMode ? 20 : 60;
+  if (conversationHistory.length > histLimit) conversationHistory = conversationHistory.slice(-histLimit);
   saveJSON(HISTORY_FILE, conversationHistory);
 }
 
@@ -3903,7 +3904,7 @@ app.post('/api/chat', async (req, res) => {
     let currentMessages = [...conversationHistory];
     let finalText = '';
     let iterations = 0;
-    const MAX_ITERATIONS = saverMode ? 10 : 20;
+    const MAX_ITERATIONS = saverMode ? 10 : 40;
     let consecutiveTextOnly = 0; // Detectar si lleva varias respuestas sin tools (realmente terminó)
 
     while (iterations < MAX_ITERATIONS) {
@@ -4001,8 +4002,7 @@ app.post('/api/chat', async (req, res) => {
       const toolResults = toolUseBlocks.map((block, i) => {
         sendEvent({ type: 'tool_end', tool: block.name, result: results[i] });
         const raw = JSON.stringify(results[i]);
-        const limit = saverMode ? 2000 : 4000;
-        const content = raw.length > limit ? raw.slice(0, limit) + '\n...[truncado para ahorrar tokens]' : raw;
+        const content = saverMode && raw.length > 2000 ? raw.slice(0, 2000) + '\n...[truncado para ahorrar tokens]' : raw;
         return { type: 'tool_result', tool_use_id: block.id, content };
       });
 
