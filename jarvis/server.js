@@ -133,7 +133,7 @@ const JARVIS_IDENTITY = {
   description: 'Agente IA autónomo — administrador de la red de agentes de Adrián. Controla Home Assistant, gestiona infraestructura y coordina todos los agentes.',
   role: 'admin',
   language: ['es', 'en'],
-  version: '3.13.8',
+  version: '3.13.9',
   platform: 'Home Assistant Add-on',
   norms_version: NETWORK_NORMS.version,
   capabilities: [
@@ -4463,7 +4463,7 @@ app.post('/api/pending_thoughts/:id', (req, res) => {
 
 const PORT = 3000;
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Jarvis AI Agent v3.11.3 corriendo en puerto ${PORT}`);
+  console.log(`Jarvis AI Agent v${JARVIS_IDENTITY.version} corriendo en puerto ${PORT}`);
   console.log(`Modelo: ${MODEL} | Config: ${HA_CONFIG} | Data: ${DATA_DIR}`);
   console.log(`API Key: ${ANTHROPIC_API_KEY ? 'configurada (' + ANTHROPIC_API_KEY.slice(0, 10) + '...)' : '⚠️ NO CONFIGURADA'}`);
   console.log(`HA Token: ${HA_TOKEN ? 'presente' : '⚠️ NO DISPONIBLE'}`);
