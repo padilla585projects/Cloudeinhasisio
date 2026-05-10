@@ -133,7 +133,7 @@ const JARVIS_IDENTITY = {
   description: 'Agente IA autónomo — administrador de la red de agentes de Adrián. Controla Home Assistant, gestiona infraestructura y coordina todos los agentes.',
   role: 'admin',
   language: ['es', 'en'],
-  version: '3.13.5',
+  version: '3.13.6',
   platform: 'Home Assistant Add-on',
   norms_version: NETWORK_NORMS.version,
   capabilities: [
@@ -5573,11 +5573,13 @@ async function bootGatewayRegister() {
       gatewayState.joinRequestId = data.request_id;
       saveJSON(GATEWAY_FILE, gatewayState);
       console.log(`[gateway] join_request enviado (request_id: ${data.request_id}). Esperando aprobación del administrador del gateway...`);
-      pendingThoughts.push({ id: Date.now(), type: 'gateway_pending', priority: 'high', status: 'pending',
+      const thoughts = loadJSON(PENDING_THOUGHTS_FILE, []);
+      thoughts.push({ id: Date.now(), type: 'gateway_pending', priority: 'high', status: 'pending',
         title: 'Jarvis esperando aprobación en la red de agentes',
         detail: `He enviado una solicitud de registro al gateway de la red de agentes IA (request_id: ${data.request_id}). Necesito que el administrador (Numa) la apruebe para poder sincronizarme con la red. Mientras tanto no puedo comunicarme con otros agentes.`,
         created: new Date().toISOString() });
-      saveJSON(PENDING_THOUGHTS_FILE, pendingThoughts);
+      if (thoughts.length > 50) thoughts.splice(0, thoughts.length - 50);
+      saveJSON(PENDING_THOUGHTS_FILE, thoughts);
       setTimeout(bootGatewayRegister, 60_000);
     } else {
       console.log(`[gateway] Respuesta inesperada: ${JSON.stringify(data)}`);

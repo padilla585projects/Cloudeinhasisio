@@ -3,6 +3,14 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.13.6 (2026-05-10) — FIX: pendingThoughts not defined en bootGatewayRegister
+────────────────────────────────────────────────────────────────────────────────
+
+FIX — ReferenceError: pendingThoughts is not defined:
+  - bootGatewayRegister usaba variable pendingThoughts que no existe en ese scope.
+  - Reemplazado por loadJSON + saveJSON directo del fichero pending_thoughts.json.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.13.5 (2026-05-10) — FIX CRASH: NETWORK_NORMS antes de JARVIS_IDENTITY
 ────────────────────────────────────────────────────────────────────────────────
 
