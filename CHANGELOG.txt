@@ -3,6 +3,31 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.11.1 (2026-05-10) — VOZ: STT + TTS + ALTAVOCES DEL HOGAR
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — Micrófono en la UI (Web Speech API):
+  - Botón 🎤 junto al input — clic para hablar, clic para parar
+  - Reconocimiento de voz en español (es-ES) en tiempo real
+  - Transcripción aparece en el input y se envía automáticamente al terminar
+  - Indicador visual rojo mientras escucha
+
+NUEVO — Jarvis habla (SpeechSynthesis):
+  - Jarvis lee sus respuestas en voz alta automáticamente
+  - Limpia markdown antes de leer (no dice "asterisco asterisco")
+  - Voz española seleccionada automáticamente (prioriza voz local del sistema)
+  - Botón "🔊 Voz / Mudo" en el header para activar/silenciar
+  - Estado se guarda en localStorage (persiste entre sesiones)
+  - Se detiene al pulsar el micrófono
+
+NUEVO — Tool speak(): hablar por los altavoces del hogar
+  - Targets: alexa_salon, alexa_cocina, alexa_dormitorio, alexa_garaje,
+    alexa_show, alexa_flex, all_alexa, ha_tts (Piper)
+  - all_alexa: habla por todos los Echo simultáneamente
+  - ha_tts: usa Piper (español nativo) vía HA TTS
+  - Jarvis decide solo cuándo y dónde hablar (avisos, alarmas, confirmaciones)
+
+────────────────────────────────────────────────────────────────────────────────
 v3.11.0 (2026-05-10) — HUB CENTRAL DE RED: GESTIÓN COMPLETA DE AGENTES
 ────────────────────────────────────────────────────────────────────────────────
 

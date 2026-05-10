@@ -399,6 +399,10 @@
     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
     <span id="local-folder-label">PC</span>
   </button>
+  <button id="tts-btn" onclick="toggleTTS()" title="Activar/silenciar voz de Jarvis" style="background:transparent;border:1px solid var(--border);border-radius:10px;padding:6px 10px;color:var(--text2);cursor:pointer;font-size:11px;font-family:'DM Mono',monospace;display:flex;align-items:center;gap:5px;transition:all 0.2s;flex-shrink:0;">
+    <svg id="tts-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M15.54 8.46a5 5 0 010 7.07"/></svg>
+    <span id="tts-label">Voz</span>
+  </button>
   <button id="network-btn" onclick="toggleNetworkPanel()" title="Red de agentes IA" style="background:transparent;border:1px solid var(--border);border-radius:10px;padding:6px 10px;color:var(--text2);cursor:pointer;font-size:11px;font-family:'DM Mono',monospace;display:flex;align-items:center;gap:5px;transition:all 0.2s;flex-shrink:0;position:relative;" onmouseover="this.style.borderColor='var(--accent2)';this.style.color='var(--accent2)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text2)'">
     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><line x1="12" y1="7" x2="5" y2="17"/><line x1="12" y1="7" x2="19" y2="17"/></svg>
     <span>Red</span>
@@ -448,7 +452,10 @@
     <button id="attach-btn" onclick="document.getElementById('file-input').click()" title="Adjuntar archivo" style="background:transparent;border:1px solid var(--border);border-radius:10px;padding:8px 10px;color:var(--text2);cursor:pointer;flex-shrink:0;transition:all 0.2s;" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text2)'">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
     </button>
-    <textarea id="input" placeholder="Escribe un comando o pregunta..." rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+    <textarea id="input" placeholder="Escribe o pulsa el micrófono..." rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+    <button id="mic-btn" onclick="toggleVoice()" title="Hablar con Jarvis (español)" style="background:transparent;border:1px solid var(--border);border-radius:10px;padding:8px 10px;color:var(--text2);cursor:pointer;flex-shrink:0;transition:all 0.2s;position:relative;">
+      <svg id="mic-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+    </button>
     <button id="send-btn" onclick="sendMessage()">
       <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
     </button>
@@ -809,6 +816,169 @@
     renderAttachmentsBar();
   };
 
+  // ── VOZ: STT + TTS ───────────────────────────────────────────────────────────
+  let recognition = null;
+  let isListening = false;
+  let ttsEnabled = localStorage.getItem('jarvis_tts') !== 'false';
+  let currentUtterance = null;
+  let voiceSelected = null;
+
+  // Inicializar TTS
+  function initTTS() {
+    if (!('speechSynthesis' in window)) return;
+    const loadVoices = () => {
+      const voices = speechSynthesis.getVoices();
+      // Prioridad: voz española natural
+      voiceSelected =
+        voices.find(v => v.lang === 'es-ES' && v.localService) ||
+        voices.find(v => v.lang.startsWith('es') && v.localService) ||
+        voices.find(v => v.lang === 'es-ES') ||
+        voices.find(v => v.lang.startsWith('es')) ||
+        voices[0];
+    };
+    speechSynthesis.onvoiceschanged = loadVoices;
+    loadVoices();
+  }
+  initTTS();
+  updateTTSBtn();
+
+  function speak(text) {
+    if (!ttsEnabled || !('speechSynthesis' in window)) return;
+    speechSynthesis.cancel();
+    // Limpiar markdown para la voz
+    const clean = text
+      .replace(/\*\*(.+?)\*\*/g, '$1')
+      .replace(/\*(.+?)\*/g, '$1')
+      .replace(/`{1,3}[^`]*`{1,3}/g, '')
+      .replace(/#{1,6}\s/g, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/^[-•]\s/gm, '')
+      .replace(/\n{2,}/g, '. ')
+      .replace(/\n/g, ' ')
+      .trim();
+    if (!clean) return;
+    currentUtterance = new SpeechSynthesisUtterance(clean);
+    currentUtterance.lang = 'es-ES';
+    currentUtterance.rate = 1.05;
+    currentUtterance.pitch = 1.0;
+    currentUtterance.volume = 1.0;
+    if (voiceSelected) currentUtterance.voice = voiceSelected;
+    currentUtterance.onend = () => { currentUtterance = null; };
+    speechSynthesis.speak(currentUtterance);
+  }
+
+  function stopSpeaking() {
+    if ('speechSynthesis' in window) speechSynthesis.cancel();
+  }
+
+  function toggleTTS() {
+    ttsEnabled = !ttsEnabled;
+    localStorage.setItem('jarvis_tts', ttsEnabled);
+    if (!ttsEnabled) stopSpeaking();
+    updateTTSBtn();
+  }
+
+  function updateTTSBtn() {
+    const btn = document.getElementById('tts-btn');
+    const icon = document.getElementById('tts-icon');
+    const label = document.getElementById('tts-label');
+    if (!btn) return;
+    if (ttsEnabled) {
+      btn.style.borderColor = 'var(--accent)';
+      btn.style.color = 'var(--accent)';
+      label.textContent = 'Voz';
+      icon.innerHTML = '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M15.54 8.46a5 5 0 010 7.07"/>';
+    } else {
+      btn.style.borderColor = 'var(--border)';
+      btn.style.color = 'var(--text2)';
+      label.textContent = 'Mudo';
+      icon.innerHTML = '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>';
+    }
+  }
+
+  // STT — reconocimiento de voz
+  function initSTT() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return null;
+    const r = new SpeechRecognition();
+    r.lang = 'es-ES';
+    r.continuous = false;
+    r.interimResults = true;
+    r.maxAlternatives = 1;
+
+    r.onstart = () => {
+      isListening = true;
+      stopSpeaking();
+      updateMicBtn(true);
+      const input = document.getElementById('input');
+      input.placeholder = '🎤 Escuchando...';
+    };
+
+    r.onresult = (e) => {
+      const input = document.getElementById('input');
+      let interim = '', final = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) final += e.results[i][0].transcript;
+        else interim += e.results[i][0].transcript;
+      }
+      input.value = (final || interim).trim();
+      autoResize(input);
+      if (final) {
+        setTimeout(() => {
+          if (input.value.trim()) sendMessage();
+        }, 300);
+      }
+    };
+
+    r.onerror = (e) => {
+      if (e.error !== 'no-speech' && e.error !== 'aborted') {
+        console.error('STT error:', e.error);
+      }
+      stopListening();
+    };
+
+    r.onend = () => stopListening();
+    return r;
+  }
+
+  function toggleVoice() {
+    if (isListening) {
+      if (recognition) recognition.stop();
+      stopListening();
+      return;
+    }
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      addMessage('ai', '⚠️ Tu navegador no soporta reconocimiento de voz. Usa Chrome o Edge.');
+      return;
+    }
+    recognition = initSTT();
+    if (recognition) recognition.start();
+  }
+
+  function stopListening() {
+    isListening = false;
+    updateMicBtn(false);
+    const input = document.getElementById('input');
+    if (input) input.placeholder = 'Escribe o pulsa el micrófono...';
+  }
+
+  function updateMicBtn(listening) {
+    const btn = document.getElementById('mic-btn');
+    if (!btn) return;
+    if (listening) {
+      btn.style.borderColor = 'var(--error)';
+      btn.style.color = 'var(--error)';
+      btn.style.background = 'rgba(248,113,113,0.1)';
+      btn.title = 'Escuchando... (clic para parar)';
+    } else {
+      btn.style.borderColor = 'var(--border)';
+      btn.style.color = 'var(--text2)';
+      btn.style.background = 'transparent';
+      btn.title = 'Hablar con Jarvis';
+    }
+  }
+
   // ── Panel de red de agentes ──────────────────────────────────────────────────
   let networkPanelOpen = false;
   let networkRefreshInterval = null;
@@ -1150,6 +1320,7 @@
               } else if (event.type === 'done') {
                 removeThinking();
                 setJarvisState('idle');
+                if (aiText) speak(aiText);
 
               } else if (event.type === 'error') {
                 removeThinking();

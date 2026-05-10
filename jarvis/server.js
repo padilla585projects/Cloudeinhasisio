@@ -671,6 +671,21 @@ const tools = [
     }
   },
 
+  // ─── Voz / TTS ───
+  {
+    name: 'speak',
+    description: 'Habla en voz alta a través de los altavoces de la casa. Usa TTS de HA con Piper (español) o los Echo de Alexa. Úsalo cuando quieras que Jarvis diga algo en voz alta sin que el usuario tenga que leerlo — alarmas, avisos, respuestas de voz, confirmaciones.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', description: 'Texto a decir en voz alta' },
+        target: { type: 'string', description: 'Altavoz donde hablar: "alexa_salon", "alexa_cocina", "alexa_dormitorio", "alexa_garaje", "all_alexa", "ha_tts" (Piper). Por defecto: "ha_tts".' },
+        language: { type: 'string', description: 'Idioma: "es" (default) o "en"' },
+      },
+      required: ['message']
+    }
+  },
+
   // ─── Telegram ───
   {
     name: 'telegram_send',
@@ -1792,6 +1807,49 @@ async function executeTool(name, input) {
           filter: input.filter || null,
           logs: lines.join('\n')
         };
+      }
+
+      // ─── Voz / TTS ───
+      case 'speak': {
+        const { message: ttsMsg, target = 'ha_tts', language: ttsLang = 'es' } = input;
+        if (!ttsMsg) return { error: 'message es requerido' };
+
+        // Mapeo de alias a entity_id de Alexa
+        const alexaMap = {
+          alexa_salon:      'media_player.echo_salon',
+          alexa_cocina:     'media_player.echo_cocina',
+          alexa_dormitorio: 'media_player.echo_dormitorio',
+          alexa_garaje:     'media_player.echo_pop_garaje',
+          alexa_show:       'media_player.echo_show_5',
+          alexa_flex:       'media_player.echo_flex',
+        };
+
+        try {
+          if (target === 'all_alexa') {
+            // Hablar por todos los Echo
+            const targets = Object.values(alexaMap);
+            await haPost('/services/notify/alexa_media', { message: ttsMsg, target: targets, data: { type: 'tts' } });
+            return { spoken: true, target: 'all_alexa', message: ttsMsg };
+          }
+
+          if (target === 'ha_tts' || !alexaMap[target]) {
+            // Usar TTS nativo de HA (Piper en español)
+            await haPost('/services/tts/speak', {
+              entity_id: 'tts.piper',
+              media_player_entity_id: 'media_player.ha_default_player',
+              message: ttsMsg,
+              language: ttsLang === 'es' ? 'es_ES' : 'en_US',
+            });
+            return { spoken: true, target: 'ha_tts', message: ttsMsg };
+          }
+
+          // Echo específico
+          const entityId = alexaMap[target];
+          await haPost('/services/notify/alexa_media', { message: ttsMsg, target: [entityId], data: { type: 'tts' } });
+          return { spoken: true, target, entity_id: entityId, message: ttsMsg };
+        } catch (e) {
+          return { error: `TTS fallido: ${e.message}` };
+        }
       }
 
       // ─── Telegram ───
@@ -3991,7 +4049,7 @@ app.post('/api/chat', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '3.11.0',
+    version: '3.11.1',
     model: MODEL,
     memories: userMemory.length,
     learnings: learnings.length,
@@ -4078,7 +4136,7 @@ app.post('/api/pending_thoughts/:id', (req, res) => {
 
 const PORT = 3000;
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Jarvis AI Agent v3.11.0 corriendo en puerto ${PORT}`);
+  console.log(`Jarvis AI Agent v3.11.1 corriendo en puerto ${PORT}`);
   console.log(`Modelo: ${MODEL} | Config: ${HA_CONFIG} | Data: ${DATA_DIR}`);
   console.log(`API Key: ${ANTHROPIC_API_KEY ? 'configurada (' + ANTHROPIC_API_KEY.slice(0, 10) + '...)' : '⚠️ NO CONFIGURADA'}`);
   console.log(`HA Token: ${HA_TOKEN ? 'presente' : '⚠️ NO DISPONIBLE'}`);
