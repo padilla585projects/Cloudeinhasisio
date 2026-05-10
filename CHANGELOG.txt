@@ -3,6 +3,16 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.10.6 (2026-05-10) — BOOTSTRAP AUTOMÁTICO EN EL GATEWAY
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — bootGatewayRegister():
+- 10s tras arrancar, Jarvis se registra solo en la red de agentes si no tiene secret
+- Si ya tiene secret (arrances posteriores), lo detecta y pasa al sync directamente
+- 5s después del registro hace el primer sync para conocer los agentes de la red
+- Logs claros: "Registrado ✓" o error detallado si el gateway no responde
+
+────────────────────────────────────────────────────────────────────────────────
 v3.10.5 (2026-05-10) — JARVIS AVISA SOLO CUANDO ENCUENTRA AGENTES
 ────────────────────────────────────────────────────────────────────────────────
 

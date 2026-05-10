@@ -3758,7 +3758,7 @@ app.post('/api/chat', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '3.10.5',
+    version: '3.10.6',
     model: MODEL,
     memories: userMemory.length,
     learnings: learnings.length,
@@ -3845,7 +3845,7 @@ app.post('/api/pending_thoughts/:id', (req, res) => {
 
 const PORT = 3000;
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Jarvis AI Agent v3.10.5 corriendo en puerto ${PORT}`);
+  console.log(`Jarvis AI Agent v3.10.6 corriendo en puerto ${PORT}`);
   console.log(`Modelo: ${MODEL} | Config: ${HA_CONFIG} | Data: ${DATA_DIR}`);
   console.log(`API Key: ${ANTHROPIC_API_KEY ? 'configurada (' + ANTHROPIC_API_KEY.slice(0, 10) + '...)' : '⚠️ NO CONFIGURADA'}`);
   console.log(`HA Token: ${HA_TOKEN ? 'presente' : '⚠️ NO DISPONIBLE'}`);
@@ -3927,9 +3927,12 @@ app.listen(PORT, '0.0.0.0', () => {
   setInterval(checkSelfUpdate, 2 * 60_000);
   setTimeout(checkSelfUpdate, 2 * 60_000);
 
-  // Gateway sync — cada 60 segundos
+  // Gateway: registrar si no hay secret, luego sync cada 60s
+  setTimeout(async () => {
+    await bootGatewayRegister();
+    setTimeout(gatewaySyncLoop, 5_000); // Primera sync 5s después del register
+  }, 10_000); // Intentar registro a los 10s del arranque
   setInterval(gatewaySyncLoop, 60_000);
-  setTimeout(gatewaySyncLoop, 15_000); // Primera sync a los 15s
 
   // Escaneo de agentes IA locales al arranque
   setTimeout(bootAgentScan, 30_000); // 30s tras el arranque
@@ -4601,6 +4604,40 @@ async function gatewaySyncLoop() {
     }
   } catch (e) {
     console.log(`[gateway] No disponible: ${e.message}`);
+  }
+}
+
+// ── Registro automático en el gateway al arranque ────────────────────────────
+
+async function bootGatewayRegister() {
+  if (gatewayState.secret) {
+    console.log('[gateway] Ya registrado — secret presente.');
+    gatewayNoSecretLogged = true; // evitar el log de "sin secret" después
+    return;
+  }
+  try {
+    console.log('[gateway] Sin secret — intentando registro automático...');
+    const res = await fetch(GATEWAY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent_id: GATEWAY_ID, message: 'bootstrap_register' }),
+      timeout: 10000
+    });
+    if (!res.ok) {
+      console.log(`[gateway] Registro fallido — HTTP ${res.status}`);
+      return;
+    }
+    const data = await res.json();
+    if (data.secret) {
+      gatewayState.secret = data.secret;
+      gatewayNoSecretLogged = true;
+      saveJSON(GATEWAY_FILE, gatewayState);
+      console.log('[gateway] ✓ Registrado en la red de agentes IA. Secret guardado.');
+    } else {
+      console.log(`[gateway] Registro sin secret en respuesta: ${JSON.stringify(data)}`);
+    }
+  } catch (e) {
+    console.log(`[gateway] Error en registro: ${e.message}`);
   }
 }
 
