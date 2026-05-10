@@ -4302,12 +4302,12 @@ app.listen(PORT, '0.0.0.0', () => {
   setInterval(checkSelfUpdate, 2 * 60_000);
   setTimeout(checkSelfUpdate, 2 * 60_000);
 
-  // Gateway: registrar si no hay secret, luego sync cada 60s
+  // Gateway: registrar si no hay secret, luego sync cada 15s
   setTimeout(async () => {
     await bootGatewayRegister();
     setTimeout(gatewaySyncLoop, 5_000); // Primera sync 5s después del register
   }, 10_000); // Intentar registro a los 10s del arranque
-  setInterval(gatewaySyncLoop, 60_000);
+  setInterval(gatewaySyncLoop, 15_000);
 
   // Escaneo de agentes IA locales al arranque
   setTimeout(bootAgentScan, 30_000); // 30s tras el arranque
