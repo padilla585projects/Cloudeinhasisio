@@ -3,6 +3,18 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.10.4 (2026-05-10) — LOGGING DE AGENTES Y GATEWAY
+────────────────────────────────────────────────────────────────────────────────
+
+MEJORA — Visibilidad en logs del add-on:
+- discover_agents: ahora loguea los hosts de la ARP table encontrados, qué agentes
+  responden en qué IPs/puertos, y el recuento final
+- gatewaySyncLoop: loguea cada intento de sync, el resultado (agentes en la red,
+  mensajes pendientes), errores HTTP y errores de red
+- Si no hay secret de gateway, avisa en los logs en lugar de silencio total
+- Versión interna actualizada (console.log y /api/health)
+
+────────────────────────────────────────────────────────────────────────────────
 v3.10.3 (2026-05-10) — RED DE AGENTES IA — GATEWAY
 ────────────────────────────────────────────────────────────────────────────────
 

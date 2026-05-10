@@ -2804,6 +2804,7 @@ Prohibida la copia, redistribucion y uso comercial.`);
                 r([...new Set(ips)]);
               });
             });
+            console.log(`[discover_agents] ${arpHosts.length} hosts en la ARP table: ${arpHosts.join(', ') || '(ninguno)'}`);
             const found = [];
             for (const h of arpHosts) {
               for (const sig of AGENT_SIGS) {
@@ -2812,10 +2813,12 @@ Prohibida la copia, redistribucion y uso comercial.`);
                   if (res.ok) {
                     const info = await res.json().catch(() => ({}));
                     found.push({ name: sig.name, host: h, port: sig.port, type: sig.type, url: `http://${h}:${sig.port}`, info });
+                    console.log(`[discover_agents] ✓ ${sig.name} encontrado en ${h}:${sig.port}`);
                   }
                 } catch { /* not reachable */ }
               }
             }
+            console.log(`[discover_agents] Resultado: ${found.length} agente(s) encontrado(s)`);
             return { agents: found, count: found.length, scanned_hosts: arpHosts.length };
           }
 
@@ -3753,7 +3756,7 @@ app.post('/api/chat', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '3.10.1',
+    version: '3.10.4',
     model: MODEL,
     memories: userMemory.length,
     learnings: learnings.length,
@@ -3840,7 +3843,7 @@ app.post('/api/pending_thoughts/:id', (req, res) => {
 
 const PORT = 3000;
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Jarvis AI Agent v3.10.1 corriendo en puerto ${PORT}`);
+  console.log(`Jarvis AI Agent v3.10.4 corriendo en puerto ${PORT}`);
   console.log(`Modelo: ${MODEL} | Config: ${HA_CONFIG} | Data: ${DATA_DIR}`);
   console.log(`API Key: ${ANTHROPIC_API_KEY ? 'configurada (' + ANTHROPIC_API_KEY.slice(0, 10) + '...)' : '⚠️ NO CONFIGURADA'}`);
   console.log(`HA Token: ${HA_TOKEN ? 'presente' : '⚠️ NO DISPONIBLE'}`);
@@ -4523,8 +4526,12 @@ Responde SOLO con un JSON array de strings (las reglas). Máx 20 reglas. Solo la
 // ── Gateway sync automático ───────────────────────────────────────────────────
 
 async function gatewaySyncLoop() {
-  if (!gatewayState.secret) return; // No registrado, nada que hacer
+  if (!gatewayState.secret) {
+    console.log('[gateway] Sin secret — no registrado. Usa agent_gateway→register para unirte a la red.');
+    return;
+  }
   try {
+    console.log('[gateway] Sincronizando con la red de agentes...');
     const now = new Date();
     const h = now.getHours();
     const ctx = {
@@ -4538,8 +4545,13 @@ async function gatewaySyncLoop() {
       body: JSON.stringify({ agent_id: GATEWAY_ID, secret: gatewayState.secret, message: 'sync', context: ctx }),
       timeout: 10000
     });
-    if (!res.ok) return;
+    if (!res.ok) {
+      console.log(`[gateway] Error HTTP ${res.status} del gateway`);
+      return;
+    }
     const data = await res.json();
+    const agentCount = data.network_capabilities ? Object.keys(data.network_capabilities).length : 0;
+    console.log(`[gateway] Sync OK — ${agentCount} agente(s) en la red, ${(data.pending_messages || []).length} mensaje(s) pendiente(s)`);
     if (data.network_capabilities) gatewayState.knownAgents = data.network_capabilities;
     if (data.pending_messages) gatewayState.pendingMessages = data.pending_messages;
     if (data.shared_context) gatewayState.sharedContext = data.shared_context;
@@ -4563,7 +4575,7 @@ async function gatewaySyncLoop() {
       }
     }
   } catch (e) {
-    // Gateway no disponible — no es crítico
+    console.log(`[gateway] No disponible: ${e.message}`);
   }
 }
 
