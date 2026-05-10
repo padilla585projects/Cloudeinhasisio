@@ -21,6 +21,11 @@ if bashio::config.has_value 'proxmox_node'; then
   export PROXMOX_NODE=$(bashio::config 'proxmox_node')
 fi
 
+export GITHUB_TOKEN=""
+if bashio::config.has_value 'github_token'; then
+  export GITHUB_TOKEN=$(bashio::config 'github_token')
+fi
+
 bashio::log.info "Iniciando Jarvis AI Agent..."
 bashio::log.info "Modelo: ${MODEL}"
 if [ -n "${PROXMOX_URL:-}" ]; then
