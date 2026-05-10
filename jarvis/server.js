@@ -3651,6 +3651,18 @@ CUANDO EL USUARIO PIDE CAMBIOS EN EL DASHBOARD:
     prompt += '\n';
   }
 
+  // Pensamientos pendientes (mensajes de nube, colaboraciones, alertas no procesadas)
+  const pendingThoughts = loadJSON(path.join(DATA_DIR, 'pending_thoughts.json'), []).filter(t => t.status === 'pending');
+  if (pendingThoughts.length > 0) {
+    prompt += `═══ TIENES ${pendingThoughts.length} ASUNTO(S) PENDIENTE(S) ═══\n`;
+    prompt += `⚠️ LEER Y ACTUAR AHORA — son mensajes de la nube, colaboraciones o alertas que llegaron mientras no estabas.\n`;
+    for (const t of pendingThoughts.slice(0, 10)) {
+      const icon = t.priority === 'critical' ? '🔴' : t.priority === 'high' ? '🟠' : '🟡';
+      prompt += `${icon} [${t.type}] ${t.title}\n   ${t.detail}\n\n`;
+    }
+    prompt += `INSTRUCCIÓN: Antes de responder al usuario, menciona los asuntos pendientes relevantes (especialmente los high/critical) y actúa sobre ellos.\n\n`;
+  }
+
   // Instrucciones de razonamiento proactivo
   prompt += `═══ RAZONAMIENTO PROACTIVO ═══
 Después de CADA interacción, piensa internamente:
