@@ -1,47 +1,58 @@
 ================================================================================
-ESTADO ACTUAL DEL PROYECTO — Claude AI Agent para Home Assistant
+ESTADO ACTUAL DEL PROYECTO — Jarvis AI Agent para Home Assistant
 ================================================================================
-Última actualización: 2026-05-10
-Versión actual: 2.0.0
+Ultima actualizacion: 2026-05-10
+Version actual: 2.6.0
 
-═══ QUÉ ES ═══
-Agente IA especializado en Home Assistant. No es un chatbot simple — es un
-ingeniero domótico privado con acceso total a la instalación: dispositivos,
-archivos, automatizaciones, internet y memoria permanente.
+=== QUE ES ===
+Agente IA autonomo especializado en Home Assistant. No es un chatbot — es un
+ingeniero domotico privado con acceso total a: dispositivos, archivos,
+automatizaciones, dashboards, internet, memoria permanente, logs del sistema,
+Telegram y Proxmox. Se llama JARVIS.
 
-═══ STACK TÉCNICO ═══
+Filosofia: ACTUA primero, explica despues. Si no sabe algo lo busca.
+Si falta una herramienta la instala. NUNCA dice "no se puede".
+
+=== STACK TECNICO ===
 - Backend: Node.js + Express (CommonJS, require())
-- Frontend: HTML/CSS/JS vanilla (archivo único index.html, dark theme)
-- Modelo: Claude Sonnet 4.6 via API REST (NO streaming a Anthropic, SÍ SSE al frontend)
+- Frontend: HTML/CSS/JS vanilla (archivo unico index.html, dark theme)
+- Modelo: Claude Sonnet 4.6 via API REST (NO streaming a Anthropic, SI SSE al frontend)
 - Dependencias: express, node-fetch v2.x, cors
 - Docker: Alpine + Node.js sobre ghcr.io/home-assistant/amd64-base
 - Persistencia: JSON en /data (memoria, learnings, historial, contexto casa)
 
-═══ ARCHIVOS DEL PROYECTO ═══
-repo/
-├── config.yaml              # Definición add-on HA (v2.0.0, ingress, map filesystem)
-├── Dockerfile               # Alpine + Node.js, WORKDIR /app
-├── run.sh                   # Lee config con bashio, exporta vars, lanza server.js
-├── server.js                # SERVIDOR PRINCIPAL — agente completo con 17 tools
-├── index.html               # UI del chat (dark theme, DM Sans, SSE streaming)
-├── package.json             # Dependencias npm
-├── repository.yaml          # Metadata del repositorio de add-ons HA
-├── README.md                # Documentación del proyecto
-├── CLAUDE.md                # Normas del proyecto para Claude Code
-├── CHANGELOG.txt            # Historial de cambios por versión
-├── ESTADO_PROYECTO.txt      # ESTE ARCHIVO — estado actual
-├── FUTURAS_MEJORAS.txt      # Ideas y mejoras pendientes
-├── LICENSE                  # MIT
-└── claude-mcp/              # (LEGACY) Código antiguo del servidor MCP — pendiente eliminar
+=== ENTORNO FISICO ===
+- Servidor: Proxmox VE (virtualizacion)
+- VM: Home Assistant OS (maquina virtual en Proxmox)
+- Acceso: Panel lateral de HA (ingress) + Telegram (bot configurado)
+- Jarvis puede gestionar tanto HA como Proxmox
 
-═══ TOOLS DISPONIBLES EN EL AGENTE (17 total) ═══
+=== ESTRUCTURA DEL REPOSITORIO ===
+/ (raiz del repo — GitHub)
+├── repository.yaml          # Metadata del repo (HA lee esto primero)
+├── README.md                # Documentacion publica
+├── CLAUDE.md                # Normas del proyecto para Claude Code
+├── CHANGELOG.txt            # Historial de cambios por version
+├── ESTADO_PROYECTO.txt      # ESTE ARCHIVO
+├── FUTURAS_MEJORAS.txt      # Roadmap con prioridades
+├── LICENSE                  # MIT
+└── jarvis/                  # CARPETA DEL ADD-ON
+    ├── config.yaml          # Definicion del add-on (v2.6.0, slug, permisos)
+    ├── build.yaml           # Imagenes base multi-arch
+    ├── Dockerfile           # Alpine + Node.js
+    ├── run.sh               # Lee config con bashio, exporta vars, lanza server.js
+    ├── server.js            # SERVIDOR PRINCIPAL — agente con 28 tools
+    ├── index.html           # UI del chat (dark theme, DM Sans, SSE)
+    └── package.json         # Dependencias npm
+
+=== TOOLS DISPONIBLES (28 total) ===
 
 Dispositivos (5):
-  - get_entities         → Lista entidades por dominio (caché 30s, máx 100)
-  - search_entities      → Búsqueda por nombre (fuzzy, normaliza acentos)
+  - get_entities         → Lista entidades por dominio (cache 30s, max 100)
+  - search_entities      → Busqueda fuzzy por nombre
   - get_entity_state     → Estado + atributos de una entidad
-  - call_service         → Ejecuta servicios HA (encender, apagar, etc.)
-  - get_history          → Historial de estados (máx 48h)
+  - call_service         → Ejecuta servicios HA
+  - get_history          → Historial de estados (max 48h)
 
 Automatizaciones (3):
   - get_automations      → Lista automatizaciones con estado
@@ -51,65 +62,101 @@ Automatizaciones (3):
 Filesystem (4):
   - read_file            → Lee archivos en /config, /addons, /share, /media, /data
   - write_file           → Escribe en /config, /share, /data
-  - append_file          → Añade al final de un archivo
+  - append_file          → Anade al final de un archivo
   - list_directory       → Lista contenido de carpetas (recursivo opcional)
 
 Internet (2):
-  - web_search           → Búsqueda DuckDuckGo (sin API key)
+  - web_search           → Busqueda DuckDuckGo (sin API key)
   - fetch_url            → Obtiene contenido de una URL
 
 Memoria y aprendizaje (4):
   - save_memory          → Guarda preferencia/rutina/info del usuario
-  - get_memory           → Consulta memoria (filtro por categoría/texto)
-  - delete_memory        → Elimina nota por índice
+  - get_memory           → Consulta memoria (filtro por categoria/texto)
+  - delete_memory        → Elimina nota por indice
   - learn                → Registra aprendizaje (error/success/pattern/optimization)
 
-Sistema (2):
-  - scan_installation    → Escanea toda la instalación de HA
+Dashboards (5):
+  - get_dashboards       → Lista todos los paneles Lovelace
+  - get_dashboard_config → Lee config completa de un dashboard
+  - update_dashboard     → Modifica dashboard (con backup automatico)
+  - get_installed_frontend → Detecta cards custom/HACS/temas
+  - search_hacs_resources → Busca herramientas en la comunidad HA
+
+Instalacion y conocimiento (4):
+  - scan_installation    → Escanea toda la instalacion de HA
   - check_config         → Verifica config antes de recargar
+  - install_hacs_resource → Descarga e instala cards/integraciones
+  - ha_knowledge         → Consulta documentacion oficial de HA
 
-═══ CÓMO FUNCIONA EL APRENDIZAJE ═══
-1. Errores de tools se auto-registran como learnings
-2. Claude puede registrar éxitos, patrones y optimizaciones manualmente
-3. Los últimos 20 learnings se inyectan en el system prompt
-4. La memoria del usuario se inyecta completa en el system prompt
-5. El contexto de la casa (scan) se inyecta en el system prompt
-6. Resultado: el prompt crece con información relevante con cada uso
+Logs (2):
+  - get_system_logs      → Logs de core, supervisor, host, add-ons
+  - get_error_log        → home-assistant.log (errores integraciones)
 
-═══ PERSISTENCIA ═══
-Archivos en /data (sobreviven reinicios del add-on):
-  - memory.json           → Notas del usuario (preferencias, rutinas, etc.)
-  - history.json          → Últimos 60 mensajes de conversación
-  - learnings.json        → Hasta 200 aprendizajes (errores, éxitos, patrones)
-  - house_context.json    → Resumen de la instalación (se regenera cada 2h)
-  - installation_map.json → Mapa completo de la instalación (JSON estructurado)
+Telegram (3):
+  - telegram_send        → Envia mensaje por Telegram
+  - telegram_send_image  → Envia imagen/snapshot de camara
+  - telegram_get_updates → Lee mensajes recibidos por el bot
 
-═══ VARIABLES DE ENTORNO ═══
-  ANTHROPIC_API_KEY  → Key de Anthropic (usuario la pone en config del add-on)
+Proxmox (1):
+  - proxmox_api          → Gestion completa: VMs, snapshots, storage, red, estado
+
+=== INTELIGENCIA DEL AGENTE ===
+
+System prompt dinamico que incluye:
+  1. Personalidad JARVIS (autonomo, directo, eficiente)
+  2. Contexto temporal (hora, dia, momento del dia)
+  3. Estado en tiempo real (presencia, luces, clima, media, alertas) — se actualiza cada 60s
+  4. Mapa de la instalacion (entidades, integraciones, add-ons, archivos)
+  5. Memoria del usuario (preferencias, rutinas, info guardada)
+  6. Learnings separados por tipo (errores, exitos, patrones, optimizaciones)
+  7. Conocimiento de dashboards y cards (nativas + populares HACS)
+  8. Experticia en HA, protocolos, hardware, Proxmox, Linux
+  9. Instrucciones de razonamiento proactivo
+
+Bucle agentico:
+  - Maximo 15 iteraciones por request
+  - Tools se ejecutan en PARALELO (Promise.all)
+  - Errores se auto-registran como learnings
+  - Preferencias se auto-guardan en memoria
+
+=== PERSISTENCIA ===
+Archivos en /data (sobreviven reinicios):
+  - memory.json           → Notas del usuario
+  - history.json          → Ultimos 60 mensajes de conversacion
+  - learnings.json        → Hasta 200 aprendizajes
+  - house_context.json    → Resumen de la instalacion (regenera cada 2h)
+  - installation_map.json → Mapa completo (JSON estructurado)
+  - backups/              → Backups de dashboards antes de modificar
+
+=== VARIABLES DE ENTORNO ===
+  ANTHROPIC_API_KEY  → Key de Anthropic (config del add-on)
   MODEL              → claude-sonnet-4-6 (default)
   LANGUAGE           → es (default)
-  HA_TOKEN           → ${SUPERVISOR_TOKEN} (automático, acceso completo a HA)
+  HA_TOKEN           → ${SUPERVISOR_TOKEN} (automatico)
   HA_URL             → http://supervisor/core
+  PROXMOX_URL        → URL del servidor Proxmox (opcional)
+  PROXMOX_TOKEN      → API token de Proxmox (opcional)
+  PROXMOX_NODE       → Nombre del nodo (default: pve)
 
-═══ PERMISOS DEL ADD-ON ═══
+=== PERMISOS DEL ADD-ON ===
   config.yaml → map:
-    - config:rw    → Leer/escribir configuración de HA
-    - addons:ro    → Leer add-ons instalados
-    - share:rw     → Leer/escribir carpeta compartida
-    - media:ro     → Leer media
+    - config:rw    → Configuracion de HA (YAML, .storage, www, custom_components)
+    - addons:ro    → Add-ons instalados
+    - share:rw     → Carpeta compartida
+    - media:ro     → Media
 
-═══ ENTORNO DE PRODUCCIÓN ═══
-  - HA accesible via Nabu Casa: https://3pijakbxlbqvfl1pqrsziqawn8bopph6.ui.nabu.casa
+=== ENTORNO DE PRODUCCION ===
+  - HA accesible via Nabu Casa
   - HA tiene ~786 entidades
   - GitHub repo: https://github.com/padilla585projects/Cloudeinhasisio
   - Flujo de deploy: push → actualizar add-on en HA → reiniciar
+  - Bot de Telegram ya configurado en HA
 
-═══ PROBLEMAS CONOCIDOS / RESUELTOS ═══
-  [RESUELTO] v1.0.0 → Claude no respondía. Causa: fetch usaba "/api/chat" (absoluto)
-             que iba a la API de HA en vez del add-on. Fix: ruta relativa "api/chat".
-  [RESUELTO] v1.0.0 → Model ID inválido "claude-sonnet-4-20250514".
-             Fix: actualizado a "claude-sonnet-4-6".
-  [RESUELTO] v1.0.0 → Bug multi-tool duplicaba assistant message en historial.
-             Fix: un solo push por turno.
-  [RESUELTO] v1.0.0 → Historial se perdía al cambiar pestaña.
-             Fix: persistencia en servidor.
+=== HISTORIAL DE VERSIONES (resumen) ===
+  v1.0.0 → Chat basico con Claude (muchos bugs)
+  v2.0.0 → Agente completo: 17 tools, filesystem, internet, memoria, aprendizaje
+  v2.2.0 → Personalidad Jarvis + scan instalacion + prompt dinamico
+  v2.3.0 → Contexto en tiempo real (updateLiveContext cada 60s)
+  v2.4.0 → Gestion de dashboards + conocimiento cards HA
+  v2.5.0 → Experto HA + Proxmox + auto-instalacion herramientas
+  v2.6.0 → Logs del sistema + Telegram bidireccional (28 tools total)

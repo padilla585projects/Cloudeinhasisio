@@ -101,43 +101,57 @@ Si los archivos están en la raíz, HA no detecta actualizaciones. NUNCA mover a
 - Siempre actualizar CHANGELOG.txt antes de hacer push
 - El agente se llama JARVIS en todas partes (UI, prompt, logs, config)
 
-## Tools disponibles en Jarvis (17 total)
+## Tools disponibles en Jarvis (28 total)
 
-### Dispositivos
+### Dispositivos (5)
 1. `get_entities` — Lista entidades por dominio (caché 30s, máx 100)
 2. `search_entities` — Búsqueda fuzzy por nombre
 3. `get_entity_state` — Estado y atributos de una entidad
 4. `call_service` — Ejecutar servicios HA
 5. `get_history` — Historial de estados (máx 48h)
 
-### Automatizaciones
+### Automatizaciones (3)
 6. `get_automations` — Lista automatizaciones
 7. `create_automation` — Escribe YAML en automations.yaml + reload
 8. `reload_config` — Recarga config (automations/scripts/scenes/core/all)
-9. `check_config` — Verifica que la config es válida
 
-### Filesystem
-10. `read_file` — Lee archivos en /config, /addons, /share, /media, /data
-11. `write_file` — Escribe en /config, /share, /data
-12. `append_file` — Añade al final de un archivo
-13. `list_directory` — Lista directorio (recursivo opcional)
+### Filesystem (4)
+9. `read_file` — Lee archivos en /config, /addons, /share, /media, /data
+10. `write_file` — Escribe en /config, /share, /data
+11. `append_file` — Añade al final de un archivo
+12. `list_directory` — Lista directorio (recursivo opcional)
 
-### Internet
-14. `web_search` — Búsqueda DuckDuckGo
-15. `fetch_url` — Obtiene contenido de una URL
+### Internet (2)
+13. `web_search` — Búsqueda DuckDuckGo
+14. `fetch_url` — Obtiene contenido de una URL
 
-### Memoria y aprendizaje
-16. `save_memory` — Guarda preferencias/rutinas/info
-17. `get_memory` — Consulta memoria
-18. `delete_memory` — Elimina nota
-19. `learn` — Registra aprendizaje (error/success/pattern/optimization)
+### Memoria y aprendizaje (4)
+15. `save_memory` — Guarda preferencias/rutinas/info
+16. `get_memory` — Consulta memoria
+17. `delete_memory` — Elimina nota
+18. `learn` — Registra aprendizaje (error/success/pattern/optimization)
 
-### Dashboards
-21. `get_dashboards` — Lista todos los dashboards Lovelace
-22. `get_dashboard_config` — Lee config completa de un dashboard
-23. `update_dashboard` — Modifica un dashboard (con backup auto)
-24. `get_installed_frontend` — Detecta cards custom/HACS/temas
-25. `search_hacs_resources` — Busca herramientas en la comunidad HA
+### Dashboards (5)
+19. `get_dashboards` — Lista todos los dashboards Lovelace
+20. `get_dashboard_config` — Lee config completa de un dashboard
+21. `update_dashboard` — Modifica un dashboard (con backup auto)
+22. `get_installed_frontend` — Detecta cards custom/HACS/temas
+23. `search_hacs_resources` — Busca herramientas en la comunidad HA
 
-### Sistema
-20. `scan_installation` — Escanea toda la instalación de HA
+### Instalación y conocimiento (4)
+24. `scan_installation` — Escanea toda la instalación de HA
+25. `check_config` — Verifica que la config es válida
+26. `install_hacs_resource` — Descarga e instala cards/integraciones
+27. `ha_knowledge` — Consulta documentación oficial de HA
+
+### Logs (2)
+28. `get_system_logs` — Logs de core, supervisor, host, add-ons (con filtro)
+29. `get_error_log` — home-assistant.log directo
+
+### Telegram (3)
+30. `telegram_send` — Envía mensaje por Telegram
+31. `telegram_send_image` — Envía imagen/snapshot de cámara
+32. `telegram_get_updates` — Lee mensajes recibidos por el bot
+
+### Proxmox (1)
+33. `proxmox_api` — Gestión completa: VMs, snapshots, storage, red, estado

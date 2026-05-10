@@ -1980,7 +1980,7 @@ app.get('/api/health', (req, res) => {
 
 const PORT = 3000;
 app.listen(PORT, '0.0.0.0', async () => {
-  console.log(`Jarvis AI Agent v2.3.0 corriendo en puerto ${PORT}`);
+  console.log(`Jarvis AI Agent v2.6.0 corriendo en puerto ${PORT}`);
   console.log(`Modelo: ${MODEL} | Config: ${HA_CONFIG} | Data: ${DATA_DIR}`);
 
   // Scan inicial si no hay contexto o tiene más de 2 horas
