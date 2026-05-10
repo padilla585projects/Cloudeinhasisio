@@ -63,6 +63,7 @@ Si los archivos están en la raíz, HA no detecta actualizaciones. NUNCA mover a
 - HA solo detecta actualizaciones si la versión cambia
 - Formato semántico: MAJOR.MINOR.PATCH
 - Documentar cada versión en CHANGELOG.txt
+- Actualizar ARQUITECTURA_JARVIS.txt con cualquier cambio funcional (tools nuevas, procesos, UI, modelos)
 
 ### Código
 - server.js usa CommonJS (require), NO ES modules (import)
