@@ -2572,6 +2572,9 @@ Puedes crear add-ons completos con create_addon:
 
 let liveContext = '';
 
+// ── Contador de uso de API (tokens estimados) ───────────────────────────────
+let apiUsage = { calls: 0, inputTokens: 0, outputTokens: 0, lastReset: new Date().toISOString() };
+
 async function updateLiveContext() {
   try {
     const states = await haGet('/states');
@@ -2712,7 +2715,13 @@ app.post('/api/chat', async (req, res) => {
       }
 
       const data = await response.json();
-      console.log(`[claude] iter=${iterations} stop=${data.stop_reason} blocks=${data.content.map(b => b.type).join(',')}`);
+      // Trackear uso de tokens
+      if (data.usage) {
+        apiUsage.calls++;
+        apiUsage.inputTokens += data.usage.input_tokens || 0;
+        apiUsage.outputTokens += data.usage.output_tokens || 0;
+      }
+      console.log(`[claude] iter=${iterations} stop=${data.stop_reason} blocks=${data.content.map(b => b.type).join(',')} tokens=${data.usage ? data.usage.input_tokens + '+' + data.usage.output_tokens : '?'}`);
 
       for (const block of data.content) {
         if (block.type === 'text') {
@@ -2764,14 +2773,15 @@ app.post('/api/chat', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '3.3.1',
+    version: '3.4.1',
     model: MODEL,
     memories: userMemory.length,
     learnings: learnings.length,
     history: conversationHistory.length,
     ha_connected: !!liveContext,
     api_key_set: !!ANTHROPIC_API_KEY,
-    uptime: Math.floor(process.uptime()) + 's'
+    uptime: Math.floor(process.uptime()) + 's',
+    api_usage: apiUsage
   });
 });
 
@@ -2844,9 +2854,13 @@ app.listen(PORT, '0.0.0.0', () => {
   // Timers — todos empiezan después de dar tiempo al sistema
   setInterval(updateLiveContext, 60_000);
 
-  // Bucle proactivo — empieza a los 3 minutos
-  setInterval(proactiveThinkingLoop, 5 * 60_000);
-  setTimeout(proactiveThinkingLoop, 3 * 60_000);
+  // Bucle proactivo — cada 15min (ahorra tokens)
+  setInterval(proactiveThinkingLoop, 15 * 60_000);
+  setTimeout(proactiveThinkingLoop, 5 * 60_000);
+
+  // Bucle de aprendizaje — cada 2h investiga y almacena conocimiento
+  setInterval(knowledgeExpansionLoop, 2 * 3600_000);
+  setTimeout(knowledgeExpansionLoop, 10 * 60_000);
 
   // Auto-update — empieza a los 2 minutos
   setInterval(checkSelfUpdate, 2 * 60_000);
@@ -2952,8 +2966,8 @@ Prioridad: cosas accionables > observaciones genéricas.`;
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 1024,
-        system: 'Eres Jarvis en modo autónomo. Piensas por ti mismo. Si tienes algo útil que proponer, usa proactive_thought. Si no, di "OK". Hablas español. Eres proactivo, creativo y práctico.',
+        max_tokens: 512,
+        system: 'Eres Jarvis en modo autónomo. Piensas por ti mismo. Si tienes algo útil, usa proactive_thought. Si no, di solo "OK". Sé breve. Español.',
         tools: [tools.find(t => t.name === 'proactive_thought'), tools.find(t => t.name === 'learn'), tools.find(t => t.name === 'save_memory')],
         messages: [{ role: 'user', content: analysisPrompt }]
       })
@@ -2976,6 +2990,116 @@ Prioridad: cosas accionables > observaciones genéricas.`;
     console.log(`[proactive] Pensamiento completo. ${toolCalls.length} acciones tomadas.`);
   } catch (err) {
     console.log(`[proactive] Error: ${err.message}`);
+  }
+}
+
+// ── Expansión de conocimiento — Jarvis aprende por su cuenta ─────────────────
+
+const KNOWLEDGE_TOPICS = [
+  // Industrial
+  'Modbus TCP configuración Home Assistant integración',
+  'OPC-UA servidor cliente configurar raspberry',
+  'PLC Siemens S7 comunicación MQTT Node-RED',
+  'sensores 4-20mA conectar ESP32 ADC',
+  'variador frecuencia VFD Modbus registros',
+  'PROFINET configuración básica',
+  'EtherCAT vs EtherNet/IP diferencias',
+  'BACnet HVAC integración Home Assistant',
+  'PID control temperatura Home Assistant',
+  'SCADA open source alternativas Ignition',
+  // Domótica avanzada
+  'Home Assistant últimas novedades 2026',
+  'ESPHome sensores industriales',
+  'Zigbee2MQTT mejores prácticas red grande',
+  'Matter Thread estado actual compatibilidad',
+  'Frigate detección objetos configuración',
+  'Home Assistant energy dashboard solar',
+  'automatización avanzada templates Jinja2',
+  'Node-RED vs HA automations cuándo usar',
+  // Redes y seguridad
+  'VLAN IoT separar red domótica',
+  'firewall OT IT mejores prácticas',
+  'VPN WireGuard Home Assistant acceso remoto',
+  // Hardware
+  'ESP32 S3 mejores proyectos ESPHome',
+  'Shelly Pro industrial vs doméstico',
+  'Sonoff NSPanel Pro custom firmware'
+];
+
+let knowledgeTopicIndex = 0;
+
+async function knowledgeExpansionLoop() {
+  try {
+    if (!ANTHROPIC_API_KEY) return;
+
+    // Elegir tema siguiente (rotativo)
+    const topic = KNOWLEDGE_TOPICS[knowledgeTopicIndex % KNOWLEDGE_TOPICS.length];
+    knowledgeTopicIndex++;
+
+    // Comprobar si ya tenemos conocimiento de este tema
+    const KB_DIR = path.join(DATA_DIR, 'knowledge');
+    const KB_INDEX = path.join(KB_DIR, 'index.json');
+    if (!fs.existsSync(KB_DIR)) fs.mkdirSync(KB_DIR, { recursive: true });
+    const index = loadJSON(KB_INDEX, { entries: [], categories: {}, totalEntries: 0 });
+
+    // Buscar si ya existe algo similar
+    const topicWords = topic.toLowerCase().split(' ');
+    const alreadyKnown = index.entries.some(e => {
+      const entryText = `${e.title} ${(e.tags || []).join(' ')}`.toLowerCase();
+      return topicWords.filter(w => entryText.includes(w)).length >= 3;
+    });
+
+    if (alreadyKnown) {
+      console.log(`[knowledge] Ya conozco sobre: ${topic.slice(0, 40)}... saltando.`);
+      return;
+    }
+
+    console.log(`[knowledge] Investigando: ${topic}`);
+
+    // Pedir a Claude que genere conocimiento estructurado sobre el tema
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 800,
+        system: 'Eres un experto técnico. Genera conocimiento estructurado y práctico. Responde SOLO con la llamada a knowledge_db. Español. Sé conciso pero completo.',
+        tools: [tools.find(t => t.name === 'knowledge_db')],
+        messages: [{ role: 'user', content: `Genera una entrada de conocimiento sobre: "${topic}"
+
+Usa knowledge_db con action "add" y crea una entrada con:
+- title: título claro y descriptivo
+- category: la más apropiada (industrial, domotica, protocolos, networking, hardware, energia, seguridad, integraciones)
+- content: explicación práctica (qué es, cómo funciona, cómo se configura, ejemplo de uso). Máximo 500 caracteres.
+- tags: 4-6 tags relevantes para búsqueda
+- importance: high si es muy útil para domótica/industrial, medium si es complementario
+- source: "auto-aprendizaje"
+
+Solo información VERIFICABLE y PRÁCTICA. Nada genérico.` }]
+      })
+    });
+
+    if (!response.ok) {
+      console.log(`[knowledge] Error API: ${response.status}`);
+      return;
+    }
+
+    const data = await response.json();
+    const toolCalls = data.content.filter(b => b.type === 'tool_use');
+
+    for (const tc of toolCalls) {
+      if (tc.name === 'knowledge_db') {
+        await executeTool('knowledge_db', tc.input);
+      }
+    }
+
+    console.log(`[knowledge] +1 entrada almacenada. Total: ${index.totalEntries + toolCalls.length} entradas en la base.`);
+  } catch (err) {
+    console.log(`[knowledge] Error: ${err.message}`);
   }
 }
 
