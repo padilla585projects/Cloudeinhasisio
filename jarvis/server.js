@@ -3,6 +3,9 @@ const fetch = require('node-fetch');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const { exec } = require('child_process');
+const net = require('net');
+const dgram = require('dgram');
 
 const app = express();
 app.use(cors());
@@ -54,6 +57,10 @@ let conversationHistory = loadJSON(HISTORY_FILE, []);
 let learnings = loadJSON(LEARNINGS_FILE, []);
 let houseContext = '';
 let installationMap = loadJSON(INSTALLATION_MAP_FILE, {});
+
+// Para local_file: permite que el agentic loop envíe SSE al cliente activo
+let currentSendEvent = null;
+const pendingLocalRequests = new Map(); // requestId → {resolve, reject}
 
 try {
   if (fs.existsSync(HOUSE_CONTEXT_FILE)) {
@@ -812,6 +819,72 @@ const tools = [
         connect_to: { type: 'string', description: 'ID de la entrada a conectar (para action=connect)' }
       },
       required: ['action']
+    }
+  },
+
+  // ─── Red local ───
+  {
+    name: 'network',
+    description: 'Acceso completo a la red local de la casa. Descubre dispositivos, escanea puertos, hace ping, detecta agentes IA en la red, envía peticiones HTTP a cualquier dispositivo local, envía magic packet WoL. Usa esto para explorar la red, hablar con APIs de dispositivos locales o despertar PCs.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['arp_table', 'scan_subnet', 'ping', 'port_scan', 'http_request', 'discover_agents', 'wol'],
+          description: 'arp_table: dispositivos en la red (tabla ARP) | scan_subnet: ping sweep de la subred | ping: probar un host | port_scan: puertos abiertos de un host | http_request: llamar a la API de un dispositivo local | discover_agents: detectar agentes IA (Ollama, LM Studio, otro Jarvis...) | wol: Wake-on-LAN'
+        },
+        host: { type: 'string', description: 'IP o hostname del dispositivo' },
+        subnet: { type: 'string', description: 'Prefijo de subred a escanear (ej: "192.168.1"). Si no se indica, se detecta automáticamente.' },
+        ports: { type: 'array', items: { type: 'number' }, description: 'Puertos a escanear en port_scan (ej: [80, 443, 8080, 22])' },
+        method: { type: 'string', enum: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'], description: 'Método HTTP para http_request (default: GET)' },
+        url: { type: 'string', description: 'URL completa para http_request (ej: "http://192.168.1.50:8080/api/status")' },
+        body: { type: 'object', description: 'Body JSON para http_request' },
+        headers: { type: 'object', description: 'Headers HTTP adicionales para http_request' },
+        mac: { type: 'string', description: 'MAC address para WoL (formato: AA:BB:CC:DD:EE:FF)' }
+      },
+      required: ['action']
+    }
+  },
+
+  // ─── Archivos del PC del usuario ───
+  {
+    name: 'local_file',
+    description: 'Lee y navega los archivos del ordenador del usuario (el PC desde el que está hablando con Jarvis). Requiere que el usuario haya hecho clic en "📁 Conectar PC" en la interfaz. Permite leer documentos, configs, logs y cualquier archivo de su máquina.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['read', 'list', 'search'],
+          description: 'read: lee el contenido de un archivo | list: lista directorio | search: busca archivos por nombre'
+        },
+        path: { type: 'string', description: 'Ruta relativa dentro de la carpeta conectada. Usa "." para la raíz. Ej: "documentos/config.yaml"' },
+        query: { type: 'string', description: 'Texto a buscar en los nombres de archivos (para action=search)' },
+        max_depth: { type: 'number', description: 'Profundidad máxima para list (default: 2)' }
+      },
+      required: ['action']
+    }
+  },
+
+  // ─── Chat con otros agentes IA ───
+  {
+    name: 'agent_chat',
+    description: 'Comunícate con otros agentes IA descubiertos en la red: Ollama, LM Studio, LocalAI, otro Jarvis, o cualquier API OpenAI-compatible. Primero usa network→discover_agents para encontrarlos. Puedes consultar modelos especializados o colaborar con otro agente.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_url: { type: 'string', description: 'URL base del agente (ej: "http://192.168.1.50:11434")' },
+        agent_type: {
+          type: 'string',
+          enum: ['ollama', 'openai_compatible', 'jarvis', 'custom'],
+          description: 'ollama: protocolo Ollama | openai_compatible: LM Studio, LocalAI, etc. | jarvis: otro Jarvis | custom: intentar openai compatible'
+        },
+        model: { type: 'string', description: 'Modelo a usar en el agente (ej: "llama3.2", "mistral", "phi3")' },
+        message: { type: 'string', description: 'Mensaje a enviar al agente' },
+        system_prompt: { type: 'string', description: 'Prompt de sistema (opcional)' }
+      },
+      required: ['agent_url', 'agent_type', 'message']
     }
   }
 ];
@@ -2552,6 +2625,184 @@ Prohibida la copia, redistribucion y uso comercial.`);
         }
       }
 
+      // ─── Red local ───
+      case 'network': {
+        const { action: netAction, host, subnet, ports, method, url: netUrl, body: netBody, headers: netHeaders, mac } = input;
+
+        switch (netAction) {
+          case 'arp_table': {
+            return new Promise((resolve) => {
+              exec('arp -n 2>/dev/null || ip neigh show 2>/dev/null', (err, stdout) => {
+                if (err && !stdout) return resolve({ error: 'No se pudo leer la tabla ARP', raw: err?.message });
+                const lines = stdout.trim().split('\n').filter(l => l && !l.startsWith('Address') && !l.startsWith('('));
+                const devices = lines.map(line => {
+                  const parts = line.split(/\s+/);
+                  return { ip: parts[0], mac: parts[2] || parts[4] || '?', iface: parts[parts.length - 1] };
+                }).filter(d => d.ip && /^\d+\.\d+\.\d+\.\d+$/.test(d.ip));
+                resolve({ devices, count: devices.length });
+              });
+            });
+          }
+
+          case 'scan_subnet': {
+            const sub = subnet || await new Promise(r => {
+              exec("ip route | grep src | awk '{print $NF}' | head -1", (err, out) => {
+                const ip = out.trim();
+                r(ip && /^\d+\.\d+\.\d+/.test(ip) ? ip.split('.').slice(0, 3).join('.') : '192.168.1');
+              });
+            });
+            const promises = Array.from({ length: 254 }, (_, i) => new Promise(r => {
+              exec(`ping -c 1 -W 1 ${sub}.${i + 1} 2>/dev/null`, err => r(err ? null : `${sub}.${i + 1}`));
+            }));
+            const alive = (await Promise.all(promises)).filter(Boolean);
+            return { subnet: sub, alive, count: alive.length };
+          }
+
+          case 'ping': {
+            if (!host) return { error: 'host es requerido' };
+            return new Promise(r => {
+              exec(`ping -c 3 -W 2 ${host} 2>/dev/null`, (err, stdout) => {
+                if (err && !stdout) return r({ alive: false, host });
+                const m = stdout.match(/(\d+\.\d+)\/(\d+\.\d+)\/(\d+\.\d+)/);
+                r({ alive: !err, host, latency_ms: m ? parseFloat(m[2]) : null });
+              });
+            });
+          }
+
+          case 'port_scan': {
+            if (!host) return { error: 'host es requerido' };
+            const portsToScan = ports || [22, 80, 443, 8080, 8123, 3000, 3001, 5000, 8888, 9000, 9090, 11434, 1234];
+            const results = await Promise.all(portsToScan.map(port => new Promise(r => {
+              const s = new net.Socket();
+              s.setTimeout(1200);
+              s.on('connect', () => { s.destroy(); r({ port, open: true }); });
+              s.on('timeout', () => { s.destroy(); r({ port, open: false }); });
+              s.on('error', () => r({ port, open: false }));
+              s.connect(port, host);
+            })));
+            return { host, open_ports: results.filter(r => r.open).map(r => r.port), scanned: portsToScan.length };
+          }
+
+          case 'http_request': {
+            if (!netUrl) return { error: 'url es requerido' };
+            const opts = { method: method || 'GET', headers: { 'Content-Type': 'application/json', ...(netHeaders || {}) }, timeout: 8000 };
+            if (netBody && method !== 'GET') opts.body = JSON.stringify(netBody);
+            const res = await fetch(netUrl, opts);
+            const ct = res.headers.get('content-type') || '';
+            const resBody = ct.includes('json') ? await res.json() : (await res.text()).slice(0, 5000);
+            return { status: res.status, ok: res.ok, body: resBody };
+          }
+
+          case 'discover_agents': {
+            const AGENT_SIGS = [
+              { name: 'Ollama', port: 11434, path: '/api/tags', type: 'ollama' },
+              { name: 'LM Studio', port: 1234, path: '/v1/models', type: 'openai_compatible' },
+              { name: 'LocalAI', port: 8080, path: '/v1/models', type: 'openai_compatible' },
+              { name: 'Text Gen WebUI', port: 5000, path: '/v1/models', type: 'openai_compatible' },
+              { name: 'AnythingLLM', port: 3001, path: '/api/ping', type: 'custom' },
+              { name: 'Open WebUI', port: 8080, path: '/api/version', type: 'custom' },
+              { name: 'Jarvis', port: 3000, path: '/api/health', type: 'jarvis' },
+            ];
+            const arpHosts = await new Promise(r => {
+              exec('arp -n 2>/dev/null || ip neigh show 2>/dev/null', (err, out) => {
+                const ips = (out || '').trim().split('\n').map(l => l.split(/\s+/)[0]).filter(ip => /^\d+\.\d+\.\d+\.\d+$/.test(ip));
+                r([...new Set(ips)]);
+              });
+            });
+            const found = [];
+            for (const h of arpHosts) {
+              for (const sig of AGENT_SIGS) {
+                try {
+                  const res = await fetch(`http://${h}:${sig.port}${sig.path}`, { timeout: 2000 });
+                  if (res.ok) {
+                    const info = await res.json().catch(() => ({}));
+                    found.push({ name: sig.name, host: h, port: sig.port, type: sig.type, url: `http://${h}:${sig.port}`, info });
+                  }
+                } catch { /* not reachable */ }
+              }
+            }
+            return { agents: found, count: found.length, scanned_hosts: arpHosts.length };
+          }
+
+          case 'wol': {
+            if (!mac) return { error: 'mac es requerido (formato AA:BB:CC:DD:EE:FF)' };
+            const macBytes = mac.replace(/[:\-]/g, '').match(/../g).map(h => parseInt(h, 16));
+            const magic = Buffer.alloc(102);
+            magic.fill(0xff, 0, 6);
+            for (let i = 0; i < 16; i++) Buffer.from(macBytes).copy(magic, 6 + i * 6);
+            return new Promise(r => {
+              const sock = dgram.createSocket('udp4');
+              sock.once('error', err => { sock.close(); r({ error: err.message }); });
+              sock.bind(() => {
+                sock.setBroadcast(true);
+                sock.send(magic, 0, magic.length, 9, '255.255.255.255', () => {
+                  sock.close();
+                  r({ sent: true, mac, message: 'Magic packet enviado — el dispositivo debería encenderse en unos segundos.' });
+                });
+              });
+            });
+          }
+
+          default:
+            return { error: `Acción de red desconocida: ${netAction}` };
+        }
+      }
+
+      // ─── Archivos del PC del usuario (vía browser) ───
+      case 'local_file': {
+        if (!currentSendEvent) return { error: 'No hay sesión activa. Esta tool requiere que el usuario esté en el chat.' };
+        const requestId = `lf_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+        try {
+          return await new Promise((resolve, reject) => {
+            pendingLocalRequests.set(requestId, { resolve, reject });
+            currentSendEvent({ type: 'local_request', requestId, action: input.action, path: input.path || '.', query: input.query || '', maxDepth: input.max_depth || 2 });
+            setTimeout(() => {
+              if (pendingLocalRequests.has(requestId)) {
+                pendingLocalRequests.delete(requestId);
+                reject(new Error('El usuario no tiene una carpeta conectada o no respondió. Dile que haga clic en "📁 Conectar PC" en la interfaz.'));
+              }
+            }, 30000);
+          });
+        } catch (e) {
+          return { error: e.message };
+        }
+      }
+
+      // ─── Chat con otros agentes IA ───
+      case 'agent_chat': {
+        const { agent_url, agent_type, model: agentModel, message: agentMsg, system_prompt } = input;
+        const sysBlock = system_prompt ? [{ role: 'system', content: system_prompt }] : [];
+        try {
+          if (agent_type === 'ollama') {
+            const res = await fetch(`${agent_url}/api/chat`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' }, timeout: 60000,
+              body: JSON.stringify({ model: agentModel || 'llama3.2', messages: [...sysBlock, { role: 'user', content: agentMsg }], stream: false })
+            });
+            const data = await res.json();
+            return { response: data.message?.content || data.response, model: data.model, agent_url };
+          } else if (agent_type === 'jarvis') {
+            const res = await fetch(`${agent_url}/api/chat`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' }, timeout: 120000,
+              body: JSON.stringify({ messages: [{ role: 'user', content: agentMsg }] })
+            });
+            const text = await res.text();
+            const textParts = text.split('\n').filter(l => l.startsWith('data: '))
+              .map(l => { try { const d = JSON.parse(l.slice(6)); return d.type === 'text' ? d.text : ''; } catch { return ''; } }).join('');
+            return { response: textParts, agent_type: 'jarvis', agent_url };
+          } else {
+            // openai_compatible / custom
+            const res = await fetch(`${agent_url}/v1/chat/completions`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' }, timeout: 60000,
+              body: JSON.stringify({ model: agentModel || 'default', messages: [...sysBlock, { role: 'user', content: agentMsg }] })
+            });
+            const data = await res.json();
+            return { response: data.choices?.[0]?.message?.content || JSON.stringify(data), model: data.model, agent_url };
+          }
+        } catch (e) {
+          return { error: `Error comunicando con agente: ${e.message}`, agent_url };
+        }
+      }
+
       default:
         return { error: `Tool desconocida: ${name}` };
     }
@@ -3165,6 +3416,18 @@ app.get('/api/pending_task', (req, res) => {
   res.json(loadJSON(PENDING_TASK_FILE, { status: 'idle' }));
 });
 
+// Respuesta de local_file desde el browser
+app.post('/api/local_response', (req, res) => {
+  const { requestId, error, ...data } = req.body;
+  const pending = pendingLocalRequests.get(requestId);
+  if (pending) {
+    pendingLocalRequests.delete(requestId);
+    if (error) pending.reject(new Error(error));
+    else pending.resolve(data);
+  }
+  res.json({ ok: true });
+});
+
 // Chat principal
 app.post('/api/chat', async (req, res) => {
   const { messages, files } = req.body;
@@ -3177,6 +3440,7 @@ app.post('/api/chat', async (req, res) => {
   res.setHeader('Connection', 'keep-alive');
 
   const sendEvent = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+  currentSendEvent = sendEvent;
 
   try {
     // Actualizar contexto en tiempo real antes de cada request
@@ -3335,6 +3599,8 @@ app.post('/api/chat', async (req, res) => {
     // Mantener la tarea en disco si fue un error de red/reinicio (no limpiar)
     sendEvent({ type: 'error', error: err.message });
     res.end();
+  } finally {
+    currentSendEvent = null;
   }
 });
 

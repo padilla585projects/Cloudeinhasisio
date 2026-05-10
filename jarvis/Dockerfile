@@ -1,7 +1,7 @@
 ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base:latest
 FROM $BUILD_FROM
 
-RUN apk add --no-cache nodejs npm
+RUN apk add --no-cache nodejs npm iproute2 iputils
 
 WORKDIR /app
 

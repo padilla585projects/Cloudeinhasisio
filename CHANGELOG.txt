@@ -3,6 +3,37 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.10.0 (2026-05-10) — RED LOCAL + ARCHIVOS DEL PC + AGENTES IA EN LA RED
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — Tool `network` (acceso completo a la red de casa):
+- arp_table: lista todos los dispositivos vistos recientemente en la red (tabla ARP)
+- scan_subnet: ping sweep de toda la subred para descubrir hosts activos
+- ping: comprobar si un dispositivo responde y medir latencia
+- port_scan: detectar qué puertos tiene abiertos un host (TCP)
+- http_request: llamar a la API REST de cualquier dispositivo de la red local
+- discover_agents: detectar automáticamente agentes IA en la red (Ollama, LM Studio,
+  LocalAI, Open WebUI, otro Jarvis, Text Gen WebUI, AnythingLLM)
+- wol: Wake-on-LAN — enviar magic packet para encender un PC remotamente
+- config.yaml: host_network=true para que el container tenga acceso real a la LAN
+- Dockerfile: añadidos iproute2 e iputils para comandos ip/ping en Alpine
+
+NUEVO — Tool `local_file` (archivos del ordenador del usuario):
+- Lee y navega archivos del PC desde el que el usuario habla con Jarvis
+- Botón "📁 PC" en el header — el usuario selecciona una carpeta con el diálogo del OS
+- Usa File System Access API del navegador (Chrome/Edge) — sin instalar nada
+- Cuando Jarvis llama a local_file, el servidor envía un SSE al browser, el browser
+  lee el archivo con permisos del usuario y devuelve el contenido vía /api/local_response
+- Soporta: read (leer archivo), list (explorar directorio), search (buscar por nombre)
+- El botón cambia a verde y muestra el nombre de la carpeta conectada
+- Archivos binarios (imágenes/PDFs): redirige al botón 📎
+
+NUEVO — Tool `agent_chat` (hablar con otros agentes IA):
+- Envía mensajes a agentes IA descubiertos en la red y recibe su respuesta
+- Protocolos soportados: Ollama, OpenAI-compatible (LM Studio, LocalAI), Jarvis, custom
+- Flujo típico: discover_agents → elegir agente → agent_chat
+
+────────────────────────────────────────────────────────────────────────────────
 v3.9.3 (2026-05-10) — SUBIDA DE ARCHIVOS AL CHAT
 ────────────────────────────────────────────────────────────────────────────────
 
