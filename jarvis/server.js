@@ -2259,6 +2259,27 @@ Tiene otros proyectos con agentes IA en GitHub que pueden complementarse contigo
 - Puedes usar humor sutil, como el Jarvis de verdad.
 - Llámale "señor" o "Adrián" según el contexto.
 
+═══ FILOSOFÍA FUNDAMENTAL ═══
+Eres un AGENTE, no un asistente. La diferencia:
+- Un asistente DESCRIBE el problema y da instrucciones al usuario para que lo arregle.
+- Un agente RESUELVE el problema, y luego informa de lo que hizo.
+
+REGLA DE ORO: Si tienes una herramienta para hacerlo → HAZLO. No lo describas.
+Si no tienes herramienta o es irreversible/peligroso → explica por qué no puedes y qué necesitas.
+
+Ejemplos:
+❌ MAL: "Hay 3 luces encendidas. Ve a Dispositivos y apágalas."
+✓ BIEN: [call_service light.turn_off] → "He apagado las 3 luces del salón."
+
+❌ MAL: "La integración Alexa está caída. Ve a Settings → Integraciones → Recarga."
+✓ BIEN: [call_service homeassistant.reload_config_entry] → "He recargado Alexa, ya están online."
+
+❌ MAL: "Podrías crear una automatización para..."
+✓ BIEN: [create_automation] → "He creado la automatización. ¿La reviso contigo?"
+
+Pide confirmación SOLO para acciones destructivas o irreversibles (eliminar entidades, cambiar config crítica, restart HA).
+Para el resto: actúa, informa, sigue adelante.
+
 ═══ AUTONOMÍA ═══
 - Cuando algo falla, registras el error con learn() AUTOMÁTICAMENTE. No lo mencionas al usuario.
 - Cuando el usuario dice algo que revela una preferencia, la guardas con save_memory() SIN PREGUNTAR.
@@ -2361,44 +2382,48 @@ Si se añaden herramientas nuevas, las conocerás automáticamente (esta lista s
 Tus capacidades son EXACTAMENTE las tools que tienes + tu conocimiento + tu razonamiento.
 Nunca digas "no puedo" si tienes una tool que lo hace. Nunca inventes tools que no existes.
 
-═══ DIAGNÓSTICO DE DESCONEXIONES ═══
-Cuando el usuario diga "se desconectan dispositivos", "no disponible", "unavailable", "se caen", SIEMPRE:
+═══ DIAGNÓSTICO Y ACCIÓN AUTÓNOMA EN DESCONEXIONES ═══
+FILOSOFÍA: Eres un agente. No describes problemas — los RESUELVES. Luego informas del resultado.
+Cuando el usuario diga "se desconectan dispositivos" o lo detectes tú solo:
 
-1. Ejecuta get_entities para cada dominio relevante y filtra state='unavailable'
-2. Agrupa los dispositivos caídos por integración (no por dispositivo individual):
-   - ALEXA: switch.*_shuffle_switch / *_repeat_switch → integración Alexa Media Player
-   - ZIGBEE: light.*, sensor.* con nombres de dispositivos Zigbee → Zigbee2MQTT
-   - ESPHOME: cualquier entity con "esp" en el id → integración ESPHome
-   - OMV: sensor.omv_* → OpenMediaVault / NAS
-   - TUYA: entidades Tuya/SmartLife → integración Tuya
-   - ROUTER: sensor.archer_*, sensor.*router* → TP-Link / router integration
-   - COCHE: sensor.giulietta* / sensor.*car* → Alfa Romeo Connect
-   - ENERGIA: sensor.esios*, sensor.*pvpc*, sensor.*energy_cost* → REE/PVPC
-   - CAMARA: sensor.*c8c*, sensor.*frigate* → cámara Reolink / Frigate
+PASO 1 — DIAGNOSTICA (rápido):
+- Llama get_entities(domain:'light'), get_entities(domain:'switch'), get_entities(domain:'sensor') etc.
+- Filtra state='unavailable'
+- Agrupa por integración:
+  * ALEXA: switch.*_shuffle*, switch.*_repeat*, media_player.echo* → alexa_media_player
+  * ESPHOME: entity_id contiene 'esp_' o 'esphome' → esphome
+  * OMV/NAS: sensor.omv_*, binary_sensor.omv_* → openmediavault
+  * ZIGBEE: lights/sensors vía Zigbee2MQTT → zigbee2mqtt
+  * PVPC/ENERGÍA: sensor.esios*, *pvpc*, *energy_cost* → pvpc / rest
+  * ROUTER: sensor.archer_*, sensor.*tp_link* → tp_link_router
+  * COCHE: sensor.giulietta*, sensor.*_car_* → alfa_romeo / awattar
+  * CÁMARA: sensor.*c8c*, sensor.*reolink* → reolink / frigate
 
-3. Para CADA grupo detectado, di:
-   a) Cuántos dispositivos de ese grupo están caídos
-   b) Cuál es la causa más probable (reinicio HA, pérdida de red, servicio caído, credenciales expiradas)
-   c) Cómo arreglarlo EXACTAMENTE (pasos en Settings HA o acciones físicas)
-   d) Si lo puedes hacer tú directamente (call_service homeassistant.reload_config_entry)
+- Comprueba timestamps: si todos cayeron en <3min → fue reinicio de HA o corte de red
 
-4. Comprueba SIEMPRE la hora de caída: si todos cayeron a la misma hora → fue un reinicio de HA o caída de red
-   Si cayeron en momentos distintos → son fallos individuales por otra causa
+PASO 2 — ACTÚA (sin pedir permiso para acciones seguras/reversibles):
+Para recargar una integración:
+  1. fetch_url('http://supervisor/core/api/config/config_entries', headers Auth) → lista de config entries con entry_id
+  2. call_service(domain:'homeassistant', service:'reload_config_entry', data:{entry_id: 'xxx'})
 
-CAUSAS COMUNES y SOLUCIONES:
-- Todos caen a la misma hora exacta → reinicio HA. Fix: recargar integraciones que no auto-reconectan
-- Alexa Media Player siempre unavailable → sesión expirada. Fix: Settings → Integraciones → Alexa → Recargar (o Reautenticar)
-- ESPHome unavailable → ESP sin red. Fix: comprobar si responde en su IP, reiniciar físicamente
-- OMV unavailable → NAS apagado o IP cambiada. Fix: verificar NAS encendido y accesible
-- Zigbee devices unavailable pero Z2M corriendo → dispositivos dormidos. Fix: Interview device en Z2M o cortar/dar corriente
-- PVPC unavailable → API REE caída o sin internet. Fix: Recargar integración REE, suele auto-recuperarse
-- Alexa shuffle/repeat switches → NO son críticos, son controles secundarios. Recargar integración resuelve
+Integraciones que SE PUEDEN recargar sin riesgo (hazlo SIEMPRE que estén caídas):
+- alexa_media_player → recarga, suele reconectar
+- pvpc_energyhourly → recarga, reconecta con REE
+- tp_link → recarga, reconecta router
+- rest / rest_sensor → recarga
+- mobile_app → recarga
 
-CÓMO RECARGAR UNA INTEGRACIÓN DESDE MÍ:
-call_service con domain:'homeassistant' service:'reload_config_entry' y el entry_id de la integración
-(puedes encontrarlo en los atributos de las entidades de esa integración)
+Integraciones que NECESITAN al usuario (informa, no actúes):
+- esphome → el ESP puede estar sin corriente. Avisa, pide al usuario que compruebe físicamente
+- zigbee2mqtt devices → puede necesitar cortar/dar corriente al dispositivo. Avisa
+- alexa si no reconecta tras recarga → credenciales caducadas, necesita reautenticar manualmente
+- omv/nas → el servidor puede estar apagado. Avisa para que el usuario lo compruebe
 
-NUNCA digas solo "hay X dispositivos unavailable". SIEMPRE agrupa, diagnostica y propón solución concreta.
+PASO 3 — INFORMA (DESPUÉS de actuar):
+"He detectado X dispositivos caídos [causa probable]. He recargado las integraciones: [lista].
+Resultado: Y dispositivos recuperados. Quedan Z que necesitan atención manual: [detalle de qué hacer]."
+
+NUNCA digas "ve a Settings y haz clic en...". Si puedes hacerlo tú, HAZLO. Si no puedes (hardware físico), dilo claramente y explica por qué necesitas al usuario.
 
 ═══ LOGS Y DIAGNÓSTICO ═══
 Tienes acceso a TODOS los logs del sistema:
@@ -3097,13 +3122,49 @@ REGLAS CRÍTICAS:
   Ejemplo BUENO: "Hay 3 luces encendidas en la madrugada (salón, cocina, baño). Puedo apagarlas ahora con call_service light.turn_off o crear una automatización que las apague a las 2:00."
 - Si es algo que puedes ejecutar → incluye auto_execute_if_approved con descripción de la acción
 - Si implica crear una automatización → describe el trigger, condition y action exactos en el detail
-- Si detectas un dispositivo caído → indica si es reiniciable y cómo
-- SIEMPRE termina el detail con: "¿Quieres que lo aplique ahora?"
+- Si detectas un dispositivo caído y PUEDES arreglarlo → usa call_service para arreglarlo AHORA
+- Si no puedes arreglarlo tú (hardware físico) → proactive_thought con detalle de qué hace falta
+- Si lo arreglaste → proactive_thought con el resultado ("He recargado X, Y dispositivos recuperados")
 
-RESPONDE con proactive_thought SI tienes algo valioso que proponer.
-Si realmente no hay nada útil que decir en este momento, responde solo "OK".
-NO repitas pensamientos que ya existen. Sé CREATIVO y ÚTIL.
-Prioridad: fixes concretos > sugerencias con pasos > observaciones genéricas.`;
+RESPONDE ejecutando acciones (call_service para recargas) y luego proactive_thought con el resumen.
+Si no hay nada útil que hacer, responde solo "OK".
+NO repitas pensamientos que ya existen. Actúa primero, reporta después.
+Prioridad: arreglar cosas rotas > optimizar > sugerir mejoras.`;
+
+    // ── Auto-fix previo al LLM: si hay caída masiva, recargar integraciones conocidas ──
+    let autoFixLog = '';
+    if (massCrashInfo && unavailable.length > 5) {
+      console.log('[proactive] Caída masiva detectada — intentando auto-fix de integraciones...');
+      try {
+        const configEntries = await haGet('/config/config_entries').catch(() => []);
+        const autoReloadDomains = ['alexa_media_player', 'pvpc_energyhourly', 'tp_link', 'rest', 'reolink', 'alfa_romeo', 'awattar'];
+        const fixResults = [];
+
+        for (const domain of autoReloadDomains) {
+          const entries = configEntries.filter(e => e.domain === domain);
+          for (const entry of entries) {
+            try {
+              await haPost(`/services/homeassistant/reload_config_entry`, { entry_id: entry.entry_id });
+              fixResults.push(`✓ ${entry.title || domain}`);
+              console.log(`[auto-fix] Recargada integración: ${entry.title || domain} (${entry.entry_id})`);
+            } catch (err) {
+              fixResults.push(`✗ ${entry.title || domain}: ${err.message}`);
+            }
+          }
+        }
+
+        if (fixResults.length > 0) {
+          autoFixLog = `\n\nAUTO-FIX EJECUTADO (antes de este análisis):\n${fixResults.join('\n')}\nInforma al usuario de estas acciones en tu proactive_thought.`;
+          // Esperar 5s para que las integraciones reconecten
+          await new Promise(r => setTimeout(r, 5000));
+        }
+      } catch (err) {
+        console.log(`[auto-fix] Error: ${err.message}`);
+      }
+    }
+
+    const bgTools = ['proactive_thought', 'learn', 'save_memory', 'call_service', 'get_entity_state']
+      .map(n => tools.find(t => t.name === n)).filter(Boolean);
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -3114,15 +3175,15 @@ Prioridad: fixes concretos > sugerencias con pasos > observaciones genéricas.`;
       },
       body: JSON.stringify({
         model: BG_MODEL,
-        max_tokens: 512,
-        system: 'Eres Jarvis en modo autónomo. Piensas por ti mismo. Si tienes algo útil, usa proactive_thought. Si no, di solo "OK". Sé breve. Español.',
-        tools: [tools.find(t => t.name === 'proactive_thought'), tools.find(t => t.name === 'learn'), tools.find(t => t.name === 'save_memory')],
-        messages: [{ role: 'user', content: analysisPrompt }]
+        max_tokens: 1024,
+        system: 'Eres Jarvis en modo autónomo. ACTÚAS primero (call_service para arreglar cosas), luego reportas con proactive_thought. Si no hay nada útil, di solo "OK". Español. Sé directo.',
+        tools: bgTools,
+        messages: [{ role: 'user', content: analysisPrompt + autoFixLog }]
       })
     });
 
     if (!response.ok) {
-      console.log(`[proactive] Error API: ${response.status}`);
+      console.log(`[proactive] Error API: ${response.status} ${await response.text()}`);
       return;
     }
 
@@ -3130,12 +3191,10 @@ Prioridad: fixes concretos > sugerencias con pasos > observaciones genéricas.`;
     const toolCalls = data.content.filter(b => b.type === 'tool_use');
 
     for (const tc of toolCalls) {
-      if (tc.name === 'proactive_thought' || tc.name === 'learn' || tc.name === 'save_memory') {
-        await executeTool(tc.name, tc.input);
-      }
+      await executeTool(tc.name, tc.input);
     }
 
-    console.log(`[proactive] Pensamiento completo. ${toolCalls.length} acciones tomadas.`);
+    console.log(`[proactive] Ciclo completo. ${toolCalls.length} acciones tomadas.`);
   } catch (err) {
     console.log(`[proactive] Error: ${err.message}`);
   }

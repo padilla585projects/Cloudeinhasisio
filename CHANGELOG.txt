@@ -3,6 +3,33 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.7.0 (2026-05-10) — AGENTE, NO ASISTENTE
+────────────────────────────────────────────────────────────────────────────────
+
+CAMBIO FILOSÓFICO FUNDAMENTAL:
+Jarvis deja de ser un asistente que describe problemas y da instrucciones al usuario.
+Pasa a ser un agente que ACTÚA, y luego informa del resultado.
+
+NUEVO — Auto-fix de desconexiones en background:
+- Cuando el loop proactivo detecta caída masiva (>5 dispositivos en <3min), ACTÚA:
+  1. Obtiene la lista de config entries de HA via API
+  2. Recarga automáticamente integraciones conocidas: alexa_media_player, pvpc_energyhourly,
+     tp_link, rest, reolink, alfa_romeo, awattar
+  3. Espera 5s para que reconecten
+  4. Informa al usuario del resultado con proactive_thought: qué arregló, qué quedó pendiente
+- El loop proactivo ahora tiene acceso a call_service y get_entity_state para actuar
+
+NUEVO — System prompt: filosofía de agente:
+- Sección "FILOSOFÍA FUNDAMENTAL": Jarvis sabe que su rol es actuar, no aconsejar
+- Ejemplos explícitos de comportamiento correcto vs incorrecto
+- Regla: pedir confirmación SOLO para acciones destructivas/irreversibles
+
+MEJORADO — Diagnóstico de desconexiones:
+- El protocolo de diagnóstico ahora incluye los pasos de acción directa
+- Jarvis conoce qué integraciones puede recargar y cuáles requieren al usuario
+- Sabe cómo obtener los entry_id via API para recargar cada integración
+
+────────────────────────────────────────────────────────────────────────────────
 v3.6.1 (2026-05-10)
 ────────────────────────────────────────────────────────────────────────────────
 
