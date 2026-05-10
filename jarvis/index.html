@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Jarvis · Home Assistant</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <style>
   :root {
     --bg: #0f1117;
@@ -42,22 +43,25 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 14px 20px;
+    padding: 10px 20px;
     background: var(--bg2);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
   }
 
-  .logo {
-    width: 34px;
-    height: 34px;
-    background: linear-gradient(135deg, var(--accent), var(--accent2));
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 18px;
+  .jarvis-3d-container {
+    width: 44px;
+    height: 44px;
     flex-shrink: 0;
+    border-radius: 50%;
+    overflow: hidden;
+    cursor: pointer;
+    position: relative;
+  }
+
+  .jarvis-3d-container canvas {
+    width: 100% !important;
+    height: 100% !important;
   }
 
   .header-info h1 {
@@ -384,10 +388,10 @@
 <body>
 
 <header>
-  <div class="logo">🤖</div>
+  <div class="jarvis-3d-container" id="jarvis-orb"></div>
   <div class="header-info">
     <h1>Jarvis</h1>
-    <p>Home Assistant · Agente IA especializado</p>
+    <p id="jarvis-status-text">Listo · Home Assistant</p>
   </div>
   <div class="status-dot" id="status-dot" title="Conectado"></div>
 </header>
@@ -485,7 +489,8 @@
       get_installed_frontend: '🧩', search_hacs_resources: '🔍',
       install_hacs_resource: '📦', ha_knowledge: '📚', proxmox_api: '🖥️',
       get_system_logs: '📋', get_error_log: '🚨',
-      telegram_send: '📨', telegram_send_image: '🖼️', telegram_get_updates: '📩'
+      telegram_send: '📨', telegram_send_image: '🖼️', telegram_get_updates: '📩',
+      analyze_github_repos: '🐙'
     };
     const labels = {
       get_entities: 'Consultando entidades', get_entity_state: 'Leyendo estado',
@@ -506,7 +511,8 @@
       proxmox_api: 'Gestionando Proxmox',
       get_system_logs: 'Leyendo logs del sistema', get_error_log: 'Revisando errores',
       telegram_send: 'Enviando por Telegram', telegram_send_image: 'Enviando imagen',
-      telegram_get_updates: 'Leyendo mensajes Telegram'
+      telegram_get_updates: 'Leyendo mensajes Telegram',
+      analyze_github_repos: 'Analizando repos GitHub'
     };
 
     block.innerHTML = `
@@ -586,6 +592,7 @@
     addMessage('user', text);
     conversationHistory.push({ role: 'user', content: text });
 
+    setJarvisState('thinking');
     addThinking();
 
     let aiText = '';
@@ -618,6 +625,7 @@
 
             if (event.type === 'text') {
               removeThinking();
+              setJarvisState('speaking');
               if (!aiBubble) {
                 aiBubble = addMessage('ai', '');
               }
@@ -639,9 +647,11 @@
 
             } else if (event.type === 'done') {
               removeThinking();
+              setJarvisState('idle');
 
             } else if (event.type === 'error') {
               removeThinking();
+              setJarvisState('idle');
               addMessage('ai', `⚠️ Error: ${event.error}`);
             }
           } catch {}
@@ -655,6 +665,7 @@
 
     } catch (err) {
       removeThinking();
+      setJarvisState('idle');
       addMessage('ai', `⚠️ Error de conexión: ${err.message}`);
     }
 
@@ -691,6 +702,129 @@
   // Inicialización
   loadHistory();
   document.getElementById('input').focus();
+
+  // ── Jarvis 3D Orb (Three.js) ──────────────────────────────────────────────
+  let jarvisState = 'idle'; // idle, thinking, speaking
+
+  function setJarvisState(state) {
+    jarvisState = state;
+    const statusText = document.getElementById('jarvis-status-text');
+    if (state === 'thinking') statusText.textContent = 'Pensando...';
+    else if (state === 'speaking') statusText.textContent = 'Respondiendo...';
+    else statusText.textContent = 'Listo · Home Assistant';
+  }
+
+  (function initJarvisOrb() {
+    const container = document.getElementById('jarvis-orb');
+    if (!container || typeof THREE === 'undefined') return;
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+    camera.position.z = 2.8;
+
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    renderer.setSize(88, 88);
+    renderer.setPixelRatio(2);
+    container.appendChild(renderer.domElement);
+
+    // Core sphere (orbe principal)
+    const coreGeo = new THREE.SphereGeometry(0.6, 32, 32);
+    const coreMat = new THREE.MeshPhongMaterial({
+      color: 0x4a90e2,
+      emissive: 0x1a3a6e,
+      emissiveIntensity: 0.6,
+      transparent: true,
+      opacity: 0.85,
+      shininess: 100
+    });
+    const core = new THREE.Mesh(coreGeo, coreMat);
+    scene.add(core);
+
+    // Anillo orbital 1
+    const ring1Geo = new THREE.TorusGeometry(0.85, 0.015, 8, 64);
+    const ring1Mat = new THREE.MeshBasicMaterial({ color: 0x6cb4f7, transparent: true, opacity: 0.6 });
+    const ring1 = new THREE.Mesh(ring1Geo, ring1Mat);
+    ring1.rotation.x = Math.PI * 0.35;
+    scene.add(ring1);
+
+    // Anillo orbital 2
+    const ring2Geo = new THREE.TorusGeometry(0.95, 0.01, 8, 64);
+    const ring2Mat = new THREE.MeshBasicMaterial({ color: 0xa78bfa, transparent: true, opacity: 0.4 });
+    const ring2 = new THREE.Mesh(ring2Geo, ring2Mat);
+    ring2.rotation.x = Math.PI * 0.6;
+    ring2.rotation.y = Math.PI * 0.3;
+    scene.add(ring2);
+
+    // Particulas orbitales
+    const particlesGeo = new THREE.BufferGeometry();
+    const pCount = 40;
+    const pPositions = new Float32Array(pCount * 3);
+    for (let i = 0; i < pCount; i++) {
+      const angle = (i / pCount) * Math.PI * 2;
+      const radius = 0.7 + Math.random() * 0.4;
+      pPositions[i * 3] = Math.cos(angle) * radius;
+      pPositions[i * 3 + 1] = (Math.random() - 0.5) * 0.8;
+      pPositions[i * 3 + 2] = Math.sin(angle) * radius;
+    }
+    particlesGeo.setAttribute('position', new THREE.BufferAttribute(pPositions, 3));
+    const particlesMat = new THREE.PointsMaterial({ color: 0x60a5fa, size: 0.04, transparent: true, opacity: 0.8 });
+    const particles = new THREE.Points(particlesGeo, particlesMat);
+    scene.add(particles);
+
+    // Luces
+    const light1 = new THREE.PointLight(0x6cb4f7, 1.5, 10);
+    light1.position.set(2, 2, 3);
+    scene.add(light1);
+    const light2 = new THREE.PointLight(0xa78bfa, 0.8, 10);
+    light2.position.set(-2, -1, 2);
+    scene.add(light2);
+    scene.add(new THREE.AmbientLight(0x1a1a3e, 0.3));
+
+    let time = 0;
+    function animate() {
+      requestAnimationFrame(animate);
+      time += 0.016;
+
+      // Velocidad y intensidad segun estado
+      let speed = 1;
+      let pulseIntensity = 0.1;
+      if (jarvisState === 'thinking') { speed = 3; pulseIntensity = 0.4; }
+      else if (jarvisState === 'speaking') { speed = 2; pulseIntensity = 0.25; }
+
+      // Rotacion del core
+      core.rotation.y += 0.005 * speed;
+      core.rotation.x = Math.sin(time * 0.5 * speed) * 0.1;
+
+      // Pulse del emissive
+      coreMat.emissiveIntensity = 0.6 + Math.sin(time * 2 * speed) * pulseIntensity;
+      coreMat.opacity = 0.8 + Math.sin(time * 1.5 * speed) * 0.1;
+
+      // Anillos rotan
+      ring1.rotation.z += 0.008 * speed;
+      ring1.rotation.y += 0.003 * speed;
+      ring2.rotation.z -= 0.006 * speed;
+      ring2.rotation.x += 0.004 * speed;
+
+      // Particulas orbitan
+      particles.rotation.y += 0.004 * speed;
+      particles.rotation.x = Math.sin(time * 0.3) * 0.2;
+
+      // Color shift cuando piensa
+      if (jarvisState === 'thinking') {
+        coreMat.emissive.setHex(0x3a1a8e);
+        ring1Mat.color.setHex(0xa78bfa);
+      } else if (jarvisState === 'speaking') {
+        coreMat.emissive.setHex(0x1a5a3e);
+        ring1Mat.color.setHex(0x34d399);
+      } else {
+        coreMat.emissive.setHex(0x1a3a6e);
+        ring1Mat.color.setHex(0x6cb4f7);
+      }
+
+      renderer.render(scene, camera);
+    }
+    animate();
+  })();
 </script>
 </body>
 </html>

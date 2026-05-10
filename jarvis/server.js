@@ -617,6 +617,20 @@ const tools = [
         limit: { type: 'number', description: 'Número de mensajes a obtener (default: 10)' }
       }
     }
+  },
+
+  // ─── GitHub / Proyectos ───
+  {
+    name: 'analyze_github_repos',
+    description: 'Analiza los repos del usuario en GitHub. Detecta proyectos compatibles con HA, posibles integraciones, cosas que se pueden conectar. Sugiere sinergias entre proyectos.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        username: { type: 'string', description: 'Username de GitHub del usuario (ej: "padilla585projects")' },
+        repo: { type: 'string', description: 'Repo específico a analizar en detalle (opcional). Si no se pone, lista todos.' }
+      },
+      required: ['username']
+    }
   }
 ];
 
@@ -1537,6 +1551,100 @@ async function executeTool(name, input) {
         }
       }
 
+      // ─── GitHub / Proyectos ───
+      case 'analyze_github_repos': {
+        try {
+          const username = input.username;
+
+          if (input.repo) {
+            // Analizar un repo específico en detalle
+            const repoRes = await fetch(`https://api.github.com/repos/${username}/${input.repo}`, {
+              headers: { 'User-Agent': 'JarvisBot/1.0', Accept: 'application/vnd.github.v3+json' }
+            });
+            if (!repoRes.ok) return { error: `Repo no encontrado: ${username}/${input.repo}` };
+            const repoData = await repoRes.json();
+
+            // Leer README
+            let readme = '';
+            try {
+              const readmeRes = await fetch(`https://api.github.com/repos/${username}/${input.repo}/readme`, {
+                headers: { 'User-Agent': 'JarvisBot/1.0', Accept: 'application/vnd.github.v3+json' }
+              });
+              if (readmeRes.ok) {
+                const readmeData = await readmeRes.json();
+                readme = Buffer.from(readmeData.content, 'base64').toString('utf8').slice(0, 3000);
+              }
+            } catch {}
+
+            // Listar archivos raíz para detectar tecnología
+            let files = [];
+            try {
+              const contentsRes = await fetch(`https://api.github.com/repos/${username}/${input.repo}/contents`, {
+                headers: { 'User-Agent': 'JarvisBot/1.0', Accept: 'application/vnd.github.v3+json' }
+              });
+              if (contentsRes.ok) {
+                const contents = await contentsRes.json();
+                files = contents.map(f => f.name);
+              }
+            } catch {}
+
+            // Detectar tecnologías y compatibilidad con HA
+            const haCompatible = [];
+            if (files.includes('config.yaml') || files.includes('configuration.yaml')) haCompatible.push('Es un add-on/config de HA');
+            if (files.includes('custom_components')) haCompatible.push('Tiene custom components para HA');
+            if (files.includes('esphome') || readme.toLowerCase().includes('esphome')) haCompatible.push('Usa ESPHome (compatible con HA)');
+            if (files.includes('docker-compose.yml') || files.includes('Dockerfile')) haCompatible.push('Tiene Docker (se puede integrar como add-on)');
+            if (readme.toLowerCase().includes('mqtt')) haCompatible.push('Usa MQTT (integrable con HA)');
+            if (readme.toLowerCase().includes('home assistant') || readme.toLowerCase().includes('hassio')) haCompatible.push('Menciona Home Assistant directamente');
+            if (readme.toLowerCase().includes('api') || readme.toLowerCase().includes('rest')) haCompatible.push('Tiene API REST (integrable via rest/command_line)');
+            if (files.includes('platformio.ini') || readme.toLowerCase().includes('esp32') || readme.toLowerCase().includes('arduino')) haCompatible.push('Proyecto IoT/microcontrolador (ESPHome/MQTT compatible)');
+            if (readme.toLowerCase().includes('python')) haCompatible.push('Python (puede ser custom_component o AppDaemon)');
+            if (readme.toLowerCase().includes('node') || files.includes('package.json')) haCompatible.push('Node.js (puede ser add-on)');
+            if (readme.toLowerCase().includes('telegram')) haCompatible.push('Usa Telegram (integrable con notify)');
+            if (readme.toLowerCase().includes('camera') || readme.toLowerCase().includes('frigate')) haCompatible.push('Cámaras/visión (integrable con HA)');
+
+            return {
+              repo: `${username}/${input.repo}`,
+              description: repoData.description,
+              language: repoData.language,
+              topics: repoData.topics,
+              updated_at: repoData.updated_at,
+              files: files.slice(0, 30),
+              readme_preview: readme.slice(0, 2000),
+              ha_compatibility: haCompatible,
+              suggestions: haCompatible.length > 0
+                ? 'Este proyecto tiene elementos integrables con Home Assistant. Puedo ayudarte a conectarlo.'
+                : 'No detecto integración directa con HA, pero puedo buscar formas de conectarlo.'
+            };
+          } else {
+            // Listar todos los repos del usuario
+            const reposRes = await fetch(`https://api.github.com/users/${username}/repos?per_page=100&sort=updated`, {
+              headers: { 'User-Agent': 'JarvisBot/1.0', Accept: 'application/vnd.github.v3+json' }
+            });
+            if (!reposRes.ok) return { error: `Usuario no encontrado: ${username}` };
+            const repos = await reposRes.json();
+
+            const repoList = repos.map(r => ({
+              name: r.name,
+              description: r.description,
+              language: r.language,
+              topics: r.topics,
+              updated: r.updated_at,
+              url: r.html_url
+            }));
+
+            return {
+              username,
+              repos: repoList,
+              total: repoList.length,
+              note: 'Usa analyze_github_repos con el campo "repo" para analizar uno en detalle y ver compatibilidad con HA.'
+            };
+          }
+        } catch (err) {
+          return { error: err.message };
+        }
+      }
+
       default:
         return { error: `Tool desconocida: ${name}` };
     }
@@ -1645,6 +1753,16 @@ El usuario tiene un bot de Telegram configurado en HA. Puedes:
 - Leer mensajes: telegram_get_updates (ver si el usuario escribió algo)
 Usa Telegram para: alertas importantes, notificaciones proactivas, confirmaciones.
 Si algo grave pasa (dispositivo caído, error crítico) → notifica por Telegram automáticamente.
+
+═══ PROYECTOS DEL USUARIO ═══
+El usuario tiene otros proyectos en GitHub (padilla585projects).
+Con analyze_github_repos puedes:
+- Listar TODOS sus repos para conocer sus proyectos
+- Analizar un repo en detalle: tecnología, README, archivos, compatibilidad HA
+- Detectar si un proyecto usa: MQTT, ESPHome, Docker, APIs, Python, Node.js, etc.
+- Sugerir integraciones: "Este proyecto ESP32 se puede conectar via MQTT"
+- Proponer mejoras cruzadas: "Tu sensor DIY podría enviar datos a HA"
+Si el usuario pregunta por sus proyectos o cómo integrar algo → usa esta tool.
 
 ═══ DASHBOARDS Y FRONTEND ═══
 Puedes VER y MODIFICAR dashboards de Lovelace. Conoces estas cards:
@@ -1980,7 +2098,7 @@ app.get('/api/health', (req, res) => {
 
 const PORT = 3000;
 app.listen(PORT, '0.0.0.0', async () => {
-  console.log(`Jarvis AI Agent v2.6.0 corriendo en puerto ${PORT}`);
+  console.log(`Jarvis AI Agent v2.7.0 corriendo en puerto ${PORT}`);
   console.log(`Modelo: ${MODEL} | Config: ${HA_CONFIG} | Data: ${DATA_DIR}`);
 
   // Scan inicial si no hay contexto o tiene más de 2 horas

@@ -3,6 +3,28 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v2.7.0 (2026-05-10) — AVATAR 3D + ANÁLISIS DE REPOS GITHUB
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — AVATAR 3D DE JARVIS:
+- Orbe holográfico estilo Arc Reactor en el header (Three.js)
+- Anillos orbitales y partículas animadas
+- Reacciona al estado: idle (azul lento), thinking (morado rápido), speaking (verde)
+- Cambia color e intensidad según lo que hace Jarvis
+- Status text dinámico: "Listo", "Pensando...", "Respondiendo..."
+
+NUEVO — ANÁLISIS DE REPOS GITHUB:
+- analyze_github_repos: Lista todos los repos del usuario
+- Análisis detallado: lee README, detecta tecnología, archivos clave
+- Detección de compatibilidad con HA: MQTT, ESPHome, Docker, API REST, Python, Node.js
+- Sugiere integraciones entre proyectos del usuario y Home Assistant
+- "Tu proyecto ESP32 se puede conectar via MQTT a HA"
+
+MEJORA — UI:
+- Header rediseñado con avatar 3D en lugar del emoji
+- Texto de estado dinámico bajo "Jarvis"
+
+────────────────────────────────────────────────────────────────────────────────
 v2.6.0 (2026-05-10) — LOGS DEL SISTEMA + TELEGRAM INTEGRADO
 ────────────────────────────────────────────────────────────────────────────────
 

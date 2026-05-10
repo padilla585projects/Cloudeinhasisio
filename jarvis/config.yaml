@@ -1,6 +1,6 @@
 name: "Jarvis AI Agent"
 description: "Jarvis — Tu agente IA privado para Home Assistant. Controla tu casa, crea automatizaciones, gestiona dashboards, instala herramientas, accede a Proxmox y aprende con cada uso."
-version: "2.6.0"
+version: "2.7.0"
 slug: "jarvis_ai_agent"
 init: false
 arch:
