@@ -89,7 +89,7 @@ function findAgentByKey(apiKey) {
   return null;
 }
 
-const JARVIS_VERSION = '3.14.5';
+const JARVIS_VERSION = '3.14.6';
 
 const NETWORK_NORMS = {
   version: '2.0',
@@ -4311,47 +4311,87 @@ app.get('/api/cost', (req, res) => {
   });
 });
 
-// TTS status — Edge TTS siempre disponible (gratis, sin API key)
+// TTS status — Edge TTS siempre disponible + OpenAI si hay key
 app.get('/api/tts/status', (req, res) => {
-  res.json({ available: true, engine: 'edge-tts' });
+  const engines = ['edge-tts'];
+  if (OPENAI_API_KEY) engines.push('openai');
+  res.json({ available: true, engines });
 });
 
-// TTS voces disponibles
+// TTS voces disponibles — Edge TTS (gratis) + OpenAI (si hay key)
 const EDGE_VOICES = [
-  { id: 'es-ES-AlvaroNeural', name: 'Alvaro', gender: 'M', desc: 'Masculina natural' },
-  { id: 'es-ES-ElviraNeural', name: 'Elvira', gender: 'F', desc: 'Femenina natural' },
-  { id: 'es-ES-DarioNeural', name: 'Dario', gender: 'M', desc: 'Masculina joven' },
-  { id: 'es-ES-IreneNeural', name: 'Irene', gender: 'F', desc: 'Femenina suave' },
-  { id: 'es-ES-SaulNeural', name: 'Saul', gender: 'M', desc: 'Masculina grave' },
-  { id: 'es-ES-TrianaNeural', name: 'Triana', gender: 'F', desc: 'Femenina clara' },
-  { id: 'es-ES-TeoNeural', name: 'Teo', gender: 'M', desc: 'Masculina calmada' },
-  { id: 'es-ES-AbrilNeural', name: 'Abril', gender: 'F', desc: 'Femenina brillante' },
+  { id: 'es-ES-AlvaroNeural', name: 'Alvaro', gender: 'M', desc: 'Española natural', engine: 'edge' },
+  { id: 'es-ES-ElviraNeural', name: 'Elvira', gender: 'F', desc: 'Española natural', engine: 'edge' },
+  { id: 'es-ES-DarioNeural', name: 'Dario', gender: 'M', desc: 'Española joven', engine: 'edge' },
+  { id: 'es-ES-IreneNeural', name: 'Irene', gender: 'F', desc: 'Española suave', engine: 'edge' },
+  { id: 'es-ES-SaulNeural', name: 'Saul', gender: 'M', desc: 'Española grave', engine: 'edge' },
+  { id: 'es-ES-TrianaNeural', name: 'Triana', gender: 'F', desc: 'Española clara', engine: 'edge' },
+  { id: 'es-ES-TeoNeural', name: 'Teo', gender: 'M', desc: 'Española calmada', engine: 'edge' },
+  { id: 'es-ES-AbrilNeural', name: 'Abril', gender: 'F', desc: 'Española brillante', engine: 'edge' },
+];
+
+const OPENAI_VOICES = [
+  { id: 'openai:alloy', name: 'Alloy', gender: 'N', desc: 'OpenAI neutra', engine: 'openai' },
+  { id: 'openai:ash', name: 'Ash', gender: 'M', desc: 'OpenAI masculina', engine: 'openai' },
+  { id: 'openai:coral', name: 'Coral', gender: 'F', desc: 'OpenAI femenina', engine: 'openai' },
+  { id: 'openai:echo', name: 'Echo', gender: 'M', desc: 'OpenAI profunda', engine: 'openai' },
+  { id: 'openai:fable', name: 'Fable', gender: 'M', desc: 'OpenAI narrativa', engine: 'openai' },
+  { id: 'openai:nova', name: 'Nova', gender: 'F', desc: 'OpenAI cálida', engine: 'openai' },
+  { id: 'openai:onyx', name: 'Onyx', gender: 'M', desc: 'OpenAI grave', engine: 'openai' },
+  { id: 'openai:sage', name: 'Sage', gender: 'F', desc: 'OpenAI clara', engine: 'openai' },
+  { id: 'openai:shimmer', name: 'Shimmer', gender: 'F', desc: 'OpenAI brillante', engine: 'openai' },
 ];
 
 app.get('/api/tts/voices', (req, res) => {
-  res.json({ voices: EDGE_VOICES });
+  const voices = [...EDGE_VOICES];
+  if (OPENAI_API_KEY) voices.push(...OPENAI_VOICES);
+  res.json({ voices });
 });
 
-// TTS via Microsoft Edge TTS — gratis, acento español de España
+// Función para limpiar markdown del texto TTS
+function cleanTTSText(text) {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/`{1,3}[^`]*`{1,3}/g, '')
+    .replace(/#{1,6}\s/g, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/^[-•]\s/gm, '')
+    .replace(/\n{2,}/g, '. ')
+    .replace(/\n/g, ' ')
+    .trim()
+    .slice(0, 4096);
+}
+
+// TTS endpoint — soporta Edge TTS y OpenAI TTS
 app.post('/api/tts', async (req, res) => {
   const { text, voice = 'es-ES-AlvaroNeural' } = req.body || {};
   if (!text) return res.status(400).json({ error: 'text requerido' });
 
+  const clean = cleanTTSText(text);
+  if (!clean) return res.status(400).json({ error: 'text vacío tras limpiar' });
+
   try {
-    const clean = text
-      .replace(/\*\*(.+?)\*\*/g, '$1')
-      .replace(/\*(.+?)\*/g, '$1')
-      .replace(/`{1,3}[^`]*`{1,3}/g, '')
-      .replace(/#{1,6}\s/g, '')
-      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-      .replace(/^[-•]\s/gm, '')
-      .replace(/\n{2,}/g, '. ')
-      .replace(/\n/g, ' ')
-      .trim()
-      .slice(0, 4096);
+    // OpenAI TTS
+    if (voice.startsWith('openai:')) {
+      if (!OPENAI_API_KEY) return res.status(400).json({ error: 'OpenAI API key no configurada' });
+      const openaiVoice = voice.replace('openai:', '');
+      const oaiRes = await fetch('https://api.openai.com/v1/audio/speech', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'tts-1', input: clean, voice: openaiVoice, response_format: 'mp3' })
+      });
+      if (!oaiRes.ok) {
+        const errText = await oaiRes.text();
+        console.error('[tts] OpenAI error:', oaiRes.status, errText);
+        return res.status(500).json({ error: `OpenAI TTS error: ${oaiRes.status}` });
+      }
+      res.setHeader('Content-Type', 'audio/mpeg');
+      oaiRes.body.pipe(res);
+      return;
+    }
 
-    if (!clean) return res.status(400).json({ error: 'text vacío tras limpiar' });
-
+    // Edge TTS (default)
     const tts = new EdgeTTS({ voice, lang: 'es-ES', outputFormat: 'audio-24khz-48kbitrate-mono-mp3' });
     const tmpFile = `/tmp/tts-${Date.now()}-${Math.random().toString(36).slice(2)}.mp3`;
     await tts.ttsPromise(clean, tmpFile);
@@ -4362,7 +4402,7 @@ app.post('/api/tts', async (req, res) => {
     stream.on('end', () => fs.unlink(tmpFile, () => {}));
     stream.on('error', () => { fs.unlink(tmpFile, () => {}); res.status(500).end(); });
   } catch (err) {
-    console.error('[tts] Edge TTS error:', err.message);
+    console.error('[tts] TTS error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

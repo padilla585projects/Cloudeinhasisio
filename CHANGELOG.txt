@@ -3,6 +3,27 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.14.6 (2026-05-11) — OpenAI TTS + Edge TTS: selector dual de voces
+────────────────────────────────────────────────────────────────────────────────
+
+TTS dual-engine: ahora Jarvis soporta Edge TTS (gratis) y OpenAI TTS (premium)
+simultáneamente. El usuario elige la voz desde el selector en el chat.
+
+Backend:
+  - /api/tts/voices devuelve voces Edge + OpenAI (si hay key configurada)
+  - /api/tts rutea automáticamente: prefijo "openai:" → API OpenAI, resto → Edge TTS
+  - 9 voces OpenAI: alloy, ash, coral, echo, fable, nova, onyx, sage, shimmer
+  - 8 voces Edge TTS españolas mantenidas
+  - Campo "engine" en cada voz para diferenciar en el frontend
+
+Frontend:
+  - Selector de voz agrupado por motor con headers: "Edge TTS — Gratis" / "OpenAI TTS — Premium"
+  - Icono 🤖 para voces de género neutro (OpenAI alloy)
+  - Preview de voz al seleccionar funciona con ambos motores
+
+Configuración: añadir openai_api_key en el config del add-on para activar voces OpenAI.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.14.5 (2026-05-11) — Fix get_repairs: fallback multi-endpoint
 ────────────────────────────────────────────────────────────────────────────────
 

@@ -866,9 +866,11 @@
   function updateVoicePickerList() {
     const list = document.getElementById('voice-picker-list');
     if (!list) return;
-    list.innerHTML = edgeVoices.map(v => {
+    const edgeList = edgeVoices.filter(v => v.engine !== 'openai');
+    const openaiList = edgeVoices.filter(v => v.engine === 'openai');
+    function renderVoice(v) {
       const active = v.id === currentVoice;
-      const icon = v.gender === 'M' ? '👨' : '👩';
+      const icon = v.gender === 'M' ? '👨' : v.gender === 'F' ? '👩' : '🤖';
       return '<div onclick="selectVoice(\'' + v.id + '\')" style="padding:8px 12px;cursor:pointer;border-radius:6px;display:flex;align-items:center;gap:8px;font-size:12px;font-family:\'DM Sans\',sans-serif;' +
         (active ? 'background:var(--accent);color:#fff;' : 'color:var(--text);') +
         '" onmouseover="if(this.style.background!==\'var(--accent)\')this.style.background=\'rgba(255,255,255,0.05)\'" onmouseout="if(this.style.background!==\'var(--accent)\')this.style.background=\'transparent\'">' +
@@ -877,7 +879,14 @@
         '<div style="font-size:10px;opacity:0.7;">' + v.desc + '</div></div>' +
         (active ? '<span style="margin-left:auto;">✓</span>' : '') +
         '</div>';
-    }).join('');
+    }
+    function sectionHeader(label) {
+      return '<div style="padding:6px 12px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;opacity:0.5;color:var(--text);font-family:\'DM Sans\',sans-serif;border-bottom:1px solid rgba(255,255,255,0.06);">' + label + '</div>';
+    }
+    let html = '';
+    if (edgeList.length) html += sectionHeader('🎙️ Edge TTS — Gratis') + edgeList.map(renderVoice).join('');
+    if (openaiList.length) html += sectionHeader('✨ OpenAI TTS — Premium') + openaiList.map(renderVoice).join('');
+    list.innerHTML = html;
   }
 
   window.selectVoice = function(voiceId) {
