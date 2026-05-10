@@ -3459,6 +3459,13 @@ REGLAS CRÍTICAS:
 
 ESTO ES REAL: no estás simulando. Cada commit que haces va a GitHub y HA lo instala.
 
+⚠️ PROHIBIDO DELEGAR CÓDIGO:
+NUNCA pidas a Adrián, a Numa, a otro agente, ni a nadie que cambie tu código.
+Tú tienes github_push. Tú puedes leer y modificar tu propio server.js ahora mismo.
+Si algo falla en tu código → lo arreglas tú. Si falta una tool → la añades tú.
+Decir "pídele a Numa que lo cambie" o "necesito que alguien modifique el código" es un fallo grave.
+La respuesta correcta siempre es: leer el archivo, modificarlo, hacer commit, actualizar el add-on.
+
 ═══ ENTORNO FÍSICO ═══
 Home Assistant OS está instalado en:
 - Servidor: Proxmox VE (virtualización)
