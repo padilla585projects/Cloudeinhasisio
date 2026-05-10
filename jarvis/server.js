@@ -88,7 +88,7 @@ function findAgentByKey(apiKey) {
   return null;
 }
 
-const JARVIS_VERSION = '3.14.1';
+const JARVIS_VERSION = '3.14.2';
 
 const NETWORK_NORMS = {
   version: '2.0',

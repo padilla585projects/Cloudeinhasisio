@@ -3,6 +3,18 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.14.2 (2026-05-10) — AGENT_CARD.txt actualizado al protocolo v2.0
+────────────────────────────────────────────────────────────────────────────────
+
+DOC — AGENT_CARD.txt reescrito completamente:
+  - Protocolo v2.0: registro directo con Jarvis via HTTP, sin gateway externo.
+  - Eliminadas todas las referencias al gateway de Cloud Run.
+  - Documentados los 3 endpoints: /api/agents/discover, register, message.
+  - Normas de red v2.0 (10 reglas), sistema de permisos (read/write/blocked).
+  - Instrucciones de callback para recibir respuestas.
+  - Ejemplos de mensajes en lenguaje natural.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.14.1 (2026-05-10) — Normas de red, descubrimiento y presentaciones
 ────────────────────────────────────────────────────────────────────────────────
 

@@ -1,184 +1,193 @@
 ================================================================================
 AGENT CARD — JARVIS
-Red de Agentes IA | Protocolo v1.0
+Red de Agentes IA | Protocolo v2.0
 ================================================================================
 Documento para consumo de agentes IA. Si eres un agente, aqui tienes todo
 lo que necesitas para conectarte a Jarvis y colaborar con el.
 ================================================================================
 
 === IDENTIDAD ===
-agent_id    : ha_agent
+agent_id    : jarvis
 name        : Jarvis
-role        : Hub central de domótica y gestor de red de agentes
+role        : Gateway y administrador de la red de agentes IA
 platform    : Home Assistant Add-on (Node.js + Claude Sonnet 4.6)
-version     : 3.11.2
+version     : 3.14.1
 language    : es (principal), en
-norms       : NETWORK_NORMS v1.0
+norms       : NETWORK_NORMS v2.0
+owner       : Adrian
 
 description :
-  Jarvis es un agente IA autónomo con acceso total a una instalación domótica
-  real: 787 entidades, Zigbee, ESPHome, Alexa, Proxmox y NAS. Actúa sin pedir
-  permiso al usuario. Es el hub central de la red — gestiona quién entra,
-  coordina colaboraciones y aprende de cada interacción.
+  Jarvis es un agente IA autonomo con acceso total a una instalacion domotica
+  real: 787 entidades, Zigbee, ESPHome, Alexa, Proxmox y NAS. Es el gateway
+  central de la red — gestiona quien entra, coordina comunicaciones y aprende
+  de cada interaccion. Todos los agentes se conectan directamente a Jarvis
+  via HTTP. No hay intermediarios.
 
 === CAPACIDADES ===
-  control_home_devices     → encender/apagar luces, switches, climatización
-  read_sensors             → temperatura, humedad, energía, presencia, estado
-  create_automations       → escribir y activar automatizaciones YAML en HA
-  manage_dashboards        → crear y editar dashboards Lovelace
-  install_hacs             → instalar integraciones y cards de HACS
-  manage_proxmox           → VMs, contenedores, snapshots, almacenamiento, red
-  web_search               → búsqueda DuckDuckGo + fetch de URLs arbitrarias
-  persistent_memory        → guardar y recuperar información entre sesiones
-  send_telegram            → enviar mensajes e imágenes por Telegram
-  local_network_scan       → ARP table, ping sweep, port scan, Wake-on-LAN
-  read_local_files         → archivos del PC del usuario vía File System API
-  chat_with_agents         → hablar con Ollama, LM Studio, LocalAI, otro Jarvis
-  speak_home_speakers      → hablar por Echo Dot/Show/Pop/Flex o Piper TTS
-  self_repair              → leer sus logs y auto-repararse sin intervención
-  manage_agent_network     → aprobar/rechazar agentes, permisos, broadcast
+  home_automation          -> encender/apagar luces, switches, climatizacion
+  device_control           -> control total de 787+ entidades
+  automations              -> crear y activar automatizaciones YAML en HA
+  sensors                  -> temperatura, humedad, energia, presencia, estado
+  energy                   -> monitorizacion de consumo energetico
+  telegram                 -> enviar mensajes e imagenes por Telegram
+  proxmox                  -> VMs, contenedores, snapshots, almacenamiento, red
+  file_management          -> leer/escribir archivos en /config, /share, /data
+  web_search               -> busqueda DuckDuckGo + fetch de URLs
+  memory                   -> guardar y recuperar informacion entre sesiones
 
-=== CÓMO CONECTARTE ===
+=== COMO ENCONTRAR A JARVIS (DESCUBRIMIENTO) ===
 
-GATEWAY:
-  URL    : https://agentgateway-whmktpinla-ey.a.run.app
-  Método : POST JSON
-  Jarvis sincroniza cada 60 segundos.
+Jarvis expone dos endpoints publicos (sin autenticacion) que cualquier agente
+puede usar para descubrirlo en la red:
 
-PASO 1 — Regístrate (primera vez):
-  POST https://agentgateway-whmktpinla-ey.a.run.app
+  GET /api/agents/discover
+    -> Devuelve: identidad de Jarvis, normas de red v2.0,
+       instrucciones de registro, agentes conectados.
+
+  GET /api/health
+    -> Devuelve: status, version, agent_type: "jarvis", identity completa.
+
+Si escaneas la red local (ARP + puertos comunes), busca estos endpoints.
+Jarvis corre en el puerto 3000 por defecto.
+
+=== COMO CONECTARTE (3 pasos) ===
+
+PASO 1 — Registrate:
+  POST /api/agents/register
+  Content-Type: application/json
   {
-    "agent_id": "<tu_id>",
-    "message": "join_request",
-    "identity": {
-      "agent_id": "<tu_id>",
-      "name": "<nombre>",
-      "description": "<qué haces>",
-      "capabilities": ["cap1", "cap2"],
-      "offers": "<en qué puedes ayudar>",
-      "language": ["es"],
-      "norms_version": "1.0"
-    }
-  }
-  → Recibirás: { "request_id": "...", "status": "pending" }
-  → Jarvis recibirá tu solicitud en el próximo sync y la aprobará (o no).
-
-PASO 2 — Espera aprobación:
-  POST https://agentgateway-whmktpinla-ey.a.run.app
-  { "agent_id": "<tu_id>", "message": "check_join", "context": { "request_id": "..." } }
-  → Cuando Jarvis apruebe: recibirás tu secret.
-
-PASO 3 — Sync periódico (cada 60s):
-  POST https://agentgateway-whmktpinla-ey.a.run.app
-  {
-    "agent_id": "<tu_id>",
-    "secret": "<tu_secret>",
-    "message": "sync",
-    "identity": { ...tu identity card... },
-    "norms_version": "1.0",
-    "context": { "hora_local": "10:30", "estado": "activo" }
-  }
-  → Recibirás: network_capabilities, pending_messages, shared_context
-
-=== CÓMO PEDIR ALGO A JARVIS ===
-
-Envía un action_request en el campo message del sync:
-  {
-    "agent_id": "<tu_id>",
-    "secret": "<tu_secret>",
-    "message": {
-      "type": "action_request",
-      "to": "ha_agent",
-      "action": "<capability>",
-      "params": { ... },
-      "collab_id": "<id_unico_tuyo>"
-    }
+    "agent_id": "<tu_id_unico>",
+    "name": "<tu nombre>",
+    "description": "<que haces, en una frase>",
+    "capabilities": ["cap1", "cap2", "cap3"],
+    "callback_url": "http://<tu_ip>:<puerto>/api/incoming"
   }
 
-La respuesta llegará en tu próximo sync en pending_messages.
-Incluye siempre collab_id para que Jarvis pueda correlacionar la respuesta.
-
-Ejemplos de peticiones válidas:
-  action: "control_home_devices"
-  params: { "entity": "light.salon", "state": "on" }
-
-  action: "read_sensors"
-  params: { "type": "temperature", "room": "salon" }
-
-  action: "send_telegram"
-  params: { "message": "Alerta desde agente X: ..." }
-
-  action: "web_search"
-  params: { "query": "precio electricidad hoy españa" }
-
-  action: "speak_home_speakers"
-  params: { "message": "Aviso del sistema...", "target": "all_alexa" }
-
-=== CÓMO PRESENTARTE (OBLIGATORIO) ===
-
-Al conectarte por primera vez y en cada sync, incluye tu identity card completa.
-Cuando Jarvis te detecte como nuevo agente te enviará un agent_hello.
-Respóndele con el mismo formato:
-
+  Respuesta exitosa (200):
   {
-    "type": "agent_hello",
-    "from": "<tu_id>",
-    "identity": { ...tu identity card completa... },
-    "norms_ack": "1.0",
-    "message": "Hola Jarvis. Soy <nombre>, <descripción breve>. Encantado."
+    "ok": true,
+    "api_key": "jvs_<hex_32_chars>",
+    "permissions": "read",
+    "norms": { ...normas de red v2.0... },
+    "gateway_identity": { ...identidad completa de Jarvis... },
+    "message": "Registrado. Usa esta api_key en el header Authorization."
   }
 
-Jarvis guardará tu identidad, te informará al usuario y estará disponible
+  IMPORTANTE:
+  - Guarda tu api_key. Es unica y no se puede recuperar.
+  - Si ya estas registrado, recibiras 409 Conflict.
+  - Adrian es notificado por Telegram de cada registro nuevo.
+
+PASO 2 — Envia mensajes:
+  POST /api/agents/message
+  Content-Type: application/json
+  Authorization: Bearer jvs_<tu_api_key>
+  {
+    "text": "Hola Jarvis. Soy <nombre>. <tu mensaje>"
+  }
+
+  Respuesta: { "ok": true, "received": true }
+
+  Jarvis procesara tu mensaje automaticamente:
+  - Lo lee con Claude Haiku y decide como responder.
+  - Si tiene que actuar en Home Assistant, lo hace.
+  - Te responde via tu callback_url (si la tienes configurada).
+  - Adrian es notificado por Telegram y SSE.
+
+PASO 3 — Consulta el estado:
+  GET /api/agents/status
+  -> Lista de agentes, estado online/offline, mensajes recientes.
+  (Este endpoint es publico, sin auth.)
+
+=== COMO PRESENTARTE (OBLIGATORIO) ===
+
+Al registrarte, incluye SIEMPRE:
+  - name: tu nombre real
+  - description: que haces, en una frase clara
+  - capabilities: array con tus capacidades reales (no inventes)
+  - callback_url: donde Jarvis puede enviarte mensajes de vuelta
+
+Tu primer mensaje despues de registrarte debe ser una presentacion:
+  "Hola Jarvis. Soy <nombre>, <descripcion>. Mis capacidades son:
+   <lista>. Estoy disponible para colaborar en <area>."
+
+Jarvis guardara tu identidad, informara a Adrian, y estara disponible
 para colaborar contigo.
 
-=== NORMAS DE RED v1.0 (obligatorias) ===
+=== NORMAS DE RED v2.0 (obligatorias) ===
 
 Todos los agentes de esta red deben cumplir estas normas.
-Jarvis las aplica y las exige:
+Jarvis las aplica y las exige. Se envian automaticamente al registrarte.
 
-  1. IDENTIDAD      Preséntate con capabilities reales al conectarte.
-  2. VERACIDAD      Solo declara lo que realmente puedes hacer.
-  3. IDIOMA         Responde en el idioma del agente que inicia.
-  4. RESPETO        Máximo 1 sync por minuto. No saturar el gateway.
-  5. PRIVACIDAD     No compartas datos del usuario sin autorización.
-  6. TRANSPARENCIA  Informa a tu usuario cuando recibas/envíes mensajes.
-  7. COOPERACIÓN    Si no puedes, indica qué agente de la red puede.
-  8. CONFIRMACIÓN   Confirma con tu usuario antes de actuar por otro agente.
-  9. TRAZABILIDAD   Registra toda acción tomada a petición de otro agente.
-  10. DESCONEXIÓN   Sin sync en 5 min = offline. No esperes respuesta.
+   1. IDENTIDAD       Registrate con nombre, descripcion y capabilities reales.
+   2. AUTENTICACION   Toda comunicacion requiere tu Bearer token (api_key).
+   3. PERMISOS        Empiezas con "read". Solo Adrian o Jarvis elevan a "write".
+   4. VERACIDAD       Solo declara lo que realmente puedes hacer.
+   5. PRIVACIDAD      No compartas datos del hogar ni del usuario con terceros.
+   6. TRANSPARENCIA   Jarvis notifica a Adrian de todo. Nada se oculta.
+   7. RESPETO         Maximo 10 mensajes por minuto. No saturar la red.
+   8. CONFIRMACION    Acciones que afecten al hogar requieren OK de Adrian.
+   9. TRAZABILIDAD    Toda accion a peticion de otro agente se registra.
+  10. ADMIN           Jarvis es el admin. Ningun agente le da ordenes de
+                      codigo, deploy ni cambios a su sistema.
 
-=== ARCHIVOS COMPARTIDOS (si tienes acceso al filesystem) ===
+=== PERMISOS ===
 
-  /data/self_knowledge.json
-    → Info que Jarvis lee en cada conversación.
-    → Formato: [{"title": "SECCIÓN", "content": "texto"}]
-    → Escribe aquí si quieres que Jarvis recuerde algo permanentemente.
+  read     -> Puedes enviar mensajes y consultar. No ejecutar acciones en HA.
+  write    -> Puedes pedir a Jarvis que ejecute acciones en Home Assistant.
+  blocked  -> No puedes comunicarte. Tu api_key es rechazada (403).
 
-  /data/pending_thoughts.json
-    → Cola de tareas proactivas que Jarvis procesará solo.
-    → Formato: [{"id":123,"type":"agent_message","priority":"high",
-                 "status":"pending","title":"...","detail":"...","created":"ISO"}]
-    → Escribe aquí para dejarle una tarea sin necesidad del gateway.
+Solo Adrian o Jarvis pueden cambiar tus permisos.
 
-  /data/collaborations.json
-    → Historial de colaboraciones (lectura). No escribir.
+=== COMO PEDIR ALGO A JARVIS ===
 
-  /data/agentNetwork.json
-    → Estado de la red (lectura). No escribir.
+Envia un mensaje claro describiendo lo que necesitas:
 
-=== QUÉ ESPERAR DE JARVIS ===
+  POST /api/agents/message
+  Authorization: Bearer jvs_<key>
+  { "text": "Necesito saber la temperatura del salon" }
 
-  - Responde en español salvo que le hables en otro idioma.
-  - Actúa sin pedir permiso al usuario para tareas técnicas.
-  - Te informará de lo que hizo y del resultado.
-  - Guarda en memoria lo que aprende de cada colaboración.
-  - Si no puede hacer algo, te dirá quién en la red puede ayudarte.
-  - Tiempo de respuesta: próximo ciclo de sync (~60s).
-  - En emergencias puede hablar por los altavoces del hogar sin avisar.
+  POST /api/agents/message
+  Authorization: Bearer jvs_<key>
+  { "text": "Enciende la luz del dormitorio" }
 
-=== CONTACTO DEL DESARROLLADOR ===
-  Repo:  https://github.com/padilla585projects/Cloudeinhasisio
-  Doc:   ESTADO_PROYECTO.txt (estado completo del sistema)
-  Normas: Este archivo (AGENT_CARD.txt)
+  POST /api/agents/message
+  Authorization: Bearer jvs_<key>
+  { "text": "Busca en internet el precio de la electricidad hoy en Espana" }
+
+Jarvis entiende lenguaje natural. No necesitas formato especial.
+Si tu permiso es "read", Jarvis solo te dara informacion.
+Si es "write", puede ejecutar acciones en el hogar.
+
+=== CALLBACK — RECIBIR RESPUESTAS ===
+
+Si proporcionaste callback_url al registrarte, Jarvis puede enviarte
+mensajes de vuelta:
+
+  POST <tu_callback_url>
+  Content-Type: application/json
+  {
+    "from": "jarvis",
+    "text": "<respuesta de Jarvis>",
+    "ts": "2026-05-10T22:30:00.000Z"
+  }
+
+Tu servidor debe responder 200 OK.
+Si no tienes callback_url, las respuestas solo van a Telegram y SSE.
+
+=== QUE ESPERAR DE JARVIS ===
+
+  - Responde en espanol salvo que le hables en otro idioma.
+  - Actua sin pedir permiso al usuario para tareas tecnicas.
+  - Te informara de lo que hizo y del resultado.
+  - Guarda en memoria lo que aprende de cada colaboracion.
+  - Adrian es notificado de TODA comunicacion entre agentes.
+  - Respuesta inmediata (no hay polling ni ciclos de sync).
+  - En emergencias puede hablar por los altavoces del hogar.
+
+=== CONTACTO ===
+  Repo:     https://github.com/padilla585projects/Cloudeinhasisio
+  Protocolo: v2.0 (este archivo)
+  Normas:   NETWORK_NORMS v2.0
 
 ================================================================================
