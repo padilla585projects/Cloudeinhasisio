@@ -3,6 +3,34 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v2.5.0 (2026-05-10) — EXPERTO HA + PROXMOX + AUTO-INSTALACIÓN
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — CONOCIMIENTO PROFUNDO:
+- ha_knowledge: Consulta documentación oficial de HA, extrae contenido relevante
+- Busca en home-assistant.io, changelogs, foros, bugs conocidos
+- System prompt incluye experticia completa: protocolos, hardware, HACS, etc.
+- Si no sabe algo → lo busca. Si falta una herramienta → la instala. NUNCA dice "no se puede".
+
+NUEVO — AUTO-INSTALACIÓN:
+- install_hacs_resource: Descarga e instala cards custom directamente
+- Descarga JS a /config/www/ y registra como recurso Lovelace automáticamente
+- Soporte para integraciones custom en /config/custom_components/
+- Jarvis busca, encuentra e instala lo que necesites sin intervención manual
+
+NUEVO — PROXMOX:
+- proxmox_api: Acceso completo al servidor de virtualización
+- Ver estado del nodo, listar VMs y contenedores, ver recursos
+- Iniciar/parar VMs, crear snapshots, ver almacenamiento y red
+- Endpoint custom para cualquier llamada API de Proxmox
+- Configuración via add-on: proxmox_url, proxmox_token, proxmox_node (opcional)
+
+NUEVO — CONTEXTO DEL ENTORNO:
+- Jarvis sabe que HA está en Proxmox (VM con HAOS)
+- Puede gestionar backups a nivel de VM (snapshot antes de cambios grandes)
+- Conoce la arquitectura completa del sistema
+
+────────────────────────────────────────────────────────────────────────────────
 v2.4.0 (2026-05-10) — GESTIÓN DE DASHBOARDS + CONOCIMIENTO ECOSISTEMA HA
 ────────────────────────────────────────────────────────────────────────────────
 

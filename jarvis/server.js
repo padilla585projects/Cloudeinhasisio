@@ -14,6 +14,9 @@ const MODEL = process.env.MODEL || 'claude-sonnet-4-6';
 const HA_TOKEN = process.env.HA_TOKEN;
 const HA_URL = process.env.HA_URL || 'http://supervisor/core';
 const LANGUAGE = process.env.LANGUAGE || 'es';
+const PROXMOX_URL = process.env.PROXMOX_URL || '';  // ej: https://192.168.1.100:8006
+const PROXMOX_TOKEN = process.env.PROXMOX_TOKEN || '';  // ej: user@pam!tokenid=token-secret
+const PROXMOX_NODE = process.env.PROXMOX_NODE || 'pve';  // nombre del nodo
 
 // ── Rutas del filesystem de HA ───────────────────────────────────────────────
 const DATA_DIR = '/data';                    // Persistente del add-on
@@ -507,6 +510,47 @@ const tools = [
       },
       required: ['query']
     }
+  },
+  {
+    name: 'install_hacs_resource',
+    description: 'Instala una card o integración custom descargándola. Para cards: descarga JS a /config/www/ y registra como recurso Lovelace. Para integraciones: descarga a /config/custom_components/.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'URL directa al archivo JS (card) o al zip/repo de GitHub' },
+        name: { type: 'string', description: 'Nombre del recurso (ej: "mini-graph-card")' },
+        type: { type: 'string', enum: ['frontend', 'integration'], description: 'Tipo: frontend (card/tema) o integration' }
+      },
+      required: ['url', 'name', 'type']
+    }
+  },
+  {
+    name: 'ha_knowledge',
+    description: 'Consulta documentación y conocimiento experto sobre Home Assistant. Busca en la wiki/docs oficial, changelogs, bugs conocidos, mejores prácticas.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        topic: { type: 'string', description: 'Tema a consultar: "automation triggers", "template sensors", "ESPHome", "zigbee network", "energy dashboard", etc.' },
+        version: { type: 'string', description: 'Versión específica de HA si aplica (ej: "2024.12")' }
+      },
+      required: ['topic']
+    }
+  },
+
+  // ─── Proxmox ───
+  {
+    name: 'proxmox_api',
+    description: 'Ejecuta comandos en Proxmox VE via API REST. Puede ver VMs, contenedores, recursos, almacenamiento, snapshots, backups. El HA está en una VM de Proxmox.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['get_status', 'list_vms', 'vm_status', 'start_vm', 'stop_vm', 'snapshot_vm', 'get_resources', 'get_storage', 'get_network', 'custom'], description: 'Acción a ejecutar en Proxmox' },
+        vmid: { type: 'number', description: 'ID de la VM (si aplica)' },
+        endpoint: { type: 'string', description: 'Endpoint custom para action=custom (ej: /nodes/pve/status)' },
+        params: { type: 'object', description: 'Parámetros adicionales para la llamada' }
+      },
+      required: ['action']
+    }
   }
 ];
 
@@ -989,6 +1033,229 @@ async function executeTool(name, input) {
         }
       }
 
+      case 'install_hacs_resource': {
+        try {
+          if (input.type === 'frontend') {
+            // Descargar JS a /config/www/
+            const wwwDir = path.join(HA_CONFIG, 'www');
+            if (!fs.existsSync(wwwDir)) fs.mkdirSync(wwwDir, { recursive: true });
+
+            const filename = input.name.endsWith('.js') ? input.name : `${input.name}.js`;
+            const filePath = path.join(wwwDir, filename);
+
+            // Descargar archivo
+            const res = await fetch(input.url, {
+              headers: { 'User-Agent': 'Mozilla/5.0 (compatible; HABot/1.0)' },
+              timeout: 30000
+            });
+            if (!res.ok) return { error: `Error descargando: ${res.status}` };
+
+            const buffer = await res.buffer();
+            fs.writeFileSync(filePath, buffer);
+            console.log(`[install] Card descargada: ${filePath} (${buffer.length} bytes)`);
+
+            // Registrar como recurso Lovelace
+            try {
+              const resourceUrl = `/local/${filename}`;
+              await fetch(`${HA_URL}/api/lovelace/resources`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${HA_TOKEN}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: resourceUrl, res_type: 'module' })
+              });
+              console.log(`[install] Recurso registrado: ${resourceUrl}`);
+            } catch (regErr) {
+              console.log(`[install] No se pudo registrar automáticamente: ${regErr.message}`);
+            }
+
+            return { success: true, message: `Card '${input.name}' instalada en ${filePath}. Registrada como recurso Lovelace. Puede necesitar recargar el navegador.`, path: filePath };
+          } else if (input.type === 'integration') {
+            // Para integraciones necesitamos descargar el repo/zip
+            const ccDir = path.join(HA_CONFIG, 'custom_components', input.name);
+            if (!fs.existsSync(ccDir)) fs.mkdirSync(ccDir, { recursive: true });
+
+            // Si es un zip de GitHub
+            const res = await fetch(input.url, {
+              headers: { 'User-Agent': 'Mozilla/5.0 (compatible; HABot/1.0)' },
+              timeout: 60000
+            });
+            if (!res.ok) return { error: `Error descargando: ${res.status}` };
+
+            const content = await res.text();
+            // Si es un solo archivo Python, guardarlo directamente
+            if (input.url.endsWith('.py')) {
+              fs.writeFileSync(path.join(ccDir, path.basename(input.url)), content);
+            } else {
+              // Guardar como referencia, el usuario necesitará instalar manualmente o via HACS
+              fs.writeFileSync(path.join(ccDir, 'INSTALL_NOTES.txt'),
+                `Integración: ${input.name}\nFuente: ${input.url}\nFecha: ${new Date().toISOString()}\n\nNOTA: Para integraciones complejas, usa HACS o descarga el repo manualmente.`);
+              return { success: false, message: `Integración '${input.name}' es compleja. Recomiendo instalarla via HACS. Repo: ${input.url}`, suggestion: 'Instalar HACS primero si no lo tienes, luego añadir el repo como repositorio custom.' };
+            }
+            return { success: true, message: `Integración '${input.name}' instalada. Reinicia HA para activarla.` };
+          }
+          return { error: 'Tipo no válido. Usa "frontend" o "integration".' };
+        } catch (err) {
+          return { error: err.message };
+        }
+      }
+
+      case 'ha_knowledge': {
+        // Buscar en documentación oficial de HA + blogs + foros
+        const topic = input.topic;
+        const version = input.version || '';
+        const searches = [
+          `site:home-assistant.io ${topic} ${version}`,
+          `home assistant ${topic} documentation ${version}`
+        ];
+
+        const allResults = [];
+        for (const query of searches) {
+          try {
+            const encoded = encodeURIComponent(query);
+            const res = await fetch(`https://html.duckduckgo.com/html/?q=${encoded}`, {
+              headers: { 'User-Agent': 'Mozilla/5.0 (compatible; HABot/1.0)' }
+            });
+            const html = await res.text();
+            const regex = /<a rel="nofollow" class="result__a" href="([^"]+)"[^>]*>([^<]+)<\/a>[\s\S]*?<a class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
+            let match;
+            while ((match = regex.exec(html)) && allResults.length < 8) {
+              const url = match[1];
+              if (!allResults.some(r => r.url === url)) {
+                allResults.push({
+                  url,
+                  title: match[2].replace(/<[^>]+>/g, '').trim(),
+                  snippet: match[3].replace(/<[^>]+>/g, '').trim()
+                });
+              }
+            }
+          } catch {}
+        }
+
+        // Intentar obtener contenido del primer resultado de docs oficial
+        let docContent = '';
+        const officialDoc = allResults.find(r => r.url.includes('home-assistant.io'));
+        if (officialDoc) {
+          try {
+            const res = await fetch(officialDoc.url, {
+              headers: { 'User-Agent': 'Mozilla/5.0 (compatible; HABot/1.0)' },
+              timeout: 10000
+            });
+            let text = await res.text();
+            // Limpiar HTML
+            text = text.replace(/<script[\s\S]*?<\/script>/gi, '');
+            text = text.replace(/<style[\s\S]*?<\/style>/gi, '');
+            text = text.replace(/<nav[\s\S]*?<\/nav>/gi, '');
+            text = text.replace(/<header[\s\S]*?<\/header>/gi, '');
+            text = text.replace(/<footer[\s\S]*?<\/footer>/gi, '');
+            text = text.replace(/<[^>]+>/g, ' ');
+            text = text.replace(/\s+/g, ' ').trim();
+            docContent = text.slice(0, 4000);
+          } catch {}
+        }
+
+        return {
+          topic,
+          results: allResults,
+          official_doc: docContent || null,
+          note: 'Usa fetch_url para profundizar en cualquier enlace. Registra lo importante con learn().'
+        };
+      }
+
+      // ─── Proxmox ───
+      case 'proxmox_api': {
+        if (!PROXMOX_URL || !PROXMOX_TOKEN) {
+          return { error: 'Proxmox no configurado. Añade PROXMOX_URL y PROXMOX_TOKEN en la configuración del add-on.' };
+        }
+
+        const node = PROXMOX_NODE;
+        // Parse token: puede ser "user@pam!tokenid=secret" o ya formateado
+        const authHeader = PROXMOX_TOKEN.includes('=')
+          ? `PVEAPIToken=${PROXMOX_TOKEN}`
+          : `PVEAPIToken=${PROXMOX_TOKEN}`;
+
+        const proxGet = async (endpoint) => {
+          const res = await fetch(`${PROXMOX_URL}/api2/json${endpoint}`, {
+            headers: { Authorization: authHeader },
+            // Proxmox usa self-signed certs normalmente
+            ...(PROXMOX_URL.startsWith('https') ? {} : {})
+          });
+          if (!res.ok) throw new Error(`Proxmox ${endpoint} → ${res.status}: ${await res.text()}`);
+          return res.json();
+        };
+
+        const proxPost = async (endpoint, body = {}) => {
+          const params = new URLSearchParams(body);
+          const res = await fetch(`${PROXMOX_URL}/api2/json${endpoint}`, {
+            method: 'POST',
+            headers: { Authorization: authHeader, 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: params.toString()
+          });
+          if (!res.ok) throw new Error(`Proxmox POST ${endpoint} → ${res.status}: ${await res.text()}`);
+          return res.json();
+        };
+
+        try {
+          switch (input.action) {
+            case 'get_status': {
+              const status = await proxGet(`/nodes/${node}/status`);
+              return { node, status: status.data };
+            }
+            case 'list_vms': {
+              const qemu = await proxGet(`/nodes/${node}/qemu`);
+              const lxc = await proxGet(`/nodes/${node}/lxc`);
+              return {
+                vms: (qemu.data || []).map(v => ({ vmid: v.vmid, name: v.name, status: v.status, mem: v.mem, maxmem: v.maxmem, cpu: v.cpu })),
+                containers: (lxc.data || []).map(c => ({ vmid: c.vmid, name: c.name, status: c.status, mem: c.mem, maxmem: c.maxmem }))
+              };
+            }
+            case 'vm_status': {
+              if (!input.vmid) return { error: 'vmid requerido' };
+              const vmStatus = await proxGet(`/nodes/${node}/qemu/${input.vmid}/status/current`);
+              return { vmid: input.vmid, ...vmStatus.data };
+            }
+            case 'start_vm': {
+              if (!input.vmid) return { error: 'vmid requerido' };
+              const result = await proxPost(`/nodes/${node}/qemu/${input.vmid}/status/start`);
+              return { success: true, vmid: input.vmid, task: result.data };
+            }
+            case 'stop_vm': {
+              if (!input.vmid) return { error: 'vmid requerido' };
+              const result = await proxPost(`/nodes/${node}/qemu/${input.vmid}/status/shutdown`);
+              return { success: true, vmid: input.vmid, task: result.data, note: 'Shutdown graceful enviado' };
+            }
+            case 'snapshot_vm': {
+              if (!input.vmid) return { error: 'vmid requerido' };
+              const snapName = `jarvis_${Date.now()}`;
+              const result = await proxPost(`/nodes/${node}/qemu/${input.vmid}/snapshot`, {
+                snapname: snapName,
+                description: `Snapshot creado por Jarvis - ${new Date().toISOString()}`
+              });
+              return { success: true, vmid: input.vmid, snapshot: snapName, task: result.data };
+            }
+            case 'get_resources': {
+              const resources = await proxGet('/cluster/resources');
+              return { resources: resources.data };
+            }
+            case 'get_storage': {
+              const storage = await proxGet(`/nodes/${node}/storage`);
+              return { storage: (storage.data || []).map(s => ({ storage: s.storage, type: s.type, total: s.total, used: s.used, avail: s.avail, content: s.content })) };
+            }
+            case 'get_network': {
+              const network = await proxGet(`/nodes/${node}/network`);
+              return { interfaces: network.data };
+            }
+            case 'custom': {
+              if (!input.endpoint) return { error: 'endpoint requerido para action=custom' };
+              const result = await proxGet(input.endpoint);
+              return result.data || result;
+            }
+            default:
+              return { error: `Acción Proxmox no válida: ${input.action}` };
+          }
+        } catch (err) {
+          return { error: `Proxmox: ${err.message}` };
+        }
+      }
+
       default:
         return { error: `Tool desconocida: ${name}` };
     }
@@ -1041,15 +1308,42 @@ CRÍTICO: Llama MÚLTIPLES tools A LA VEZ en cada turno. Cada turno extra son se
 - Ya tienes el contexto de la casa en tu prompt. NO llames scan_installation ni get_entities
   para cosas que ya sabes. Usa search_entities solo cuando necesites el entity_id exacto.
 
+═══ TU EXPERTICIA ═══
+Eres EL MAYOR ESPECIALISTA en:
+- Home Assistant: arquitectura, integraciones, YAML, templates Jinja2, triggers, conditions, actions
+- Lovelace: cards nativas, custom cards, layouts, temas, UI/UX domótico
+- HACS: instalación, repositorios, cards frontend, integraciones custom
+- Protocolos: Zigbee, Z-Wave, WiFi, Bluetooth, Matter, Thread
+- Hardware: ESPHome, ESP32, Sonoff, Shelly, Aqara, IKEA, Hue, Tuya
+- Automatizaciones avanzadas: AppDaemon, Node-RED, blueprints, templates
+- Energía: integración solar, baterías, medición por circuito, tarifas
+- Seguridad: cámaras, alarmas, Frigate, detección presencia
+- Proxmox: virtualización, VMs, contenedores, backups, networking
+- Linux: administración de sistemas, Docker, networking, SSH
+
+SI NO SABES ALGO → lo buscas con ha_knowledge o web_search. NUNCA inventes.
+SI FALTA UNA HERRAMIENTA → la buscas con search_hacs_resources y la instalas con install_hacs_resource.
+Tu filosofía: ENCONTRAR LA SOLUCIÓN, no decir "no se puede".
+
+═══ ENTORNO FÍSICO ═══
+Home Assistant OS está instalado en:
+- Servidor: Proxmox VE (virtualización)
+- VM: Home Assistant OS (máquina virtual)
+- Acceso Proxmox: via API (si configurado) para gestionar VMs, snapshots, backups, recursos
+- Si necesitas hacer backup de la VM o gestionar recursos → usa proxmox_api
+
 ═══ CAPACIDADES ═══
 Tienes acceso TOTAL:
 - Dispositivos: encender, apagar, regular, cualquier servicio de HA
 - Archivos: leer y escribir /config (automations.yaml, configuration.yaml, todo)
 - Automatizaciones: crear, modificar, eliminar, recargar
-- Internet: buscar documentación, soluciones, información
+- Dashboards: ver, analizar, crear, modificar paneles Lovelace completos
+- Frontend: instalar cards custom, temas, detectar recursos instalados
+- Internet: buscar documentación, soluciones, información, wiki HA
 - Memoria: guardar y recordar preferencias, patrones, configuraciones
 - Aprendizaje: registrar errores, éxitos, optimizaciones
 - Sistema: escanear instalación, verificar config, info del host
+- Proxmox: ver VMs, estado servidor, snapshots, backups, recursos
 
 ═══ DASHBOARDS Y FRONTEND ═══
 Puedes VER y MODIFICAR dashboards de Lovelace. Conoces estas cards:

@@ -1,6 +1,6 @@
 name: "Jarvis AI Agent"
-description: "Jarvis — Tu agente IA privado para Home Assistant. Controla tu casa, crea automatizaciones, edita configuración, busca en internet y aprende con cada uso."
-version: "2.4.0"
+description: "Jarvis — Tu agente IA privado para Home Assistant. Controla tu casa, crea automatizaciones, gestiona dashboards, instala herramientas, accede a Proxmox y aprende con cada uso."
+version: "2.5.0"
 slug: "jarvis_ai_agent"
 init: false
 arch:
@@ -28,7 +28,13 @@ options:
   anthropic_api_key: ""
   model: "claude-sonnet-4-6"
   language: "es"
+  proxmox_url: ""
+  proxmox_token: ""
+  proxmox_node: "pve"
 schema:
   anthropic_api_key: str
   model: str
   language: str
+  proxmox_url: str?
+  proxmox_token: str?
+  proxmox_node: str?
