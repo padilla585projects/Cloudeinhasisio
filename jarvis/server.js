@@ -633,6 +633,33 @@ const tools = [
     }
   },
   {
+    name: 'create_custom_tool',
+    description: 'Crea una herramienta/script custom cuando no existe una solución. Genera un script en /config/scripts/jarvis/ que se puede ejecutar. Para automatizaciones, integraciones custom, scrapers, o cualquier cosa que necesites.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Nombre del script (sin extensión). Ej: "energy_report", "backup_notify"' },
+        language: { type: 'string', enum: ['shell', 'python', 'node'], description: 'Lenguaje del script' },
+        code: { type: 'string', description: 'Código del script' },
+        description: { type: 'string', description: 'Qué hace este script' },
+        schedule: { type: 'string', description: 'Cron schedule si debe ejecutarse periódicamente (ej: "0 8 * * *" = cada día a las 8)' }
+      },
+      required: ['name', 'language', 'code', 'description']
+    }
+  },
+  {
+    name: 'run_custom_tool',
+    description: 'Ejecuta un script custom previamente creado en /config/scripts/jarvis/',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Nombre del script a ejecutar' },
+        args: { type: 'string', description: 'Argumentos para el script (opcional)' }
+      },
+      required: ['name']
+    }
+  },
+  {
     name: 'agent_communicate',
     description: 'Comunica con otro agente IA del usuario via webhook/API. Puede enviar mensajes, pedir datos, o coordinar tareas entre agentes.',
     input_schema: {
@@ -1566,6 +1593,82 @@ async function executeTool(name, input) {
         }
       }
 
+      // ─── Herramientas custom ───
+      case 'create_custom_tool': {
+        try {
+          const scriptsDir = path.join(HA_CONFIG, 'scripts', 'jarvis');
+          if (!fs.existsSync(scriptsDir)) fs.mkdirSync(scriptsDir, { recursive: true });
+
+          const extensions = { shell: '.sh', python: '.py', node: '.js' };
+          const ext = extensions[input.language] || '.sh';
+          const filePath = path.join(scriptsDir, input.name + ext);
+
+          // Añadir shebang si no lo tiene
+          let code = input.code;
+          if (input.language === 'shell' && !code.startsWith('#!')) code = '#!/bin/bash\n' + code;
+          if (input.language === 'python' && !code.startsWith('#!')) code = '#!/usr/bin/env python3\n' + code;
+          if (input.language === 'node' && !code.startsWith('#!')) code = '#!/usr/bin/env node\n' + code;
+
+          fs.writeFileSync(filePath, code);
+          // Hacer ejecutable
+          try { fs.chmodSync(filePath, '755'); } catch {}
+
+          console.log(`[custom-tool] Creado: ${filePath} (${input.language})`);
+
+          // Guardar metadata
+          const metaFile = path.join(scriptsDir, 'tools_meta.json');
+          let meta = {};
+          if (fs.existsSync(metaFile)) meta = JSON.parse(fs.readFileSync(metaFile, 'utf8'));
+          meta[input.name] = {
+            language: input.language,
+            description: input.description,
+            schedule: input.schedule || null,
+            created: new Date().toISOString(),
+            path: filePath
+          };
+          fs.writeFileSync(metaFile, JSON.stringify(meta, null, 2));
+
+          // Si tiene schedule, crear un shell_command en HA para poder ejecutarlo
+          const result = { success: true, path: filePath, message: `Herramienta '${input.name}' creada.` };
+          if (input.schedule) {
+            result.schedule = input.schedule;
+            result.note = 'Para activar el cron, crea una automatización con time_pattern trigger o usa el sistema de tareas de HA.';
+          }
+          return result;
+        } catch (err) {
+          return { error: err.message };
+        }
+      }
+
+      case 'run_custom_tool': {
+        try {
+          const scriptsDir = path.join(HA_CONFIG, 'scripts', 'jarvis');
+          const metaFile = path.join(scriptsDir, 'tools_meta.json');
+
+          if (!fs.existsSync(metaFile)) return { error: 'No hay herramientas custom creadas' };
+          const meta = JSON.parse(fs.readFileSync(metaFile, 'utf8'));
+          const tool = meta[input.name];
+          if (!tool) return { error: `Herramienta '${input.name}' no encontrada. Disponibles: ${Object.keys(meta).join(', ')}` };
+
+          const filePath = tool.path;
+          if (!fs.existsSync(filePath)) return { error: `Archivo no encontrado: ${filePath}` };
+
+          // Ejecutar según lenguaje
+          const { execSync } = require('child_process');
+          let cmd;
+          if (tool.language === 'shell') cmd = `bash ${filePath} ${input.args || ''}`;
+          else if (tool.language === 'python') cmd = `python3 ${filePath} ${input.args || ''}`;
+          else if (tool.language === 'node') cmd = `node ${filePath} ${input.args || ''}`;
+          else return { error: `Lenguaje no soportado: ${tool.language}` };
+
+          const output = execSync(cmd, { timeout: 30000, encoding: 'utf8', cwd: scriptsDir });
+          return { success: true, tool: input.name, output: output.slice(0, 5000) };
+        } catch (err) {
+          if (err.stdout) return { error: err.message, stdout: err.stdout.slice(0, 2000), stderr: (err.stderr || '').slice(0, 2000) };
+          return { error: err.message };
+        }
+      }
+
       // ─── Comunicación entre agentes ───
       case 'agent_communicate': {
         try {
@@ -1775,7 +1878,16 @@ Eres EL MAYOR ESPECIALISTA en:
 
 SI NO SABES ALGO → lo buscas con ha_knowledge o web_search. NUNCA inventes.
 SI FALTA UNA HERRAMIENTA → la buscas con search_hacs_resources y la instalas con install_hacs_resource.
-Tu filosofía: ENCONTRAR LA SOLUCIÓN, no decir "no se puede".
+SI NO EXISTE LA HERRAMIENTA → la CREAS tú con create_custom_tool (shell, python o node).
+Tu filosofía: ENCONTRAR LA SOLUCIÓN o CREARLA. NUNCA decir "no se puede".
+
+═══ HERRAMIENTAS CUSTOM ═══
+Si no encuentras una herramienta que haga lo que necesitas, CRÉALA:
+- create_custom_tool: Genera scripts en /config/scripts/jarvis/ (shell, python, node)
+- run_custom_tool: Ejecuta scripts que hayas creado
+- Guarda metadata de cada herramienta (descripción, lenguaje, schedule)
+- Puedes crear: scrapers, reporters, monitores, convertidores, APIs, lo que sea
+- Si necesita ejecutarse periódicamente: añade schedule y crea automatización
 
 ═══ ENTORNO FÍSICO ═══
 Home Assistant OS está instalado en:
@@ -2161,7 +2273,7 @@ app.get('/api/health', (req, res) => {
 
 const PORT = 3000;
 app.listen(PORT, '0.0.0.0', async () => {
-  console.log(`Jarvis AI Agent v2.8.0 corriendo en puerto ${PORT}`);
+  console.log(`Jarvis AI Agent v2.9.0 corriendo en puerto ${PORT}`);
   console.log(`Modelo: ${MODEL} | Config: ${HA_CONFIG} | Data: ${DATA_DIR}`);
 
   // Scan inicial si no hay contexto o tiene más de 2 horas
