@@ -3,6 +3,42 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.11.0 (2026-05-10) — HUB CENTRAL DE RED: GESTIÓN COMPLETA DE AGENTES
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — agentNetwork.json: estado persistente enriquecido de la red
+  - agents: identidad, permisos, last_seen, online/offline, interacciones, learnings
+  - join_requests: solicitudes pendientes de aprobación con historial
+  - interactions: log de interacciones entre agentes
+  - routing_rules: reglas aprendidas de qué agente hace qué
+
+NUEVO — agent_gateway expandido (11 acciones):
+  - network_status: estado completo (online/offline/permisos/interacciones)
+  - approve_join / reject_join: aprobar/rechazar agentes nuevos
+  - pending_joins: ver solicitudes pendientes
+  - set_permission: dar permisos read/write/admin/blocked a un agente
+  - broadcast: mensaje a todos los agentes de la red
+  - learn_from_interaction: guardar aprendizaje de cada interacción
+
+NUEVO — Panel "🌐 Red" en la UI:
+  - Badge rojo en el botón cuando hay solicitudes pendientes
+  - Vista de agentes online/offline con última conexión y capacidades
+  - Botones Aprobar/Rechazar directamente desde la UI sin escribir en el chat
+  - Últimas interacciones entre agentes
+  - Refresco automático cada 15s
+
+NUEVO — Endpoints REST:
+  - GET /api/network: estado completo de la red
+  - POST /api/network/approve/:id: aprobar join request
+  - POST /api/network/reject/:id: rechazar join request
+
+MEJORADO — gatewaySyncLoop:
+  - Heartbeat: actualiza last_seen de cada agente en cada sync
+  - Marca offline a agentes que no aparecen en el sync
+  - Detecta join_requests en pending_messages y crea notificación proactiva
+  - Guarda estado enriquecido en agentNetwork.json
+
+────────────────────────────────────────────────────────────────────────────────
 v3.10.7 (2026-05-10) — PROTOCOLO DE RED: IDENTIDAD Y NORMAS
 ────────────────────────────────────────────────────────────────────────────────
 

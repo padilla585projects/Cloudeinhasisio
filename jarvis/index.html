@@ -399,8 +399,27 @@
     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
     <span id="local-folder-label">PC</span>
   </button>
+  <button id="network-btn" onclick="toggleNetworkPanel()" title="Red de agentes IA" style="background:transparent;border:1px solid var(--border);border-radius:10px;padding:6px 10px;color:var(--text2);cursor:pointer;font-size:11px;font-family:'DM Mono',monospace;display:flex;align-items:center;gap:5px;transition:all 0.2s;flex-shrink:0;position:relative;" onmouseover="this.style.borderColor='var(--accent2)';this.style.color='var(--accent2)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text2)'">
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><line x1="12" y1="7" x2="5" y2="17"/><line x1="12" y1="7" x2="19" y2="17"/></svg>
+    <span>Red</span>
+    <span id="network-badge" style="display:none;background:var(--error);color:#fff;border-radius:50%;width:14px;height:14px;font-size:9px;display:none;align-items:center;justify-content:center;position:absolute;top:-4px;right:-4px;"></span>
+  </button>
   <div class="status-dot" id="status-dot" title="Conectado"></div>
 </header>
+
+<!-- Panel de red de agentes -->
+<div id="network-panel" style="display:none;position:fixed;top:60px;right:16px;width:360px;max-height:80vh;background:var(--bg2);border:1px solid var(--border);border-radius:14px;z-index:1000;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.4);flex-direction:column;">
+  <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+    <span style="font-size:13px;font-weight:500;color:var(--text)">🌐 Red de Agentes IA</span>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button onclick="loadNetworkPanel()" style="background:transparent;border:none;color:var(--text2);cursor:pointer;font-size:11px;padding:2px 6px;border:1px solid var(--border);border-radius:6px;">↻ Actualizar</button>
+      <button onclick="toggleNetworkPanel()" style="background:transparent;border:none;color:var(--text2);cursor:pointer;font-size:16px;line-height:1;">×</button>
+    </div>
+  </div>
+  <div id="network-panel-content" style="overflow-y:auto;max-height:calc(80vh - 50px);padding:12px;display:flex;flex-direction:column;gap:10px;">
+    <div style="color:var(--text2);font-size:12px;text-align:center;padding:20px;">Cargando red...</div>
+  </div>
+</div>
 
 
 <div id="messages">
@@ -789,6 +808,135 @@
     pendingFiles.splice(i, 1);
     renderAttachmentsBar();
   };
+
+  // ── Panel de red de agentes ──────────────────────────────────────────────────
+  let networkPanelOpen = false;
+  let networkRefreshInterval = null;
+
+  function toggleNetworkPanel() {
+    const panel = document.getElementById('network-panel');
+    networkPanelOpen = !networkPanelOpen;
+    panel.style.display = networkPanelOpen ? 'flex' : 'none';
+    panel.style.flexDirection = 'column';
+    if (networkPanelOpen) {
+      loadNetworkPanel();
+      networkRefreshInterval = setInterval(loadNetworkPanel, 15000);
+    } else {
+      clearInterval(networkRefreshInterval);
+    }
+  }
+
+  async function loadNetworkPanel() {
+    const content = document.getElementById('network-panel-content');
+    try {
+      const res = await fetch('api/network');
+      const data = await res.json();
+
+      // Badge de solicitudes pendientes
+      const badge = document.getElementById('network-badge');
+      if (data.pending_joins?.length > 0) {
+        badge.textContent = data.pending_joins.length;
+        badge.style.display = 'flex';
+      } else {
+        badge.style.display = 'none';
+      }
+
+      let html = '';
+
+      // Resumen
+      html += `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+        <div style="background:var(--bg3);border-radius:8px;padding:8px;text-align:center;">
+          <div style="font-size:18px;font-weight:600;color:var(--success)">${data.agents.filter(a=>a.online).length}</div>
+          <div style="font-size:10px;color:var(--text2)">Online</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:8px;padding:8px;text-align:center;">
+          <div style="font-size:18px;font-weight:600;color:var(--text2)">${data.agents.filter(a=>!a.online).length}</div>
+          <div style="font-size:10px;color:var(--text2)">Offline</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:8px;padding:8px;text-align:center;">
+          <div style="font-size:18px;font-weight:600;color:${data.pending_joins?.length>0?'var(--error)':'var(--text2)'}">${data.pending_joins?.length||0}</div>
+          <div style="font-size:10px;color:var(--text2)">Solicitudes</div>
+        </div>
+      </div>`;
+
+      // Solicitudes de join pendientes
+      if (data.pending_joins?.length > 0) {
+        html += `<div style="border:1px solid var(--error);border-radius:10px;padding:10px;background:rgba(248,113,113,0.05);">
+          <div style="font-size:11px;font-weight:500;color:var(--error);margin-bottom:8px;">⚠ Solicitudes de acceso</div>`;
+        for (const jr of data.pending_joins) {
+          html += `<div style="background:var(--bg3);border-radius:8px;padding:8px;margin-bottom:6px;">
+            <div style="font-size:12px;font-weight:500;color:var(--text);margin-bottom:2px;">${jr.identity?.name || jr.agent_id}</div>
+            <div style="font-size:10px;color:var(--text2);margin-bottom:6px;">${jr.identity?.description || 'Sin descripción'}</div>
+            <div style="font-size:10px;color:var(--text3);margin-bottom:6px;">Capacidades: ${(jr.identity?.capabilities||[]).slice(0,3).join(', ') || 'desconocidas'}</div>
+            <div style="display:flex;gap:6px;">
+              <button onclick="approveJoin('${jr.id}')" style="flex:1;background:var(--success);border:none;color:#000;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;font-weight:500;">✓ Aprobar</button>
+              <button onclick="rejectJoin('${jr.id}')" style="flex:1;background:transparent;border:1px solid var(--error);color:var(--error);border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;">✗ Rechazar</button>
+            </div>
+          </div>`;
+        }
+        html += `</div>`;
+      }
+
+      // Lista de agentes
+      if (data.agents.length > 0) {
+        html += `<div style="font-size:11px;color:var(--text2);font-family:'DM Mono',monospace;margin-bottom:2px;">AGENTES (${data.agents.length})</div>`;
+        for (const agent of data.agents) {
+          const lastSeen = agent.last_seen ? new Date(agent.last_seen).toLocaleTimeString('es-ES', {hour:'2-digit',minute:'2-digit'}) : '?';
+          html += `<div style="background:var(--bg3);border-radius:10px;padding:10px;border-left:3px solid ${agent.online?'var(--success)':'var(--text3)'};">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+              <span style="font-size:12px;font-weight:500;color:var(--text);">${agent.name}</span>
+              <span style="font-size:10px;color:${agent.online?'var(--success)':'var(--text3)'};">${agent.online?'● Online':'○ '+lastSeen}</span>
+            </div>
+            <div style="font-size:10px;color:var(--text2);margin-bottom:4px;">${agent.description||''}</div>
+            ${agent.capabilities.length>0?`<div style="font-size:10px;color:var(--text3);">${agent.capabilities.slice(0,4).join(' · ')}</div>`:''}
+            ${agent.interaction_count>0?`<div style="font-size:10px;color:var(--accent2);margin-top:3px;">${agent.interaction_count} interacciones</div>`:''}
+          </div>`;
+        }
+      } else {
+        html += `<div style="color:var(--text2);font-size:12px;text-align:center;padding:16px 0;">Sin agentes en la red todavía.<br><span style="font-size:11px;color:var(--text3);">El sync automático ocurre cada 60s.</span></div>`;
+      }
+
+      // Últimas interacciones
+      if (data.interactions?.length > 0) {
+        html += `<div style="font-size:11px;color:var(--text2);font-family:'DM Mono',monospace;margin-bottom:2px;">ÚLTIMAS INTERACCIONES</div>`;
+        for (const i of data.interactions.slice(-3).reverse()) {
+          html += `<div style="background:var(--bg3);border-radius:8px;padding:8px;font-size:11px;color:var(--text2);">
+            <span style="color:var(--accent)">${i.agent_id}</span> · ${i.summary?.slice(0,80)}
+          </div>`;
+        }
+      }
+
+      content.innerHTML = html;
+    } catch (e) {
+      content.innerHTML = `<div style="color:var(--error);font-size:12px;text-align:center;padding:20px;">Error cargando la red: ${e.message}</div>`;
+    }
+  }
+
+  async function approveJoin(requestId) {
+    try {
+      const res = await fetch(`api/network/approve/${requestId}`, { method: 'POST' });
+      const data = await res.json();
+      if (data.approved) { addMessage('ai', `✅ Agente **${data.agent_id}** aprobado en la red.`); loadNetworkPanel(); }
+    } catch(e) { console.error('approveJoin:', e); }
+  }
+
+  async function rejectJoin(requestId) {
+    try {
+      const res = await fetch(`api/network/reject/${requestId}`, { method: 'POST' });
+      const data = await res.json();
+      if (data.rejected) { addMessage('ai', `❌ Agente **${data.agent_id}** rechazado.`); loadNetworkPanel(); }
+    } catch(e) { console.error('rejectJoin:', e); }
+  }
+
+  // Refrescar badge al cargar
+  setTimeout(async () => {
+    try {
+      const res = await fetch('api/network');
+      const data = await res.json();
+      const badge = document.getElementById('network-badge');
+      if (data.pending_joins?.length > 0) { badge.textContent = data.pending_joins.length; badge.style.display = 'flex'; }
+    } catch(e) {}
+  }, 3000);
 
   // ── Acceso a archivos del PC (File System Access API) ────────────────────────
   let localDirectoryHandle = null;

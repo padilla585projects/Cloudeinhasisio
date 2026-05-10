@@ -70,6 +70,15 @@ let gatewayState = loadJSON(GATEWAY_FILE, { secret: null, knownAgents: {}, pendi
 let gatewayNoSecretLogged = false;
 let lastKnownAgentSet = new Set(Object.keys(gatewayState.knownAgents || {}));
 
+// Red de agentes — estado persistente enriquecido
+const AGENT_NETWORK_FILE = path.join(DATA_DIR, 'agentNetwork.json');
+let agentNetwork = loadJSON(AGENT_NETWORK_FILE, {
+  agents: {},        // agent_id → { identity, permissions, last_seen, online, interaction_count, learned }
+  join_requests: [], // solicitudes pendientes de aprobación
+  interactions: [],  // historial de interacciones entre agentes
+  routing_rules: [], // reglas aprendidas de routing
+});
+
 // ── Identidad de Jarvis en la red de agentes ─────────────────────────────────
 const JARVIS_IDENTITY = {
   agent_id: GATEWAY_ID,
@@ -894,13 +903,17 @@ const tools = [
       properties: {
         action: {
           type: 'string',
-          enum: ['register', 'sync', 'send', 'read_messages', 'list_agents'],
-          description: 'register: primera vez, obtiene el secret | sync: sincroniza contexto y lee mensajes entrantes | send: envía action_request a otro agente | read_messages: lee mensajes pendientes sin sincronizar | list_agents: muestra agentes conocidos y sus capacidades'
+          enum: ['register', 'sync', 'send', 'read_messages', 'list_agents', 'network_status', 'approve_join', 'reject_join', 'pending_joins', 'set_permission', 'broadcast', 'learn_from_interaction'],
+          description: 'register: registrarse en la red | sync: sincronizar y leer mensajes | send: enviar acción a un agente | read_messages: leer mensajes pendientes | list_agents: agentes conocidos | network_status: estado completo de la red (online/offline/permisos) | approve_join: aprobar solicitud de un agente nuevo | reject_join: rechazar solicitud | pending_joins: ver solicitudes pendientes | set_permission: dar/quitar permisos a un agente | broadcast: mensaje a todos | learn_from_interaction: guardar aprendizaje de una interacción'
         },
-        to: { type: 'string', description: 'agent_id del agente destino (para action=send)' },
+        to: { type: 'string', description: 'agent_id del agente destino' },
         action_name: { type: 'string', description: 'Nombre de la acción a solicitar al agente destino' },
-        params: { type: 'object', description: 'Parámetros para la acción (para action=send)' },
-        context: { type: 'object', description: 'Contexto a compartir en sync (presencia_adrian, modo_casa, hora_local, etc.)' }
+        params: { type: 'object', description: 'Parámetros para la acción' },
+        context: { type: 'object', description: 'Contexto a compartir en sync' },
+        request_id: { type: 'string', description: 'ID de la solicitud de join (para approve_join/reject_join)' },
+        permission: { type: 'string', enum: ['read', 'write', 'admin', 'blocked'], description: 'Nivel de permiso para set_permission' },
+        learning: { type: 'object', description: 'Aprendizaje a guardar (agent_id, what_learned, quality: good/bad)' },
+        message: { type: 'string', description: 'Mensaje para broadcast' }
       },
       required: ['action']
     }
@@ -2742,8 +2755,98 @@ Prohibida la copia, redistribucion y uso comercial.`);
           return { messages: gatewayState.pendingMessages, count: gatewayState.pendingMessages.length };
         }
 
+        if (gwAction === 'network_status') {
+          const now = Date.now();
+          const agents = Object.entries(agentNetwork.agents).map(([id, a]) => ({
+            agent_id: id,
+            name: a.identity?.name || id,
+            online: a.last_seen ? (now - new Date(a.last_seen).getTime()) < 5 * 60_000 : false,
+            last_seen: a.last_seen,
+            permissions: a.permissions || 'read',
+            capabilities: a.identity?.capabilities || [],
+            interaction_count: a.interaction_count || 0,
+            learned: a.learned || [],
+          }));
+          return {
+            total: agents.length,
+            online: agents.filter(a => a.online).length,
+            offline: agents.filter(a => !a.online).length,
+            agents,
+            pending_joins: agentNetwork.join_requests.filter(j => j.status === 'pending').length,
+            routing_rules: agentNetwork.routing_rules.length,
+          };
+        }
+
+        if (gwAction === 'pending_joins') {
+          return { join_requests: agentNetwork.join_requests.filter(j => j.status === 'pending') };
+        }
+
+        if (gwAction === 'approve_join') {
+          const jr = agentNetwork.join_requests.find(j => j.id === input.request_id && j.status === 'pending');
+          if (!jr) return { error: 'Solicitud no encontrada o ya procesada' };
+          jr.status = 'approved';
+          jr.resolved_at = new Date().toISOString();
+          agentNetwork.agents[jr.agent_id] = agentNetwork.agents[jr.agent_id] || {};
+          agentNetwork.agents[jr.agent_id].identity = jr.identity;
+          agentNetwork.agents[jr.agent_id].permissions = 'read';
+          agentNetwork.agents[jr.agent_id].joined_at = new Date().toISOString();
+          agentNetwork.agents[jr.agent_id].interaction_count = 0;
+          agentNetwork.agents[jr.agent_id].learned = [];
+          saveJSON(AGENT_NETWORK_FILE, agentNetwork);
+          if (!gatewayState.secret) return { error: 'Sin secret — no puedo enviar la aprobación al gateway' };
+          try {
+            await fetch(GATEWAY_URL, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ agent_id: GATEWAY_ID, secret: gatewayState.secret, message: 'approve_join', request_id: input.request_id }),
+              timeout: 10000
+            });
+          } catch(e) { console.log('[gateway] Error enviando aprobación:', e.message); }
+          console.log(`[gateway] ✓ Agente ${jr.agent_id} aprobado en la red`);
+          return { approved: true, agent_id: jr.agent_id, permissions: 'read' };
+        }
+
+        if (gwAction === 'reject_join') {
+          const jr = agentNetwork.join_requests.find(j => j.id === input.request_id && j.status === 'pending');
+          if (!jr) return { error: 'Solicitud no encontrada o ya procesada' };
+          jr.status = 'rejected';
+          jr.resolved_at = new Date().toISOString();
+          saveJSON(AGENT_NETWORK_FILE, agentNetwork);
+          console.log(`[gateway] Agente ${jr.agent_id} rechazado`);
+          return { rejected: true, agent_id: jr.agent_id };
+        }
+
+        if (gwAction === 'set_permission') {
+          if (!input.to || !input.permission) return { error: 'to y permission son requeridos' };
+          if (!agentNetwork.agents[input.to]) return { error: `Agente ${input.to} no conocido` };
+          agentNetwork.agents[input.to].permissions = input.permission;
+          saveJSON(AGENT_NETWORK_FILE, agentNetwork);
+          return { ok: true, agent_id: input.to, permission: input.permission };
+        }
+
+        if (gwAction === 'learn_from_interaction') {
+          const { learning } = input;
+          if (!learning?.agent_id || !learning?.what_learned) return { error: 'learning.agent_id y learning.what_learned son requeridos' };
+          if (!agentNetwork.agents[learning.agent_id]) agentNetwork.agents[learning.agent_id] = { learned: [], interaction_count: 0 };
+          agentNetwork.agents[learning.agent_id].learned = agentNetwork.agents[learning.agent_id].learned || [];
+          agentNetwork.agents[learning.agent_id].learned.push({ text: learning.what_learned, quality: learning.quality || 'good', at: new Date().toISOString() });
+          agentNetwork.agents[learning.agent_id].interaction_count = (agentNetwork.agents[learning.agent_id].interaction_count || 0) + 1;
+          if (learning.routing_rule) {
+            agentNetwork.routing_rules.push({ pattern: learning.routing_rule, agent_id: learning.agent_id, quality: learning.quality, at: new Date().toISOString() });
+          }
+          agentNetwork.interactions.push({ agent_id: learning.agent_id, summary: learning.what_learned, quality: learning.quality, at: new Date().toISOString() });
+          if (agentNetwork.interactions.length > 200) agentNetwork.interactions = agentNetwork.interactions.slice(-200);
+          saveJSON(AGENT_NETWORK_FILE, agentNetwork);
+          return { saved: true, agent: learning.agent_id, total_interactions: agentNetwork.agents[learning.agent_id].interaction_count };
+        }
+
         if (!gatewayState.secret) {
           return { error: 'No registrado aún. Usa action:register primero para obtener el secret.' };
+        }
+
+        if (gwAction === 'broadcast') {
+          const msg = input.message || 'Hola desde Jarvis';
+          const data = await gwPost({ agent_id: GATEWAY_ID, secret: gatewayState.secret, message: 'broadcast', payload: { from: GATEWAY_ID, type: 'broadcast', text: msg, identity: JARVIS_IDENTITY } });
+          return { sent: true, message: msg, raw: data };
         }
 
         if (gwAction === 'sync') {
@@ -3646,6 +3749,56 @@ app.get('/api/pending_task', (req, res) => {
   res.json(loadJSON(PENDING_TASK_FILE, { status: 'idle' }));
 });
 
+// ── Red de agentes — endpoints ───────────────────────────────────────────────
+
+app.get('/api/network', (req, res) => {
+  const now = Date.now();
+  const agents = Object.entries(agentNetwork.agents).map(([id, a]) => ({
+    agent_id: id,
+    name: a.identity?.name || id,
+    description: a.identity?.description || '',
+    online: a.last_seen ? (now - new Date(a.last_seen).getTime()) < 5 * 60_000 : false,
+    last_seen: a.last_seen,
+    permissions: a.permissions || 'read',
+    capabilities: a.identity?.capabilities || [],
+    interaction_count: a.interaction_count || 0,
+    learned: (a.learned || []).slice(-3),
+  }));
+  res.json({
+    agents,
+    pending_joins: agentNetwork.join_requests.filter(j => j.status === 'pending'),
+    routing_rules: agentNetwork.routing_rules.slice(-20),
+    interactions: agentNetwork.interactions.slice(-10),
+    gateway_registered: !!gatewayState.secret,
+  });
+});
+
+app.post('/api/network/approve/:requestId', async (req, res) => {
+  const { requestId } = req.params;
+  const jr = agentNetwork.join_requests.find(j => j.id === requestId && j.status === 'pending');
+  if (!jr) return res.status(404).json({ error: 'Solicitud no encontrada' });
+  jr.status = 'approved';
+  jr.resolved_at = new Date().toISOString();
+  agentNetwork.agents[jr.agent_id] = agentNetwork.agents[jr.agent_id] || {};
+  agentNetwork.agents[jr.agent_id] = { ...agentNetwork.agents[jr.agent_id], identity: jr.identity, permissions: 'read', joined_at: new Date().toISOString(), interaction_count: 0, learned: [] };
+  saveJSON(AGENT_NETWORK_FILE, agentNetwork);
+  if (gatewayState.secret) {
+    fetch(GATEWAY_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agent_id: GATEWAY_ID, secret: gatewayState.secret, message: 'approve_join', request_id: requestId }), timeout: 10000 }).catch(() => {});
+  }
+  console.log(`[gateway] ✓ Agente ${jr.agent_id} aprobado desde la UI`);
+  res.json({ approved: true, agent_id: jr.agent_id });
+});
+
+app.post('/api/network/reject/:requestId', (req, res) => {
+  const { requestId } = req.params;
+  const jr = agentNetwork.join_requests.find(j => j.id === requestId && j.status === 'pending');
+  if (!jr) return res.status(404).json({ error: 'Solicitud no encontrada' });
+  jr.status = 'rejected';
+  jr.resolved_at = new Date().toISOString();
+  saveJSON(AGENT_NETWORK_FILE, agentNetwork);
+  res.json({ rejected: true, agent_id: jr.agent_id });
+});
+
 // Respuesta de local_file desde el browser
 app.post('/api/local_response', (req, res) => {
   const { requestId, error, ...data } = req.body;
@@ -3838,7 +3991,7 @@ app.post('/api/chat', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '3.10.7',
+    version: '3.11.0',
     model: MODEL,
     memories: userMemory.length,
     learnings: learnings.length,
@@ -3925,7 +4078,7 @@ app.post('/api/pending_thoughts/:id', (req, res) => {
 
 const PORT = 3000;
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Jarvis AI Agent v3.10.7 corriendo en puerto ${PORT}`);
+  console.log(`Jarvis AI Agent v3.11.0 corriendo en puerto ${PORT}`);
   console.log(`Modelo: ${MODEL} | Config: ${HA_CONFIG} | Data: ${DATA_DIR}`);
   console.log(`API Key: ${ANTHROPIC_API_KEY ? 'configurada (' + ANTHROPIC_API_KEY.slice(0, 10) + '...)' : '⚠️ NO CONFIGURADA'}`);
   console.log(`HA Token: ${HA_TOKEN ? 'presente' : '⚠️ NO DISPONIBLE'}`);
@@ -4647,6 +4800,48 @@ async function gatewaySyncLoop() {
     if (data.pending_messages) gatewayState.pendingMessages = data.pending_messages;
     if (data.shared_context) gatewayState.sharedContext = data.shared_context;
     saveJSON(GATEWAY_FILE, gatewayState);
+
+    // Actualizar heartbeat de cada agente conocido
+    const now5 = new Date().toISOString();
+    for (const [agentId, caps] of Object.entries(gatewayState.knownAgents || {})) {
+      if (!agentNetwork.agents[agentId]) agentNetwork.agents[agentId] = { permissions: 'read', interaction_count: 0, learned: [] };
+      agentNetwork.agents[agentId].identity = caps;
+      agentNetwork.agents[agentId].last_seen = now5;
+      agentNetwork.agents[agentId].online = true;
+    }
+    // Marcar offline a agentes que no aparecen en este sync
+    const fiveMinAgo = Date.now() - 5 * 60_000;
+    for (const [agentId, agent] of Object.entries(agentNetwork.agents)) {
+      if (!gatewayState.knownAgents[agentId]) {
+        agent.online = agent.last_seen ? new Date(agent.last_seen).getTime() > fiveMinAgo : false;
+      }
+    }
+
+    // Procesar join_requests en pending_messages
+    for (const msg of data.pending_messages || []) {
+      const isJoinRequest = msg.type === 'join_request' || msg.message?.type === 'join_request';
+      if (isJoinRequest) {
+        const requestId = msg.request_id || msg.id || String(Date.now());
+        const agentId = msg.from || msg.agent_id;
+        const alreadyKnown = agentNetwork.join_requests.some(j => j.id === requestId);
+        if (!alreadyKnown && agentId) {
+          const jr = { id: requestId, agent_id: agentId, identity: msg.identity || msg.from_identity || {}, received_at: new Date().toISOString(), status: 'pending' };
+          agentNetwork.join_requests.push(jr);
+          console.log(`[gateway] Nueva solicitud de join de ${agentId} (request_id: ${requestId})`);
+          const thoughtsFile = path.join(DATA_DIR, 'pending_thoughts.json');
+          let thoughts = loadJSON(thoughtsFile, []);
+          thoughts.push({
+            id: Date.now(), type: 'join_request', priority: 'high', status: 'pending',
+            title: `Nuevo agente solicita unirse: ${agentId}`,
+            detail: `El agente "${agentId}" quiere conectarse a la red. Identidad: ${JSON.stringify(jr.identity, null, 2)}\n\nPara aprobar: agent_gateway(action:'approve_join', request_id:'${requestId}')\nPara rechazar: agent_gateway(action:'reject_join', request_id:'${requestId}')\n\nPide instrucciones a Adrián si no lo conoces.`,
+            created: new Date().toISOString()
+          });
+          if (thoughts.length > 50) thoughts = thoughts.slice(-50);
+          saveJSON(thoughtsFile, thoughts);
+        }
+      }
+    }
+    saveJSON(AGENT_NETWORK_FILE, agentNetwork);
 
     // Detectar agentes nuevos y notificar proactivamente
     const currentAgentSet = new Set(Object.keys(gatewayState.knownAgents || {}));
