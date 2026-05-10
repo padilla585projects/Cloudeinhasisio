@@ -3,6 +3,20 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.9.3 (2026-05-10) — SUBIDA DE ARCHIVOS AL CHAT
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — Archivos adjuntos en el chat:
+- Botón 📎 en el footer del chat para adjuntar archivos antes de enviar
+- Soporta imágenes (jpg, png, gif, webp) → enviadas como bloques image a Claude (visión real)
+- Soporta PDFs → enviados como bloques document a Claude (análisis nativo)
+- Otros archivos de texto (logs, yaml, json, py, js...) → enviados como bloques de texto
+- Barra de adjuntos muestra chips con nombre + ✕ para quitar antes de enviar
+- Se pueden adjuntar múltiples archivos a la vez
+- Los archivos se limpian automáticamente tras enviar
+- Server: extrae `files` del body y construye contenido multi-bloque para la API de Claude
+
+────────────────────────────────────────────────────────────────────────────────
 v3.9.2 (2026-05-10) — FEEDBACK REAL + CONTINUIDAD TRAS REINICIO
 ────────────────────────────────────────────────────────────────────────────────
 

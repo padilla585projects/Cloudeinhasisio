@@ -3167,7 +3167,7 @@ app.get('/api/pending_task', (req, res) => {
 
 // Chat principal
 app.post('/api/chat', async (req, res) => {
-  const { messages } = req.body;
+  const { messages, files } = req.body;
   if (!messages || !Array.isArray(messages)) {
     return res.status(400).json({ error: 'messages es requerido' });
   }
@@ -3184,7 +3184,25 @@ app.post('/api/chat', async (req, res) => {
 
     const lastMsg = messages[messages.length - 1];
     if (lastMsg && lastMsg.role === 'user') {
-      conversationHistory.push(lastMsg);
+      // Si hay archivos adjuntos, construir mensaje multi-contenido para Claude
+      if (files && files.length > 0) {
+        const userContent = [];
+        if (lastMsg.content) userContent.push({ type: 'text', text: lastMsg.content });
+        for (const file of files) {
+          const mime = file.type || 'text/plain';
+          if (file.encoding === 'base64' && mime.startsWith('image/')) {
+            userContent.push({ type: 'image', source: { type: 'base64', media_type: mime, data: file.content } });
+          } else if (file.encoding === 'base64' && mime === 'application/pdf') {
+            userContent.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: file.content } });
+          } else {
+            const truncated = file.content.length > 50000 ? file.content.slice(0, 50000) + '\n...[truncado]' : file.content;
+            userContent.push({ type: 'text', text: `\n\n📎 **${file.name}**\n\`\`\`\n${truncated}\n\`\`\`` });
+          }
+        }
+        conversationHistory.push({ role: 'user', content: userContent });
+      } else {
+        conversationHistory.push(lastMsg);
+      }
       saveHistory();
     }
 
