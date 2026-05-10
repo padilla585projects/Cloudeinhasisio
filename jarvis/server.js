@@ -5079,7 +5079,7 @@ async function bootGatewayRegister() {
       const res = await fetch(GATEWAY_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agent_id: GATEWAY_ID, message: 'check_join', context: { request_id: gatewayState.joinRequestId } }),
+        body: JSON.stringify({ agent_id: GATEWAY_ID, message: 'check_join', request_id: gatewayState.joinRequestId }),
         timeout: 10000
       });
       const data = await res.json();
