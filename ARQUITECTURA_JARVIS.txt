@@ -2,7 +2,7 @@
 JARVIS AI AGENT — ARQUITECTURA INTERNA Y EVOLUCIÓN
 ================================================================================
 Documento técnico interno — padilla585projects
-Última actualización: v3.3.0 (2026-05-10)
+Última actualización: v3.5.2 (2026-05-10)
 ================================================================================
 
 
@@ -60,7 +60,8 @@ y SIEMPRE consulta antes de hacer cambios grandes.
 STACK:
 - Backend: Node.js + Express (CommonJS, require())
 - Frontend: HTML/CSS/JS vanilla (un solo archivo)
-- Modelo: Claude Sonnet 4.6 via API REST
+- Modelo chat: Claude Sonnet 4.6 via API REST
+- Modelo background: Claude Haiku 4 (ahorro ~80%)
 - Streaming: SSE (Server-Sent Events) al frontend
 - Persistencia: JSON en /data/
 - Base Docker: Alpine Linux + Node.js
@@ -238,16 +239,40 @@ Jarvis ejecuta estos procesos automáticamente sin intervención:
       → si la hay, se actualiza solo → notifica por Telegram
 
   CADA 5 MINUTOS:
-  └── proactiveThinkingLoop()
+  └── proactiveThinkingLoop()  [MODELO: Haiku]
       Analiza el estado del sistema (dispositivos caídos, errores en logs)
       → si hay issues: pide a Claude que los analice
       → Claude genera proactive_thought si algo merece atención
       → Notifica por Telegram (high/critical) o guarda para el chat
 
+  CADA 10 MINUTOS:
+  └── captureStateSnapshot()  [0 tokens — solo captura datos]
+      Captura el estado completo de la casa (luces, presencia, clima,
+      sensores) y lo almacena en un buffer circular para análisis de patrones
+
+  CADA 6 HORAS:
+  └── analyzePatterns()  [MODELO: Haiku]
+      Analiza los snapshots acumulados buscando rutinas de los habitantes
+      → Si detecta patrón con >60% consistencia → proactive_thought
+      → Sugiere automatizaciones basadas en hábitos reales
+
+  CADA 4 HORAS:
+  └── knowledgeExpansionLoop()  [MODELO: Haiku]
+      Investiga temas de la cola de conocimiento pendiente
+      → Genera entradas en knowledge_db automáticamente
+      → Expande conocimiento industrial, protocolos, domótica
+
   AL ARRANCAR:
   └── scanInstallation() (si contexto >2h o no existe)
       Escanea: entidades, integraciones, add-ons, archivos, sistema
       Genera mapa completo para el system prompt
+
+  ESTRATEGIA DE MODELOS:
+  ┌─────────────────────────────────────────────────────────┐
+  │  Chat con usuario     → Claude Sonnet 4.6 (calidad máx)│
+  │  Tareas de fondo      → Claude Haiku (80% más barato)  │
+  │  Captura de estado    → 0 tokens (solo REST a HA)      │
+  └─────────────────────────────────────────────────────────┘
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -279,9 +304,11 @@ Un solo archivo index.html con:
   CHAT:
   - Tema oscuro (DM Sans + DM Mono)
   - Mensajes con markdown renderizado
-  - Tool blocks con iconos animados (ejecutando... / ✓ listo)
+  - Tool blocks OCULTOS (el usuario no ve herramientas ejecutándose)
   - Historial cargado del servidor al abrir
   - Auto-scroll al último mensaje
+  - Cola de mensajes: puedes escribir mientras Jarvis piensa (FIFO)
+  - Panel de logs inline (botón en footer)
 
   CARA 3D HOLOGRÁFICA (Three.js):
   - Geometría de cabeza deformada (mandíbula, frente, mentón)
@@ -378,7 +405,30 @@ Jarvis domina automatización industrial a nivel profesional:
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-12. SEGURIDAD Y PROTECCIÓN
+12. AUTOCONOCIMIENTO (JARVIS SABE LO QUE PUEDE HACER)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Jarvis genera DINÁMICAMENTE la lista de sus propias capacidades en el
+system prompt. Cuando se añade una tool nueva, automáticamente aparece:
+
+  En el system prompt:
+  "Tus herramientas actuales:
+   - get_entities: Lista entidades por dominio
+   - call_service: Ejecutar servicios HA
+   - knowledge_db: CRUD de base de conocimiento
+   - [... se genera de tools[]]"
+
+  Implementación (server.js):
+  ${tools.map(t => '- ' + t.name + ': ' + t.description.split('.')[0]).join('\n')}
+
+Esto garantiza que:
+- Jarvis NUNCA desconoce una capacidad suya
+- Cuando se amplía (nueva tool), inmediatamente la conoce y usa
+- No hay desfase entre código y conciencia del agente
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+13. SEGURIDAD Y PROTECCIÓN
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   TOKENS:
@@ -400,7 +450,7 @@ Jarvis domina automatización industrial a nivel profesional:
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-13. EVOLUCIÓN (ROADMAP DE MEJORAS APLICADAS)
+14. EVOLUCIÓN (ROADMAP DE MEJORAS APLICADAS)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   v1.2.0  │ Chat básico + memoria + historial persistente
@@ -416,6 +466,10 @@ Jarvis domina automatización industrial a nivel profesional:
   v3.1.0  │ Equipo de agentes cooperativo + conocimiento industrial
   v3.2.0  │ Base de conocimiento (knowledge_db) + scripts de sincronización
   v3.3.0  │ Auto-update (se actualiza solo en <2min tras push)
+  v3.4.0  │ Tool blocks ocultos + cola de mensajes + logs endpoint
+  v3.5.0  │ Pensamiento proactivo con análisis contextual completo
+  v3.5.1  │ Fix crash loop (PROXMOX_URL unbound) + arranque no-bloqueante
+  v3.5.2  │ Haiku para background (80% ahorro en tokens)
 
   PRÓXIMAS:
   - Chat flotante (botón en esquina, visible en todo HA)
@@ -426,7 +480,7 @@ Jarvis domina automatización industrial a nivel profesional:
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-14. CÓMO TRABAJAR CON ESTE PROYECTO
+15. CÓMO TRABAJAR CON ESTE PROYECTO
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   DESDE CUALQUIER MÁQUINA:
