@@ -664,6 +664,11 @@
             addMessage('ai', msg.content);
           }
         }
+        // Asegurar scroll al último mensaje después de renderizar
+        requestAnimationFrame(() => {
+          const msgs = document.getElementById('messages');
+          msgs.scrollTop = msgs.scrollHeight;
+        });
       }
     } catch (e) {
       console.log('No se pudo cargar historial:', e);

@@ -17,12 +17,10 @@ Orden del usuario: INTELIGENCIA primero, luego el resto.
     - "He notado que cada noche apagas todo a las 23:30, ¿quieres que lo automatice?"
     - Implementación: analizar get_history de entidades frecuentes, almacenar en learnings
 
-[ ] Contexto de presencia
-    - Saber quién está en casa (device_tracker, person.*)
-    - Adaptar respuestas según presencia: "Adrián está en casa, María no"
-    - Inyectar estado de presencia en el system prompt
-    - Automatizaciones condicionales por persona
-    - Implementación: consultar person.* al inicio de cada request
+[✓] Contexto de presencia (HECHO v2.3.0)
+    - updateLiveContext() consulta person.* en cada request
+    - Inyecta presencia, luces, clima, media, alertas en system prompt
+    - Se actualiza cada 60s en background
 
 [ ] Scoring de la instalación
     - "Tu instalación tiene un 72/100 en optimización"
@@ -53,7 +51,36 @@ Orden del usuario: INTELIGENCIA primero, luego el resto.
     - Implementación: ya puede con create_automation, mejorar el prompt
 
 ════════════════════════════════════════════════════════════════════════════════
-🔴 SPRINT 2 — COMUNICACIÓN
+🔴 SPRINT 2 — UX: CHAT FLOTANTE + VOZ
+════════════════════════════════════════════════════════════════════════════════
+
+[ ] Chat flotante (botón en esquina del panel HA)
+    - Botón circular flotante visible SIEMPRE en cualquier pestaña de HA
+    - Al hacer click se abre un panel/popup con el chat de Jarvis
+    - Tiene contexto de la pestaña actual (sabe qué dashboard/entidad estás viendo)
+    - Puede sugerir acciones basándose en lo que estás haciendo
+    - "Veo que estás en el dashboard de clima, ¿ajusto la temperatura?"
+    - Implementación: custom_panel o lovelace-card con iframe + JS inyectado
+    - Alternativa: browser_mod + custom sidebar panel persistente
+    - Comunicación pestaña→chat via postMessage o URL params
+
+[ ] Entrada por voz
+    - Botón de micrófono en el chat (Web Speech API / SpeechRecognition)
+    - Transcripción en tiempo real (speech-to-text nativo del navegador)
+    - Enviar transcripción como mensaje normal
+    - Feedback visual: onda de audio mientras escucha
+    - Soporte español (lang: 'es-ES')
+    - Futuro: wake word "Hey Jarvis" (requiere escucha continua)
+
+[ ] Salida por voz (TTS)
+    - Jarvis habla las respuestas (Web Speech Synthesis API)
+    - Voz configurable (velocidad, pitch)
+    - Modo silencio (solo texto) vs modo voz
+    - Integración con HA TTS (media_player para altavoces)
+    - Futuro: voz personalizada con modelo TTS
+
+════════════════════════════════════════════════════════════════════════════════
+🔴 SPRINT 3 — COMUNICACIÓN EXTERNA
 ════════════════════════════════════════════════════════════════════════════════
 
 [ ] Bot de Telegram bidireccional
@@ -71,7 +98,7 @@ Orden del usuario: INTELIGENCIA primero, luego el resto.
     - Canal: Telegram, notificación HA, o ambos según urgencia
 
 ════════════════════════════════════════════════════════════════════════════════
-🟡 SPRINT 3 — UX Y OPERATIVAS
+🟡 SPRINT 4 — UX Y OPERATIVAS
 ════════════════════════════════════════════════════════════════════════════════
 
 [ ] Respuestas con acciones rápidas
@@ -112,7 +139,7 @@ Orden del usuario: INTELIGENCIA primero, luego el resto.
     - Se muestra sin preguntar, se actualiza al volver a la pestaña
 
 ════════════════════════════════════════════════════════════════════════════════
-🟢 SPRINT 4 — AVANZADO (futuro)
+🟢 SPRINT 5 — AVANZADO (futuro)
 ════════════════════════════════════════════════════════════════════════════════
 
 [ ] Análisis de consumo energético
@@ -142,11 +169,11 @@ Orden del usuario: INTELIGENCIA primero, luego el resto.
     - Modo compacto para móvil
     - Tema claro opcional
 
-[ ] Voz
-    - Entrada por voz (Web Speech API en el navegador)
-    - Salida por voz (TTS)
+[ ] Voz avanzada (wake word)
+    - Wake word: "Hey Jarvis" (escucha continua)
     - Integración con Assist de HA
-    - Wake word: "Hey Jarvis"
+    - Modo manos libres completo
+    - Requiere: service worker + AudioWorklet para baja latencia
 
 [ ] Programación horaria del agente (cron interno)
     - "Todos los días a las 7:00 dime el tiempo y enciende la cafetera"

@@ -991,8 +991,10 @@ app.post('/api/chat', async (req, res) => {
     const lastMsg = messages[messages.length - 1];
     if (lastMsg && lastMsg.role === 'user') {
       conversationHistory.push(lastMsg);
+      saveHistory();
     }
 
+    // Usar historial completo del servidor (no depender del frontend)
     let currentMessages = [...conversationHistory];
     let finalText = '';
     let iterations = 0;
