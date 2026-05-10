@@ -1706,8 +1706,10 @@
       try {
         const event = JSON.parse(e.data);
         if (event.type === 'agent_message') {
-          const bubble = addMessage('ai', `📡 **${event.from}** (red de agentes):\n\n${event.text}`);
+          addMessage('ai', `📡 **${event.from}** (red de agentes):\n\n${event.text}`);
           speak(`Mensaje de ${event.from}: ${event.text}`);
+        } else if (event.type === 'agent_response') {
+          addMessage('ai', `🤖 Respondí a **${event.to}**: ${event.text}`);
           // Notificación del navegador si está en segundo plano
           if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
             new Notification(`Jarvis — Mensaje de ${event.from}`, { body: event.text.slice(0, 100) });

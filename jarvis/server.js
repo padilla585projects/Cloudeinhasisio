@@ -5157,6 +5157,73 @@ Responde SOLO con un JSON array de strings (las reglas). Máx 20 reglas. Solo la
 
 // ── Chequeo periódico de actualizaciones del sistema ────────────────────────
 
+// ── Procesamiento autónomo de mensajes de agentes ────────────────────────────
+
+let agentMsgProcessing = false; // Evitar procesar varios a la vez
+
+async function processAgentMessage(fromAgent, senderName, msgText) {
+  if (agentMsgProcessing) return; // Si ya hay uno en proceso, esperar
+  agentMsgProcessing = true;
+  try {
+    console.log(`[agent] Procesando mensaje de ${senderName} autónomamente...`);
+    const systemMsg = `Eres JARVIS. Has recibido un mensaje directo del agente "${senderName}" (${fromAgent}) a través de la red de agentes IA.
+Lee el mensaje, entiende qué quiere, y responde de forma útil usando tus herramientas.
+Usa agent_gateway(action:'send_message', to:'${fromAgent}', text:'...') para responderle.
+Si el mensaje requiere acción en Home Assistant (encender algo, crear automatización, etc.), hazlo y luego informa al agente del resultado.
+Después notifica a Adrián brevemente via telegram_send con lo que hizo Numa y cómo has respondido.
+Sé conciso y directo. Esto es una conversación entre agentes, no con el usuario.`;
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: BG_MODEL, // Siempre Haiku para mensajes entre agentes
+        max_tokens: 2048,
+        system: systemMsg,
+        tools,
+        messages: [{ role: 'user', content: `Mensaje de ${senderName}: "${msgText}"` }]
+      }),
+      timeout: 30000
+    });
+
+    if (!response.ok) { console.log(`[agent] Error Claude: ${response.status}`); return; }
+    const data = await response.json();
+
+    // Ejecutar tools que Jarvis decida usar
+    let msgs = [{ role: 'user', content: `Mensaje de ${senderName}: "${msgText}"` }];
+    let iter = 0;
+    let currentData = data;
+
+    while (currentData.stop_reason === 'tool_use' && iter < 5) {
+      iter++;
+      const toolUses = currentData.content.filter(b => b.type === 'tool_use');
+      msgs.push({ role: 'assistant', content: currentData.content });
+      const results = await Promise.all(toolUses.map(t => executeTool(t.name, t.input)));
+      msgs.push({ role: 'user', content: toolUses.map((t, i) => ({ type: 'tool_result', tool_use_id: t.id, content: JSON.stringify(results[i]).slice(0, 2000) })) });
+
+      const r2 = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model: BG_MODEL, max_tokens: 2048, system: systemMsg, tools, messages: msgs }),
+        timeout: 30000
+      });
+      if (!r2.ok) break;
+      currentData = await r2.json();
+    }
+
+    const finalText = (currentData.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+    if (finalText) console.log(`[agent] Respuesta autónoma a ${senderName}: ${finalText.slice(0, 100)}`);
+
+    // Notificar en el chat si hay alguien conectado
+    if (finalText) pushToAll({ type: 'agent_response', from: 'Jarvis', to: senderName, text: finalText });
+
+  } catch (e) {
+    console.log(`[agent] Error procesando mensaje de ${senderName}: ${e.message}`);
+  } finally {
+    agentMsgProcessing = false;
+  }
+}
+
 // ── Gateway quick-check: solo mensajes entrantes, cada 3s ────────────────────
 
 const processedMsgIds = new Set(); // Evitar procesar el mismo mensaje dos veces
@@ -5204,10 +5271,8 @@ async function gatewayQuickCheck() {
           haPost('/services/notify/telegram', { message: tgMsg }).catch(() => {})
         );
 
-        // Guardar como thought pendiente
-        thoughts.push({ id: Date.now(), type: 'agent_message', priority: 'high', status: 'pending',
-          title: `Mensaje de ${senderName}`, detail: `"${msgText}"\n\nResponde: agent_gateway(action:'send_message', to:'${fromAgent}', text:'...')`,
-          created: new Date().toISOString() });
+        // Procesar autónomamente — Jarvis lee el mensaje y responde a Numa sin esperar a Adrián
+        processAgentMessage(fromAgent, senderName, msgText).catch(() => {});
         changed = true;
 
       } else if (msgType === 'action_response' || msgType === 'action_request' || msgType === 'hello' || msgType === 'agent_hello') {
