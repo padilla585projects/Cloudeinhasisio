@@ -1695,8 +1695,33 @@
     }
     document.getElementById('input').focus();
     updateCostBadge(); // Cargar coste inicial
+    connectPushEvents(); // Canal SSE persistente para mensajes en tiempo real
   }
   init();
+
+  // ── Canal SSE persistente — mensajes de agentes en tiempo real ───────────────
+  function connectPushEvents() {
+    const es = new EventSource('api/events');
+    es.onmessage = (e) => {
+      try {
+        const event = JSON.parse(e.data);
+        if (event.type === 'agent_message') {
+          const bubble = addMessage('ai', `📡 **${event.from}** (red de agentes):\n\n${event.text}`);
+          speak(`Mensaje de ${event.from}: ${event.text}`);
+          // Notificación del navegador si está en segundo plano
+          if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+            new Notification(`Jarvis — Mensaje de ${event.from}`, { body: event.text.slice(0, 100) });
+          }
+        }
+      } catch {}
+    };
+    es.onerror = () => { es.close(); setTimeout(connectPushEvents, 5000); };
+  }
+
+  // Pedir permiso de notificaciones al cargar
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
 
   // ── Jarvis 3D Holographic Face (Three.js) ─────────────────────────────────
   let jarvisState = 'idle'; // idle, thinking, speaking

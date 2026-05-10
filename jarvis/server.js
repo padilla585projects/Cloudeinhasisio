@@ -66,6 +66,15 @@ let installationMap = loadJSON(INSTALLATION_MAP_FILE, {});
 let currentSendEvent = null;
 const pendingLocalRequests = new Map(); // requestId → {resolve, reject}
 
+// Canal SSE persistente para push de mensajes en tiempo real
+const pushClients = new Set();
+function pushToAll(event) {
+  const line = `data: ${JSON.stringify(event)}\n\n`;
+  for (const res of pushClients) {
+    try { res.write(line); } catch { pushClients.delete(res); }
+  }
+}
+
 // Gateway de agentes
 const GATEWAY_URL = 'https://agentgateway-whmktpinla-ey.a.run.app';
 const GATEWAY_ID = 'ha_agent';
@@ -4377,6 +4386,16 @@ app.get('/api/greeting', async (req, res) => {
   }
 });
 
+// SSE persistente para push en tiempo real (mensajes de agentes, alertas)
+app.get('/api/events', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`);
+  pushClients.add(res);
+  req.on('close', () => pushClients.delete(res));
+});
+
 // Pending thoughts — pensamientos proactivos sin resolver
 app.get('/api/pending_thoughts', (req, res) => {
   const thoughtsFile = path.join(DATA_DIR, 'pending_thoughts.json');
@@ -4485,12 +4504,14 @@ app.listen(PORT, '0.0.0.0', () => {
   setInterval(checkSelfUpdate, 2 * 60_000);
   setTimeout(checkSelfUpdate, 2 * 60_000);
 
-  // Gateway: registrar si no hay secret, luego sync cada 15s
+  // Gateway: registrar, luego quick-check cada 3s + sync completo cada 60s
   setTimeout(async () => {
     await bootGatewayRegister();
-    setTimeout(gatewaySyncLoop, 5_000); // Primera sync 5s después del register
-  }, 10_000); // Intentar registro a los 10s del arranque
-  setInterval(gatewaySyncLoop, 15_000);
+    setTimeout(gatewaySyncLoop, 5_000);
+    setTimeout(gatewayQuickCheck, 8_000);
+  }, 10_000);
+  setInterval(gatewaySyncLoop, 60_000);
+  setInterval(gatewayQuickCheck, 3_000);
 
   // Escaneo de agentes IA locales al arranque
   setTimeout(bootAgentScan, 30_000); // 30s tras el arranque
@@ -5088,6 +5109,70 @@ Responde SOLO con un JSON array de strings (las reglas). Máx 20 reglas. Solo la
 }
 
 // ── Chequeo periódico de actualizaciones del sistema ────────────────────────
+
+// ── Gateway quick-check: solo mensajes entrantes, cada 3s ────────────────────
+
+const processedMsgIds = new Set(); // Evitar procesar el mismo mensaje dos veces
+
+async function gatewayQuickCheck() {
+  if (!gatewayState.secret) return;
+  try {
+    const res = await fetch(GATEWAY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent_id: GATEWAY_ID, secret: gatewayState.secret, message: 'sync', context: { quick_check: true } }),
+      timeout: 5000
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    const msgs = data.pending_messages || [];
+    if (msgs.length === 0) return;
+
+    const thoughtsFile = path.join(DATA_DIR, 'pending_thoughts.json');
+    let thoughts = loadJSON(thoughtsFile, []);
+    let changed = false;
+
+    for (const msg of msgs) {
+      const msgId = msg.id || msg.collab_id || JSON.stringify(msg).slice(0, 60);
+      if (processedMsgIds.has(msgId)) continue;
+      processedMsgIds.add(msgId);
+      if (processedMsgIds.size > 500) { const first = processedMsgIds.values().next().value; processedMsgIds.delete(first); }
+
+      const msgType = msg.type || msg.message?.type;
+      const fromAgent = msg.from || msg.agent_id || 'agente_desconocido';
+      const senderName = msg.from_name || fromAgent;
+
+      if (msgType === 'agent_message') {
+        const msgText = msg.text || JSON.stringify(msg);
+        console.log(`[gateway] ⚡ Mensaje instantáneo de ${senderName}: ${msgText.slice(0, 100)}`);
+
+        // Push inmediato a todos los clientes conectados
+        pushToAll({ type: 'agent_message', from: senderName, agent_id: fromAgent, text: msgText });
+
+        // Telegram inmediato
+        const tgMsg = `💬 *${senderName}* (red de agentes):\n\n${msgText}`;
+        haPost('/services/telegram_bot/send_message', { message: tgMsg, parse_mode: 'markdown' }).catch(() =>
+          haPost('/services/notify/telegram', { message: tgMsg }).catch(() => {})
+        );
+
+        // Guardar como thought pendiente
+        thoughts.push({ id: Date.now(), type: 'agent_message', priority: 'high', status: 'pending',
+          title: `Mensaje de ${senderName}`, detail: `"${msgText}"\n\nResponde: agent_gateway(action:'send_message', to:'${fromAgent}', text:'...')`,
+          created: new Date().toISOString() });
+        changed = true;
+
+      } else if (msgType === 'action_response' || msgType === 'action_request' || msgType === 'hello' || msgType === 'agent_hello') {
+        // Dejar que gatewaySyncLoop lo procese en el siguiente ciclo completo
+        // Solo marcar como recibido para que el sync lo vea
+      }
+    }
+
+    if (changed) {
+      if (thoughts.length > 50) thoughts = thoughts.slice(-50);
+      saveJSON(thoughtsFile, thoughts);
+    }
+  } catch { /* silencioso */ }
+}
 
 // ── Gateway sync automático ───────────────────────────────────────────────────
 
