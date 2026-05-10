@@ -5139,9 +5139,11 @@ async function gatewayQuickCheck() {
     let thoughts = loadJSON(thoughtsFile, []);
     let changed = false;
 
+    const ackedIds = [];
+
     for (const msg of msgs) {
       const msgId = msg.id || msg.collab_id || JSON.stringify(msg).slice(0, 60);
-      if (processedMsgIds.has(msgId)) continue;
+      if (processedMsgIds.has(msgId)) { ackedIds.push(msgId); continue; }
       processedMsgIds.add(msgId);
       if (processedMsgIds.size > 500) { const first = processedMsgIds.values().next().value; processedMsgIds.delete(first); }
 
@@ -5170,8 +5172,19 @@ async function gatewayQuickCheck() {
 
       } else if (msgType === 'action_response' || msgType === 'action_request' || msgType === 'hello' || msgType === 'agent_hello') {
         // Dejar que gatewaySyncLoop lo procese en el siguiente ciclo completo
-        // Solo marcar como recibido para que el sync lo vea
       }
+
+      ackedIds.push(msgId);
+    }
+
+    // ACK automático — confirmar mensajes procesados para que el gateway los limpie
+    if (ackedIds.length > 0) {
+      fetch(GATEWAY_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agent_id: GATEWAY_ID, secret: gatewayState.secret, message: 'ack', message_ids: ackedIds }),
+        timeout: 5000
+      }).catch(() => {});
     }
 
     if (changed) {
