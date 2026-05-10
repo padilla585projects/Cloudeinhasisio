@@ -96,29 +96,6 @@ let agentNetwork = loadJSON(AGENT_NETWORK_FILE, {
   routing_rules: [], // reglas aprendidas de routing
 });
 
-// ── Identidad de Jarvis en la red de agentes ─────────────────────────────────
-const JARVIS_IDENTITY = {
-  agent_id: GATEWAY_ID,
-  name: 'Jarvis',
-  description: 'Agente IA autónomo — administrador de la red de agentes de Adrián. Controla Home Assistant, gestiona infraestructura y coordina todos los agentes.',
-  role: 'admin',
-  language: ['es', 'en'],
-  version: '3.13.4',
-  platform: 'Home Assistant Add-on',
-  norms_version: NETWORK_NORMS.version,
-  capabilities: [
-    'control_home_devices', 'read_sensors', 'create_automations',
-    'manage_dashboards', 'install_hacs', 'manage_proxmox',
-    'web_search', 'persistent_memory', 'send_telegram',
-    'local_network_scan', 'file_system', 'self_evolve',
-    'chat_with_agents', 'self_repair',
-  ],
-  offers: 'Control total del hogar inteligente, automatizaciones, monitorización, infraestructura Proxmox y coordinación de agentes.',
-  ask_me_about: ['home assistant', 'domótica', 'zigbee', 'proxmox', 'automatizaciones', 'sensores'],
-  contact_protocol: 'gateway_realtime',
-  response_time: 'under_3s',
-};
-
 // ── Normas de la red de agentes IA ───────────────────────────────────────────
 const NETWORK_NORMS = {
   version: '1.1',
@@ -147,6 +124,29 @@ const NETWORK_NORMS = {
     '1.0': 'Protocolo base: identidad, sync, cooperación, trazabilidad.',
     '1.1': 'Mensajería en tiempo real: quick-check 3s, sync completo 60s, deduplicación, SSE persistente.',
   }
+};
+
+// ── Identidad de Jarvis en la red de agentes ─────────────────────────────────
+const JARVIS_IDENTITY = {
+  agent_id: GATEWAY_ID,
+  name: 'Jarvis',
+  description: 'Agente IA autónomo — administrador de la red de agentes de Adrián. Controla Home Assistant, gestiona infraestructura y coordina todos los agentes.',
+  role: 'admin',
+  language: ['es', 'en'],
+  version: '3.13.5',
+  platform: 'Home Assistant Add-on',
+  norms_version: NETWORK_NORMS.version,
+  capabilities: [
+    'control_home_devices', 'read_sensors', 'create_automations',
+    'manage_dashboards', 'install_hacs', 'manage_proxmox',
+    'web_search', 'persistent_memory', 'send_telegram',
+    'local_network_scan', 'file_system', 'self_evolve',
+    'chat_with_agents', 'self_repair',
+  ],
+  offers: 'Control total del hogar inteligente, automatizaciones, monitorización, infraestructura Proxmox y coordinación de agentes.',
+  ask_me_about: ['home assistant', 'domótica', 'zigbee', 'proxmox', 'automatizaciones', 'sensores'],
+  contact_protocol: 'gateway_realtime',
+  response_time: 'under_3s',
 };
 
 try {

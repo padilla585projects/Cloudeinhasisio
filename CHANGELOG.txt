@@ -3,6 +3,15 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.13.5 (2026-05-10) — FIX CRASH: NETWORK_NORMS antes de JARVIS_IDENTITY
+────────────────────────────────────────────────────────────────────────────────
+
+FIX — ReferenceError: Cannot access 'NETWORK_NORMS' before initialization:
+  - JARVIS_IDENTITY referenciaba NETWORK_NORMS.version pero se definía antes.
+  - Movido NETWORK_NORMS antes de JARVIS_IDENTITY para respetar orden de inicialización.
+  - Jarvis crasheaba en bucle al arrancar sin poder servir.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.13.4 (2026-05-10) — REWRITE RED DE AGENTES + PERMISOS
 ────────────────────────────────────────────────────────────────────────────────
 
