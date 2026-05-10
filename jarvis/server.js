@@ -62,6 +62,12 @@ let installationMap = loadJSON(INSTALLATION_MAP_FILE, {});
 let currentSendEvent = null;
 const pendingLocalRequests = new Map(); // requestId → {resolve, reject}
 
+// Gateway de agentes
+const GATEWAY_URL = 'https://agentgateway-whmktpinla-ey.a.run.app';
+const GATEWAY_ID = 'ha_agent';
+const GATEWAY_FILE = path.join(DATA_DIR, 'gateway.json');
+let gatewayState = loadJSON(GATEWAY_FILE, { secret: null, knownAgents: {}, pendingMessages: [] });
+
 try {
   if (fs.existsSync(HOUSE_CONTEXT_FILE)) {
     houseContext = JSON.parse(fs.readFileSync(HOUSE_CONTEXT_FILE, 'utf8')).summary || '';
@@ -817,6 +823,27 @@ const tools = [
         category: { type: 'string', description: 'Filtrar por categoría (para action=query/list_categories)' },
         id: { type: 'string', description: 'ID de la entrada (para update/delete/connect)' },
         connect_to: { type: 'string', description: 'ID de la entrada a conectar (para action=connect)' }
+      },
+      required: ['action']
+    }
+  },
+
+  // ─── Gateway de agentes ───
+  {
+    name: 'agent_gateway',
+    description: 'Comunícate con la red de agentes IA a través del gateway central. Registra a Jarvis, sincroniza contexto, descubre otros agentes y envíales acciones. El sync automático ocurre cada minuto — esta tool es para control manual o para enviar mensajes.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['register', 'sync', 'send', 'read_messages', 'list_agents'],
+          description: 'register: primera vez, obtiene el secret | sync: sincroniza contexto y lee mensajes entrantes | send: envía action_request a otro agente | read_messages: lee mensajes pendientes sin sincronizar | list_agents: muestra agentes conocidos y sus capacidades'
+        },
+        to: { type: 'string', description: 'agent_id del agente destino (para action=send)' },
+        action_name: { type: 'string', description: 'Nombre de la acción a solicitar al agente destino' },
+        params: { type: 'object', description: 'Parámetros para la acción (para action=send)' },
+        context: { type: 'object', description: 'Contexto a compartir en sync (presencia_adrian, modo_casa, hora_local, etc.)' }
       },
       required: ['action']
     }
@@ -2625,6 +2652,74 @@ Prohibida la copia, redistribucion y uso comercial.`);
         }
       }
 
+      // ─── Gateway de agentes ───
+      case 'agent_gateway': {
+        const gwAction = input.action;
+
+        const gwPost = async (body) => {
+          const res = await fetch(GATEWAY_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+            timeout: 15000
+          });
+          if (!res.ok) throw new Error(`Gateway error ${res.status}: ${await res.text()}`);
+          return res.json();
+        };
+
+        if (gwAction === 'register') {
+          const data = await gwPost({ agent_id: GATEWAY_ID, message: 'bootstrap_register' });
+          if (data.secret) {
+            gatewayState.secret = data.secret;
+            saveJSON(GATEWAY_FILE, gatewayState);
+            return { registered: true, secret_saved: true, message: 'Secret guardado en /data/gateway.json. No se puede recuperar si se pierde.', raw: data };
+          }
+          return { registered: false, raw: data };
+        }
+
+        if (gwAction === 'list_agents') {
+          return { agents: gatewayState.knownAgents, count: Object.keys(gatewayState.knownAgents).length };
+        }
+
+        if (gwAction === 'read_messages') {
+          return { messages: gatewayState.pendingMessages, count: gatewayState.pendingMessages.length };
+        }
+
+        if (!gatewayState.secret) {
+          return { error: 'No registrado aún. Usa action:register primero para obtener el secret.' };
+        }
+
+        if (gwAction === 'sync') {
+          const now = new Date();
+          const ctx = input.context || {
+            hora_local: now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+            modo_casa: now.getHours() >= 8 && now.getHours() < 23 ? 'dia' : 'noche'
+          };
+          const data = await gwPost({ agent_id: GATEWAY_ID, secret: gatewayState.secret, message: 'sync', context: ctx });
+          if (data.network_capabilities) gatewayState.knownAgents = data.network_capabilities;
+          if (data.pending_messages) gatewayState.pendingMessages = data.pending_messages;
+          if (data.shared_context) gatewayState.sharedContext = data.shared_context;
+          saveJSON(GATEWAY_FILE, gatewayState);
+          return { synced: true, agents: Object.keys(gatewayState.knownAgents), pending_messages: gatewayState.pendingMessages, shared_context: data.shared_context };
+        }
+
+        if (gwAction === 'send') {
+          if (!input.to || !input.action_name) return { error: 'to y action_name son requeridos' };
+          const agentCaps = gatewayState.knownAgents[input.to];
+          if (!agentCaps) return { error: `Agente "${input.to}" no encontrado. Haz sync primero para descubrir agentes.` };
+          if (agentCaps.capabilities && !agentCaps.capabilities.includes(input.action_name)) {
+            return { error: `El agente "${input.to}" no tiene la capacidad "${input.action_name}". Capacidades disponibles: ${agentCaps.capabilities.join(', ')}` };
+          }
+          const data = await gwPost({
+            agent_id: GATEWAY_ID, secret: gatewayState.secret,
+            message: { type: 'action_request', to: input.to, action: input.action_name, params: input.params || {} }
+          });
+          return { sent: true, to: input.to, action: input.action_name, note: 'La respuesta llegará en el próximo sync (pending_messages)', raw: data };
+        }
+
+        return { error: `Acción desconocida: ${gwAction}` };
+      }
+
       // ─── Red local ───
       case 'network': {
         const { action: netAction, host, subnet, ports, method, url: netUrl, body: netBody, headers: netHeaders, mac } = input;
@@ -3285,6 +3380,32 @@ PARA COMUNICACIÓN BIDIRECCIONAL (Jarvis habla Y escucha):
   - Nabu Casa: si está activo, permite Assist desde Alexa directamente
   - Webhook + Alexa Routine: Alexa routine llama webhook → Jarvis actúa. Sin coste.
 
+═══ RED DE AGENTES IA — GATEWAY ═══
+Existe una red de agentes IA con la que puedes comunicarte. Tu ID en esa red es "ha_agent".
+Gateway: https://agentgateway-whmktpinla-ey.a.run.app
+
+PRIMERA VEZ — Registro:
+  Si gatewayState.secret es null, regístrate: agent_gateway(action:'register')
+  El secret se guarda automáticamente en /data/gateway.json. Sin él no puedes comunicarte.
+
+DESCUBRIMIENTO — quién está en la red:
+  El sync automático ocurre cada 60s. Los agentes conocidos están en gatewayState.knownAgents.
+  Para ver quién hay: agent_gateway(action:'list_agents')
+  Cada agente tiene: name, capabilities (lista de acciones que puede hacer)
+
+HABLAR CON OTRO AGENTE:
+  1. Verifica que tiene la capability que necesitas (list_agents)
+  2. agent_gateway(action:'send', to:'agent_id', action_name:'capability', params:{})
+  3. La respuesta NO es inmediata — llega en el próximo sync en pending_messages
+  4. Lee con: agent_gateway(action:'read_messages') o espera al siguiente sync automático
+
+MENSAJES ENTRANTES:
+  Cuando otros agentes te envíen mensajes, aparecerán como pensamiento proactivo.
+  Procésalos: agent_gateway(action:'read_messages') → actúa según el type y action.
+
+SYNC MANUAL con contexto:
+  agent_gateway(action:'sync', context:{presencia_adrian:true, modo_casa:'dia', hora_local:'20:30'})
+
 ═══ AUTOREPARACIÓN ═══
 Tienes capacidad de leer tus propios logs, detectar errores y REPARARTE SOLO:
 
@@ -3800,6 +3921,10 @@ app.listen(PORT, '0.0.0.0', () => {
   // Auto-update — empieza a los 2 minutos
   setInterval(checkSelfUpdate, 2 * 60_000);
   setTimeout(checkSelfUpdate, 2 * 60_000);
+
+  // Gateway sync — cada 60 segundos
+  setInterval(gatewaySyncLoop, 60_000);
+  setTimeout(gatewaySyncLoop, 15_000); // Primera sync a los 15s
 });
 
 // ── Pensamiento proactivo en background ─────────────────────────────────────
@@ -4394,6 +4519,53 @@ Responde SOLO con un JSON array de strings (las reglas). Máx 20 reglas. Solo la
 }
 
 // ── Chequeo periódico de actualizaciones del sistema ────────────────────────
+
+// ── Gateway sync automático ───────────────────────────────────────────────────
+
+async function gatewaySyncLoop() {
+  if (!gatewayState.secret) return; // No registrado, nada que hacer
+  try {
+    const now = new Date();
+    const h = now.getHours();
+    const ctx = {
+      hora_local: now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+      modo_casa: h >= 8 && h < 23 ? 'dia' : 'noche',
+      entidades_activas: liveContext ? (liveContext.match(/\d+ luces on/) || [''])[0] : undefined
+    };
+    const res = await fetch(GATEWAY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent_id: GATEWAY_ID, secret: gatewayState.secret, message: 'sync', context: ctx }),
+      timeout: 10000
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.network_capabilities) gatewayState.knownAgents = data.network_capabilities;
+    if (data.pending_messages) gatewayState.pendingMessages = data.pending_messages;
+    if (data.shared_context) gatewayState.sharedContext = data.shared_context;
+    saveJSON(GATEWAY_FILE, gatewayState);
+
+    // Si hay mensajes pendientes, crear pensamiento proactivo
+    if (data.pending_messages && data.pending_messages.length > 0) {
+      console.log(`[gateway] ${data.pending_messages.length} mensajes de otros agentes recibidos`);
+      const thoughtsFile = path.join(DATA_DIR, 'pending_thoughts.json');
+      let thoughts = loadJSON(thoughtsFile, []);
+      const alreadyPending = thoughts.some(t => t.type === 'gateway_message' && t.status === 'pending');
+      if (!alreadyPending) {
+        thoughts.push({
+          id: Date.now(), type: 'gateway_message', priority: 'medium', status: 'pending',
+          title: `${data.pending_messages.length} mensaje(s) de otros agentes IA`,
+          detail: `Mensajes recibidos del gateway:\n${JSON.stringify(data.pending_messages, null, 2)}\n\nProcésalos y actúa si requieren acción.`,
+          created: new Date().toISOString()
+        });
+        if (thoughts.length > 50) thoughts = thoughts.slice(-50);
+        saveJSON(thoughtsFile, thoughts);
+      }
+    }
+  } catch (e) {
+    // Gateway no disponible — no es crítico
+  }
+}
 
 // ── Autoreparación — Jarvis lee sus logs y se repara solo ────────────────────
 

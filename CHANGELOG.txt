@@ -3,6 +3,21 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.10.3 (2026-05-10) — RED DE AGENTES IA — GATEWAY
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — Tool agent_gateway + sync automático:
+- Jarvis se conecta a la red de agentes IA via gateway central
+- register: obtiene su secret y lo guarda en /data/gateway.json
+- sync: sincroniza contexto (presencia, modo casa, hora) y recibe mensajes entrantes
+- list_agents: descubre qué agentes están en la red y qué pueden hacer
+- send: envía action_request a otro agente (respuesta llega en el siguiente sync)
+- read_messages: lee mensajes pendientes de otros agentes
+- Sync automático cada 60s en background (primer sync a los 15s del arranque)
+- Si llegan mensajes de otros agentes: crea pensamiento proactivo automáticamente
+- El system prompt incluye instrucciones completas del protocolo del gateway
+
+────────────────────────────────────────────────────────────────────────────────
 v3.10.2 (2026-05-10) — AUTOREPARACIÓN: Jarvis detecta sus errores y se repara solo
 ────────────────────────────────────────────────────────────────────────────────
 
