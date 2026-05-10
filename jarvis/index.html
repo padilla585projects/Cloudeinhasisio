@@ -825,33 +825,36 @@
   let recognition = null;
   let isListening = false;
   let ttsEnabled = localStorage.getItem('jarvis_tts') !== 'false';
-  let currentUtterance = null;
-  let voiceSelected = null;
+  let currentAudio = null;
+  let ttsAvailable = null; // null=sin comprobar, true=OpenAI ok, false=usar fallback
 
-  // Inicializar TTS
-  function initTTS() {
+  async function checkTTSAvailable() {
+    try {
+      const r = await fetch('api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: '' }) });
+      ttsAvailable = r.status !== 503;
+    } catch { ttsAvailable = false; }
+  }
+  checkTTSAvailable();
+
+  // Fallback: Web Speech API cuando OpenAI no está configurado
+  let voiceSelected = null;
+  function initFallbackTTS() {
     if (!('speechSynthesis' in window)) return;
-    const loadVoices = () => {
+    const load = () => {
       const voices = speechSynthesis.getVoices();
-      // Prioridad: voz española natural
-      voiceSelected =
-        voices.find(v => v.lang === 'es-ES' && v.localService) ||
+      voiceSelected = voices.find(v => v.lang === 'es-ES' && v.localService) ||
         voices.find(v => v.lang.startsWith('es') && v.localService) ||
         voices.find(v => v.lang === 'es-ES') ||
-        voices.find(v => v.lang.startsWith('es')) ||
-        voices[0];
+        voices.find(v => v.lang.startsWith('es')) || voices[0];
     };
-    speechSynthesis.onvoiceschanged = loadVoices;
-    loadVoices();
+    speechSynthesis.onvoiceschanged = load;
+    load();
   }
-  initTTS();
+  initFallbackTTS();
   updateTTSBtn();
 
-  function speak(text) {
-    if (!ttsEnabled || !('speechSynthesis' in window)) return;
-    speechSynthesis.cancel();
-    // Limpiar markdown para la voz
-    const clean = text
+  function cleanForTTS(text) {
+    return text
       .replace(/\*\*(.+?)\*\*/g, '$1')
       .replace(/\*(.+?)\*/g, '$1')
       .replace(/`{1,3}[^`]*`{1,3}/g, '')
@@ -861,18 +864,41 @@
       .replace(/\n{2,}/g, '. ')
       .replace(/\n/g, ' ')
       .trim();
+  }
+
+  async function speak(text) {
+    if (!ttsEnabled) return;
+    stopSpeaking();
+    const clean = cleanForTTS(text);
     if (!clean) return;
-    currentUtterance = new SpeechSynthesisUtterance(clean);
-    currentUtterance.lang = 'es-ES';
-    currentUtterance.rate = 1.05;
-    currentUtterance.pitch = 1.0;
-    currentUtterance.volume = 1.0;
-    if (voiceSelected) currentUtterance.voice = voiceSelected;
-    currentUtterance.onend = () => { currentUtterance = null; };
-    speechSynthesis.speak(currentUtterance);
+
+    if (ttsAvailable) {
+      try {
+        const r = await fetch('api/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: clean })
+        });
+        if (!r.ok) throw new Error('tts error');
+        const blob = await r.blob();
+        const url = URL.createObjectURL(blob);
+        currentAudio = new Audio(url);
+        currentAudio.onended = () => { URL.revokeObjectURL(url); currentAudio = null; };
+        currentAudio.play();
+        return;
+      } catch { /* fallback */ }
+    }
+
+    // Fallback Web Speech API
+    if (!('speechSynthesis' in window)) return;
+    const utt = new SpeechSynthesisUtterance(clean);
+    utt.lang = 'es-ES'; utt.rate = 1.05; utt.pitch = 1.0; utt.volume = 1.0;
+    if (voiceSelected) utt.voice = voiceSelected;
+    speechSynthesis.speak(utt);
   }
 
   function stopSpeaking() {
+    if (currentAudio) { currentAudio.pause(); currentAudio = null; }
     if ('speechSynthesis' in window) speechSynthesis.cancel();
   }
 

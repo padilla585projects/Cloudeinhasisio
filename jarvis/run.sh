@@ -26,6 +26,11 @@ if bashio::config.has_value 'github_token'; then
   export GITHUB_TOKEN=$(bashio::config 'github_token')
 fi
 
+export OPENAI_API_KEY=""
+if bashio::config.has_value 'openai_api_key'; then
+  export OPENAI_API_KEY=$(bashio::config 'openai_api_key')
+fi
+
 bashio::log.info "Iniciando Jarvis AI Agent..."
 bashio::log.info "Modelo: ${MODEL}"
 if [ -n "${PROXMOX_URL:-}" ]; then

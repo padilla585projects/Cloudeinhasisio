@@ -3,6 +3,17 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.12.4 (2026-05-10) — TTS NATURAL CON OPENAI (VOZ NOVA)
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — Voz de Jarvis en el navegador via OpenAI TTS:
+  - Endpoint POST /api/tts en server.js → llama a OpenAI tts-1 con voz 'nova'.
+  - El texto se limpia de markdown antes de enviarlo (negrita, código, links, etc.).
+  - El frontend reproduce el audio directamente como blob URL (Audio element).
+  - Si no hay OPENAI_API_KEY configurada, fallback automático a Web Speech API.
+  - Nueva opción 'openai_api_key' en la configuración del add-on.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.12.3 (2026-05-10) — PROMPT: JARVIS CONOCE SU CAPACIDAD DE AUTO-EVOLUCIÓN
 ────────────────────────────────────────────────────────────────────────────────
 

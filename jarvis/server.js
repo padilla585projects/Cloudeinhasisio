@@ -24,6 +24,7 @@ const PROXMOX_NODE = process.env.PROXMOX_NODE || 'pve';  // nombre del nodo
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
 const GITHUB_REPO = 'padilla585projects/Cloudeinhasisio';
 const GITHUB_BRANCH = 'main';
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 
 // ── Rutas del filesystem de HA ───────────────────────────────────────────────
 const DATA_DIR = '/data';                    // Persistente del add-on
@@ -4256,6 +4257,43 @@ app.get('/api/cost', (req, res) => {
       since: apiUsage.lastReset
     }
   });
+});
+
+// TTS via OpenAI — devuelve audio/mpeg listo para reproducir
+app.post('/api/tts', async (req, res) => {
+  const { text, voice = 'nova', model = 'tts-1' } = req.body || {};
+  if (!text) return res.status(400).json({ error: 'text requerido' });
+  if (!OPENAI_API_KEY) return res.status(503).json({ error: 'OPENAI_API_KEY no configurado' });
+
+  try {
+    const clean = text
+      .replace(/\*\*(.+?)\*\*/g, '$1')
+      .replace(/\*(.+?)\*/g, '$1')
+      .replace(/`{1,3}[^`]*`{1,3}/g, '')
+      .replace(/#{1,6}\s/g, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/^[-•]\s/gm, '')
+      .replace(/\n{2,}/g, '. ')
+      .replace(/\n/g, ' ')
+      .trim()
+      .slice(0, 4096);
+
+    const r = await fetch('https://api.openai.com/v1/audio/speech', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, voice, input: clean, response_format: 'mp3' })
+    });
+
+    if (!r.ok) {
+      const err = await r.text();
+      return res.status(r.status).json({ error: err });
+    }
+
+    res.setHeader('Content-Type', 'audio/mpeg');
+    r.body.pipe(res);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Activar / desactivar modo ahorro
