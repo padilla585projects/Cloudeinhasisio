@@ -3,6 +3,29 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.9.2 (2026-05-10) — FEEDBACK REAL + CONTINUIDAD TRAS REINICIO
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — Feedback visual de herramientas (UI):
+- Cada tool muestra su nombre amigable mientras se ejecuta: "🌐 Buscando en internet",
+  "⚡ Ejecutando servicio", "📦 Instalando recurso HACS", "⚙️ Gestionando sistema HA", etc.
+- 38 tools mapeadas con emoji + nombre descriptivo en español
+- Se muestra también el parámetro relevante: dominio, entity_id, query, filepath...
+  Ej: "🔍 Buscando entidades — light" o "💾 Escribiendo archivo — automations.yaml"
+- Contador de paso: "Paso 3" para saber en qué punto de una tarea multi-herramienta está
+
+NUEVO — Continuidad tras reinicio de Jarvis:
+- El servidor guarda la tarea activa en /data/pending_task.json al empezar
+- La limpia cuando termina correctamente
+- Si Jarvis se reinicia a mitad de tarea: al arrancar detecta la tarea pendiente,
+  la inyecta en el historial y la reanuda automáticamente
+- Frontend: cuando se pierde la conexión SSE, muestra "Jarvis se está reiniciando..."
+  y hace polling cada 2s hasta que el servidor vuelve (máx 2 min)
+- Cuando vuelve: si había tarea pendiente, la retoma automáticamente enviando el mensaje
+- Sin tarea: simplemente muestra "✓ Jarvis ha vuelto y está listo"
+- Nuevo endpoint GET /api/pending_task para que el frontend consulte el estado
+
+────────────────────────────────────────────────────────────────────────────────
 v3.9.1 (2026-05-10) — PERSEVERANCIA: JARVIS NO SE PARA A MITAD DE UNA TAREA
 ────────────────────────────────────────────────────────────────────────────────
 

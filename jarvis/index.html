@@ -563,27 +563,96 @@
     return block.querySelector('.tool-status');
   }
 
-  function addThinking() {
+  // Nombres amigables para cada tool
+  const TOOL_LABELS = {
+    get_entities: '🔍 Buscando entidades',
+    get_entity_state: '📡 Leyendo estado',
+    call_service: '⚡ Ejecutando servicio',
+    search_entities: '🔎 Buscando dispositivos',
+    get_history: '📈 Leyendo historial',
+    get_automations: '🤖 Leyendo automatizaciones',
+    create_automation: '🏗️ Creando automatización',
+    reload_config: '🔄 Recargando configuración',
+    read_file: '📄 Leyendo archivo',
+    write_file: '💾 Escribiendo archivo',
+    append_file: '📝 Actualizando archivo',
+    list_directory: '📁 Explorando directorio',
+    web_search: '🌐 Buscando en internet',
+    fetch_url: '🌍 Obteniendo URL',
+    save_memory: '🧠 Guardando en memoria',
+    get_memory: '🧠 Consultando memoria',
+    learn: '📚 Registrando aprendizaje',
+    scan_installation: '🔭 Escaneando instalación',
+    check_config: '✅ Verificando configuración',
+    get_dashboards: '🖥️ Leyendo dashboards',
+    get_dashboard_config: '🖥️ Leyendo configuración del panel',
+    update_dashboard: '🖥️ Actualizando dashboard',
+    get_installed_frontend: '🎨 Revisando cards instaladas',
+    search_hacs_resources: '🔍 Buscando en HACS',
+    install_hacs_resource: '📦 Instalando recurso HACS',
+    ha_knowledge: '📖 Consultando documentación HA',
+    proxmox_api: '🖥️ Accediendo a Proxmox',
+    get_system_logs: '📋 Leyendo logs del sistema',
+    get_error_log: '⚠️ Leyendo log de errores',
+    telegram_send: '📱 Enviando mensaje Telegram',
+    telegram_send_image: '📷 Enviando imagen',
+    telegram_get_updates: '📱 Revisando mensajes Telegram',
+    analyze_github_repos: '🐙 Analizando repositorios GitHub',
+    create_custom_tool: '🔧 Creando herramienta',
+    run_custom_tool: '▶️ Ejecutando herramienta',
+    agent_communicate: '🤝 Comunicando con agente',
+    create_addon: '📦 Creando add-on',
+    proactive_thought: '💭 Registrando pensamiento',
+    knowledge_db: '📚 Base de conocimiento',
+    ha_supervisor: '⚙️ Gestionando sistema HA',
+    update_self: '🧬 Actualizando mi conocimiento',
+  };
+
+  let toolStepCount = 0;
+
+  function addThinking(toolName, toolInput) {
     hideWelcome();
     const container = document.getElementById('messages');
-    const div = document.createElement('div');
-    div.className = 'message ai';
-    div.id = 'thinking';
+    let div = document.getElementById('thinking');
+    if (!div) {
+      div = document.createElement('div');
+      div.className = 'message ai';
+      div.id = 'thinking';
+      container.appendChild(div);
+    }
 
-    const thinking = document.createElement('div');
-    thinking.className = 'thinking';
-    thinking.innerHTML = `
+    toolStepCount++;
+    const label = toolName ? (TOOL_LABELS[toolName] || `⚙️ ${toolName}`) : 'Pensando...';
+
+    // Construir detalle del input
+    let detail = '';
+    if (toolInput) {
+      if (toolInput.domain) detail = toolInput.domain;
+      else if (toolInput.entity_id) detail = toolInput.entity_id;
+      else if (toolInput.query) detail = `"${toolInput.query}"`;
+      else if (toolInput.action) detail = toolInput.action;
+      else if (toolInput.service) detail = `${toolInput.domain || ''}.${toolInput.service}`;
+      else if (toolInput.filepath) detail = toolInput.filepath.split('/').pop();
+      else if (toolInput.message) detail = `"${toolInput.message.slice(0, 40)}${toolInput.message.length > 40 ? '...' : ''}"`;
+      else if (toolInput.slug) detail = toolInput.slug;
+      else if (toolInput.addon_slug) detail = toolInput.addon_slug;
+      else if (toolInput.integration_domain) detail = toolInput.integration_domain;
+    }
+
+    div.innerHTML = `<div class="thinking">
       <div class="dots"><span></span><span></span><span></span></div>
-      <span style="font-size:13px;color:var(--text2)">Pensando...</span>
-    `;
-    div.appendChild(thinking);
-    container.appendChild(div);
+      <div style="display:flex;flex-direction:column;gap:2px;">
+        <span style="font-size:13px;color:var(--accent);font-weight:500;">${label}${detail ? ' — ' + detail : ''}</span>
+        <span style="font-size:11px;color:var(--text3);">Paso ${toolStepCount}</span>
+      </div>
+    </div>`;
     scrollToBottom();
   }
 
   function removeThinking() {
     const t = document.getElementById('thinking');
     if (t) t.remove();
+    toolStepCount = 0;
   }
 
   function hideWelcome() {
@@ -722,10 +791,16 @@
                 scrollToBottom();
 
               } else if (event.type === 'tool_start') {
-                if (!document.getElementById('thinking')) addThinking();
+                addThinking(event.tool, event.input);
 
               } else if (event.type === 'tool_end') {
-                // Silencioso
+                // Breve flash de confirmación en el indicador
+                const t = document.getElementById('thinking');
+                if (t && event.result && !event.result.error) {
+                  const label = TOOL_LABELS[event.tool] || event.tool;
+                  t.querySelector('.thinking span:first-of-type') &&
+                    (t.querySelector('.thinking').style.borderColor = 'var(--success)');
+                }
 
               } else if (event.type === 'done') {
                 removeThinking();
@@ -748,13 +823,78 @@
       } catch (err) {
         removeThinking();
         setJarvisState('idle');
-        addMessage('ai', `⚠️ Error de conexión: ${err.message}`);
+
+        // Detectar si fue un reinicio (connection refused / network error)
+        const isRestart = err.message.includes('Failed to fetch') || err.message.includes('NetworkError') || err.message.includes('ERR_CONNECTION');
+        if (isRestart) {
+          await handleJarvisRestart();
+        } else {
+          addMessage('ai', `⚠️ Error de conexión: ${err.message}`);
+        }
       }
     }
 
     isProcessing = false;
     isStreaming = false;
     document.getElementById('input').focus();
+  }
+
+  // Reconexión automática cuando Jarvis se reinicia
+  async function handleJarvisRestart() {
+    const container = document.getElementById('messages');
+    const notice = document.createElement('div');
+    notice.className = 'message ai';
+    notice.id = 'restart-notice';
+    notice.innerHTML = `<div style="background:var(--bg3);border:1px solid var(--accent);border-radius:var(--radius);padding:12px 16px;display:flex;align-items:center;gap:10px;">
+      <div class="dots"><span></span><span></span><span></span></div>
+      <div>
+        <div style="font-size:13px;color:var(--accent);font-weight:500;">Jarvis se está reiniciando...</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px;">Reconectando automáticamente</div>
+      </div>
+    </div>`;
+    container.appendChild(notice);
+    scrollToBottom();
+
+    // Esperar hasta que el servidor vuelva (máx 2 min)
+    let attempts = 0;
+    const maxAttempts = 60;
+    while (attempts < maxAttempts) {
+      await new Promise(r => setTimeout(r, 2000));
+      attempts++;
+      try {
+        const health = await fetch('api/health');
+        if (health.ok) {
+          // Servidor de vuelta
+          notice.remove();
+
+          // Comprobar si había una tarea pendiente
+          const pendingRes = await fetch('api/pending_task');
+          const pending = await pendingRes.json();
+
+          if (pending.status === 'resumed' && pending.message) {
+            addMessage('ai', `✓ Jarvis ha vuelto. Retomando tarea: *"${pending.message.slice(0, 80)}${pending.message.length > 80 ? '...' : ''}"*`);
+            // Enviar la tarea para que Jarvis la complete
+            setTimeout(() => {
+              document.getElementById('input').value = 'Retoma y completa la tarea que estabas haciendo antes del reinicio.';
+              sendMessage();
+            }, 1500);
+          } else {
+            addMessage('ai', '✓ Jarvis ha vuelto y está listo.');
+          }
+          return;
+        }
+      } catch {}
+
+      // Actualizar contador en el notice
+      const countdown = notice.querySelector('.dots');
+      if (countdown) {
+        notice.querySelector('div > div:last-child').textContent = `Reconectando... (intento ${attempts}/${maxAttempts})`;
+      }
+    }
+
+    // Timeout
+    notice.remove();
+    addMessage('ai', '⚠️ No se pudo reconectar con Jarvis. Recarga la página.');
   }
 
   // Cargar historial del servidor al iniciar

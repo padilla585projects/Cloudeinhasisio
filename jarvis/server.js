@@ -3158,6 +3158,13 @@ app.delete('/api/history', (req, res) => {
   res.json({ success: true });
 });
 
+// Tarea pendiente (persiste en disco para reanudar tras reinicio)
+const PENDING_TASK_FILE = path.join(DATA_DIR, 'pending_task.json');
+
+app.get('/api/pending_task', (req, res) => {
+  res.json(loadJSON(PENDING_TASK_FILE, { status: 'idle' }));
+});
+
 // Chat principal
 app.post('/api/chat', async (req, res) => {
   const { messages } = req.body;
@@ -3180,6 +3187,10 @@ app.post('/api/chat', async (req, res) => {
       conversationHistory.push(lastMsg);
       saveHistory();
     }
+
+    // Guardar tarea en disco (para reanudar si Jarvis se reinicia a mitad)
+    const userMsg = lastMsg?.content || '';
+    saveJSON(PENDING_TASK_FILE, { status: 'running', message: userMsg, startedAt: new Date().toISOString() });
 
     // Usar historial completo del servidor (no depender del frontend)
     let currentMessages = [...conversationHistory];
@@ -3296,10 +3307,14 @@ app.post('/api/chat', async (req, res) => {
       saveHistory();
     }
 
+    // Tarea completada — limpiar tarea pendiente
+    saveJSON(PENDING_TASK_FILE, { status: 'idle' });
+
     sendEvent({ type: 'done' });
     res.end();
   } catch (err) {
     console.log(`[chat] Error: ${err.message}`);
+    // Mantener la tarea en disco si fue un error de red/reinicio (no limpiar)
     sendEvent({ type: 'error', error: err.message });
     res.end();
   }
@@ -3426,6 +3441,19 @@ app.listen(PORT, '0.0.0.0', () => {
       await updateLiveContext().catch(e => console.log(`[boot] LiveContext falló (no crítico): ${e.message}`));
 
       console.log('[boot] Inicialización completa. Jarvis operativo.');
+
+      // Comprobar si había una tarea en curso cuando se reinició
+      const pendingTask = loadJSON(PENDING_TASK_FILE, { status: 'idle' });
+      if (pendingTask.status === 'running' && pendingTask.message) {
+        console.log(`[boot] Tarea pendiente detectada: "${pendingTask.message.slice(0, 60)}..."`);
+        // Inyectar mensaje de reanudación en el historial
+        const resumeMsg = `[SISTEMA: Jarvis se reinició mientras ejecutaba esta tarea. Retoma desde donde lo dejaste y complétala. Tarea: "${pendingTask.message}"]`;
+        conversationHistory.push({ role: 'user', content: resumeMsg });
+        saveHistory();
+        // Marcar como reanudada
+        saveJSON(PENDING_TASK_FILE, { status: 'resumed', message: pendingTask.message, resumedAt: new Date().toISOString() });
+        console.log('[boot] Tarea inyectada en historial para reanudación automática.');
+      }
     } catch (err) {
       console.log(`[boot] Error en inicialización (no crítico, el chat funciona): ${err.message}`);
     }
