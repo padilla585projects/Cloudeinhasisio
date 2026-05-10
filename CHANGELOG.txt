@@ -3,6 +3,35 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.8.0 (2026-05-10) — CONTROL TOTAL DEL SISTEMA + APRENDIZAJE REAL
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVA TOOL — ha_supervisor (20 acciones):
+- check_updates: ve todas las actualizaciones pendientes (Core, OS, Supervisor, add-ons, HACS)
+- update_addon / update_all_addons: actualiza uno o todos los add-ons con update disponible
+- update_core / update_os / update_supervisor: actualiza el sistema (con confirmación previa)
+- restart_addon / start_addon / stop_addon: gestión completa de add-ons en ejecución
+- install_addon / uninstall_addon: instalar/desinstalar desde el store del supervisor
+- reload_integration: recarga una integración de HA por dominio (busca entry_id automáticamente)
+- reload_all_integrations: recarga todas las integraciones configuradas
+- get_config_entries: lista todas las integraciones configuradas con sus entry_ids
+- get_core_info / get_os_info: info del sistema
+- restart_core: reinicia HA (con confirmación)
+- get_hacs_updates / update_hacs_repo: gestión de actualizaciones de HACS
+
+NUEVO — Destilación de learnings en reglas accionables:
+- Cada 6h, Jarvis analiza todos sus learnings acumulados y los convierte en reglas
+  cortas y accionables específicas de la instalación de Adrián
+- Estas reglas se guardan en /data/distilled_rules.json y se inyectan en el system
+  prompt como conocimiento directo ("cuando X pasa → hacer Y")
+- Jarvis ya no tiene una lista de eventos crudos — tiene REGLAS que aplica directamente
+
+NUEVO — Chequeo automático de actualizaciones (cada 12h):
+- Jarvis consulta el supervisor cada 12h buscando updates disponibles
+- Si los hay, crea un proactive_thought con el detalle y botón "Aplicar"
+- No duplica si ya hay un pensamiento de updates pendiente del día
+
+────────────────────────────────────────────────────────────────────────────────
 v3.7.0 (2026-05-10) — AGENTE, NO ASISTENTE
 ────────────────────────────────────────────────────────────────────────────────
 

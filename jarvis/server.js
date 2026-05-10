@@ -727,6 +727,46 @@ const tools = [
 
   // ─── Base de conocimiento ───
   {
+    name: 'ha_supervisor',
+    description: 'Control total del sistema Home Assistant: ver y aplicar actualizaciones (core, OS, supervisor, add-ons, HACS), gestionar add-ons (instalar, desinstalar, iniciar, parar, reiniciar), recargar integraciones. USA ESTA TOOL para cualquier gestión del sistema.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: [
+            'check_updates',       // Ver todas las actualizaciones disponibles
+            'update_addon',        // Actualizar un add-on específico
+            'update_core',         // Actualizar HA Core
+            'update_os',           // Actualizar HA OS
+            'update_supervisor',   // Actualizar Supervisor
+            'update_all_addons',   // Actualizar todos los add-ons con update disponible
+            'restart_addon',       // Reiniciar un add-on
+            'start_addon',         // Iniciar un add-on
+            'stop_addon',          // Parar un add-on
+            'install_addon',       // Instalar un add-on del store
+            'uninstall_addon',     // Desinstalar un add-on
+            'get_addon_info',      // Info completa de un add-on
+            'list_addons',         // Listar todos los add-ons con su estado
+            'reload_integration',  // Recargar una integración de HA por dominio
+            'reload_all_integrations', // Recargar todas las integraciones caídas
+            'get_core_info',       // Info de HA Core (versión, estado)
+            'get_os_info',         // Info del OS
+            'restart_core',        // Reiniciar HA Core (pide confirmación)
+            'get_config_entries',  // Listar todas las integraciones configuradas
+            'get_hacs_updates',    // Ver actualizaciones pendientes de HACS
+            'update_hacs_repo'     // Actualizar un repositorio/componente de HACS
+          ]
+        },
+        addon_slug: { type: 'string', description: 'Slug del add-on (ej: "mosquitto_broker", "zigbee2mqtt", "jarvis_ai_agent")' },
+        integration_domain: { type: 'string', description: 'Dominio de la integración (ej: "alexa_media_player", "pvpc_energyhourly", "esphome")' },
+        repository_url: { type: 'string', description: 'URL del repositorio del add-on para instalar' },
+        confirm: { type: 'boolean', description: 'Confirmar acción potencialmente disruptiva (restart_core, update_core, update_os)' }
+      },
+      required: ['action']
+    }
+  },
+  {
     name: 'knowledge_db',
     description: 'Base de datos de conocimiento de Jarvis. Almacena y consulta todo lo que aprende: conceptos, conexiones, diagramas, configuraciones, protocolos, soluciones. Cada entrada tiene categoría, tags, conexiones con otras entradas, e imágenes opcionales.',
     input_schema: {
@@ -2217,6 +2257,208 @@ Prohibida la copia, redistribucion y uso comercial.`);
         }
       }
 
+      // ─── Supervisor / Sistema HA ───
+      case 'ha_supervisor': {
+        const svPost = async (endpoint, body = {}) => {
+          const r = await fetch(`http://supervisor${endpoint}`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${HA_TOKEN}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+          const text = await r.text();
+          try { return JSON.parse(text); } catch { return { raw: text, ok: r.ok }; }
+        };
+        const svGet = async (endpoint) => {
+          const r = await fetch(`http://supervisor${endpoint}`, {
+            headers: { Authorization: `Bearer ${HA_TOKEN}`, 'Content-Type': 'application/json' }
+          });
+          const text = await r.text();
+          try { return JSON.parse(text); } catch { return { raw: text }; }
+        };
+
+        switch (input.action) {
+          case 'check_updates': {
+            const [core, os, sup, addons] = await Promise.all([
+              svGet('/core/info').catch(() => ({})),
+              svGet('/os/info').catch(() => ({})),
+              svGet('/supervisor/info').catch(() => ({})),
+              svGet('/addons').catch(() => ({ data: { addons: [] } }))
+            ]);
+            const coreData = core.data || core;
+            const osData = os.data || os;
+            const supData = sup.data || sup;
+            const addonList = (addons.data || addons).addons || [];
+            const updatableAddons = addonList.filter(a => a.update_available);
+            return {
+              core: { version: coreData.version, latest: coreData.version_latest, update: coreData.update_available },
+              os: { version: osData.version, latest: osData.version_latest, update: osData.update_available },
+              supervisor: { version: supData.version, latest: supData.version_latest, update: supData.update_available },
+              addons_with_updates: updatableAddons.map(a => ({ name: a.name, slug: a.slug, version: a.version, latest: a.version_latest })),
+              total_updates: (coreData.update_available ? 1 : 0) + (osData.update_available ? 1 : 0) + (supData.update_available ? 1 : 0) + updatableAddons.length
+            };
+          }
+
+          case 'list_addons': {
+            const r = await svGet('/addons');
+            const addonList = (r.data || r).addons || [];
+            return { addons: addonList.map(a => ({ name: a.name, slug: a.slug, state: a.state, version: a.version, update_available: a.update_available })), total: addonList.length };
+          }
+
+          case 'get_addon_info': {
+            if (!input.addon_slug) return { error: 'addon_slug requerido' };
+            const r = await svGet(`/addons/${input.addon_slug}/info`);
+            return r.data || r;
+          }
+
+          case 'update_addon': {
+            if (!input.addon_slug) return { error: 'addon_slug requerido' };
+            console.log(`[supervisor] Actualizando add-on: ${input.addon_slug}`);
+            const r = await svPost(`/addons/${input.addon_slug}/update`);
+            return { success: r.result === 'ok', addon: input.addon_slug, response: r };
+          }
+
+          case 'update_all_addons': {
+            const r = await svGet('/addons');
+            const updatable = ((r.data || r).addons || []).filter(a => a.update_available);
+            if (updatable.length === 0) return { message: 'No hay add-ons con actualizaciones pendientes.' };
+            const results = [];
+            for (const addon of updatable) {
+              try {
+                const res = await svPost(`/addons/${addon.slug}/update`);
+                results.push({ name: addon.name, slug: addon.slug, success: res.result === 'ok' });
+                console.log(`[supervisor] Add-on actualizado: ${addon.name}`);
+              } catch (e) {
+                results.push({ name: addon.name, slug: addon.slug, success: false, error: e.message });
+              }
+            }
+            return { updated: results, total: results.length };
+          }
+
+          case 'update_core': {
+            if (!input.confirm) return { warning: 'Actualizar HA Core reiniciará el sistema brevemente. Llama de nuevo con confirm:true para proceder.' };
+            console.log('[supervisor] Actualizando HA Core...');
+            const r = await svPost('/core/update');
+            return { success: r.result === 'ok', response: r };
+          }
+
+          case 'update_os': {
+            if (!input.confirm) return { warning: 'Actualizar el OS puede tardar varios minutos y reiniciará el sistema. Llama de nuevo con confirm:true.' };
+            console.log('[supervisor] Actualizando HA OS...');
+            const r = await svPost('/os/update');
+            return { success: r.result === 'ok', response: r };
+          }
+
+          case 'update_supervisor': {
+            console.log('[supervisor] Actualizando Supervisor...');
+            const r = await svPost('/supervisor/update');
+            return { success: r.result === 'ok', response: r };
+          }
+
+          case 'restart_addon': {
+            if (!input.addon_slug) return { error: 'addon_slug requerido' };
+            console.log(`[supervisor] Reiniciando add-on: ${input.addon_slug}`);
+            const r = await svPost(`/addons/${input.addon_slug}/restart`);
+            return { success: r.result === 'ok', addon: input.addon_slug };
+          }
+
+          case 'start_addon': {
+            if (!input.addon_slug) return { error: 'addon_slug requerido' };
+            const r = await svPost(`/addons/${input.addon_slug}/start`);
+            return { success: r.result === 'ok', addon: input.addon_slug };
+          }
+
+          case 'stop_addon': {
+            if (!input.addon_slug) return { error: 'addon_slug requerido' };
+            const r = await svPost(`/addons/${input.addon_slug}/stop`);
+            return { success: r.result === 'ok', addon: input.addon_slug };
+          }
+
+          case 'install_addon': {
+            if (!input.addon_slug) return { error: 'addon_slug requerido' };
+            console.log(`[supervisor] Instalando add-on: ${input.addon_slug}`);
+            const r = await svPost(`/addons/${input.addon_slug}/install`);
+            return { success: r.result === 'ok', addon: input.addon_slug, response: r };
+          }
+
+          case 'uninstall_addon': {
+            if (!input.addon_slug || !input.confirm) return { warning: `Esto desinstalará "${input.addon_slug}" permanentemente. Llama con confirm:true.` };
+            const r = await svPost(`/addons/${input.addon_slug}/uninstall`);
+            return { success: r.result === 'ok', addon: input.addon_slug };
+          }
+
+          case 'get_core_info': {
+            const r = await svGet('/core/info');
+            return r.data || r;
+          }
+
+          case 'get_os_info': {
+            const r = await svGet('/os/info');
+            return r.data || r;
+          }
+
+          case 'restart_core': {
+            if (!input.confirm) return { warning: 'Esto reiniciará Home Assistant. Todos los usuarios se desconectarán ~30s. Llama con confirm:true.' };
+            console.log('[supervisor] Reiniciando HA Core...');
+            const r = await svPost('/core/restart');
+            return { success: r.result === 'ok' };
+          }
+
+          case 'get_config_entries': {
+            const r = await haGet('/config/config_entries');
+            return { entries: r, total: r.length };
+          }
+
+          case 'reload_integration': {
+            if (!input.integration_domain) return { error: 'integration_domain requerido' };
+            const entries = await haGet('/config/config_entries').catch(() => []);
+            const matching = entries.filter(e => e.domain === input.integration_domain);
+            if (matching.length === 0) return { error: `No se encontró ninguna config entry para el dominio: ${input.integration_domain}` };
+            const results = [];
+            for (const entry of matching) {
+              try {
+                await haPost(`/services/homeassistant/reload_config_entry`, { entry_id: entry.entry_id });
+                results.push({ title: entry.title, entry_id: entry.entry_id, success: true });
+                console.log(`[supervisor] Integración recargada: ${entry.title} (${input.integration_domain})`);
+              } catch (e) {
+                results.push({ title: entry.title, entry_id: entry.entry_id, success: false, error: e.message });
+              }
+            }
+            return { domain: input.integration_domain, results, reloaded: results.filter(r => r.success).length };
+          }
+
+          case 'reload_all_integrations': {
+            const entries = await haGet('/config/config_entries').catch(() => []);
+            const results = [];
+            for (const entry of entries) {
+              try {
+                await haPost(`/services/homeassistant/reload_config_entry`, { entry_id: entry.entry_id });
+                results.push({ domain: entry.domain, title: entry.title, success: true });
+              } catch {}
+            }
+            return { reloaded: results.filter(r => r.success).length, total: entries.length, results: results.slice(0, 20) };
+          }
+
+          case 'get_hacs_updates': {
+            try {
+              const states = await haGet('/states');
+              const hacsEntities = states.filter(e => e.entity_id.startsWith('update.') && e.state === 'on');
+              return { pending_updates: hacsEntities.map(e => ({ entity: e.entity_id, name: e.attributes?.friendly_name, installed: e.attributes?.installed_version, latest: e.attributes?.latest_version })), total: hacsEntities.length };
+            } catch (e) {
+              return { error: e.message };
+            }
+          }
+
+          case 'update_hacs_repo': {
+            if (!input.addon_slug) return { error: 'addon_slug (entity_id del update) requerido' };
+            await haPost('/services/update/install', { entity_id: input.addon_slug });
+            return { success: true, updated: input.addon_slug };
+          }
+
+          default:
+            return { error: `Acción desconocida: ${input.action}` };
+        }
+      }
+
       default:
         return { error: `Tool desconocida: ${name}` };
     }
@@ -2563,33 +2805,23 @@ CUANDO EL USUARIO PIDE CAMBIOS EN EL DASHBOARD:
     prompt += '\n';
   }
 
-  // Learnings — separados por tipo para que Jarvis los use mejor
-  if (learnings.length > 0) {
-    const errors = learnings.filter(l => l.type === 'error').slice(-10);
-    const successes = learnings.filter(l => l.type === 'success').slice(-10);
-    const patterns = learnings.filter(l => l.type === 'pattern').slice(-10);
-    const optimizations = learnings.filter(l => l.type === 'optimization').slice(-5);
-
-    if (errors.length > 0) {
-      prompt += `═══ ERRORES CONOCIDOS (no repetir) ═══\n`;
-      for (const l of errors) prompt += `- ${l.context}: ${l.lesson}${l.solution ? ' → FIX: ' + l.solution : ''}\n`;
-      prompt += '\n';
+  // Learnings destilados — como reglas accionables, no listas crudas
+  const distilledRules = loadJSON(path.join(DATA_DIR, 'distilled_rules.json'), []);
+  if (distilledRules.length > 0) {
+    prompt += `═══ LO QUE SÉ DE ESTA INSTALACIÓN (reglas aprendidas) ═══\n`;
+    for (const r of distilledRules.slice(-20)) prompt += `• ${r}\n`;
+    prompt += '\n';
+  } else if (learnings.length > 0) {
+    // Fallback: mostrar learnings crudos hasta que haya reglas destiladas
+    const recent = learnings.slice(-15);
+    prompt += `═══ APRENDIZAJES RECIENTES ═══\n`;
+    for (const l of recent) {
+      if (l.type === 'error') prompt += `⚠ NO REPETIR: ${l.context} → ${l.lesson}${l.solution ? ' | FIX: ' + l.solution : ''}\n`;
+      else if (l.type === 'success') prompt += `✓ FUNCIONA: ${l.lesson}\n`;
+      else if (l.type === 'pattern') prompt += `↺ PATRÓN: ${l.lesson}\n`;
+      else prompt += `→ ${l.lesson}\n`;
     }
-    if (successes.length > 0) {
-      prompt += `═══ LO QUE FUNCIONA ═══\n`;
-      for (const l of successes) prompt += `- ${l.context}: ${l.lesson}\n`;
-      prompt += '\n';
-    }
-    if (patterns.length > 0) {
-      prompt += `═══ PATRONES DETECTADOS ═══\n`;
-      for (const l of patterns) prompt += `- ${l.lesson}\n`;
-      prompt += '\n';
-    }
-    if (optimizations.length > 0) {
-      prompt += `═══ MEJORAS PENDIENTES ═══\n`;
-      for (const l of optimizations) prompt += `- ${l.lesson}\n`;
-      prompt += '\n';
-    }
+    prompt += '\n';
   }
 
   // Instrucciones de razonamiento proactivo
@@ -2978,6 +3210,14 @@ app.listen(PORT, '0.0.0.0', () => {
   // Bucle de aprendizaje — cada 4h investiga y almacena conocimiento
   setInterval(knowledgeExpansionLoop, 4 * 3600_000);
   setTimeout(knowledgeExpansionLoop, 20 * 60_000);
+
+  // Destilación de learnings — cada 6h convierte learnings en reglas accionables
+  setInterval(distillLearnings, 6 * 3600_000);
+  setTimeout(distillLearnings, 15 * 60_000);
+
+  // Chequeo de actualizaciones — cada 12h, avisa si hay updates pendientes
+  setInterval(checkSystemUpdates, 12 * 3600_000);
+  setTimeout(checkSystemUpdates, 8 * 60_000);
 
   // Auto-update — empieza a los 2 minutos
   setInterval(checkSelfUpdate, 2 * 60_000);
@@ -3531,4 +3771,98 @@ async function checkSelfUpdate() {
       console.log(`[update] ${err.message}`);
     }
   }
+}
+
+// ── Destilación de learnings en reglas accionables ───────────────────────────
+
+async function distillLearnings() {
+  try {
+    if (!ANTHROPIC_API_KEY || learnings.length < 5) return;
+    console.log(`[distill] Destilando ${learnings.length} learnings en reglas...`);
+
+    const prompt = `Eres Jarvis. Tienes ${learnings.length} aprendizajes acumulados de tu instalación de Home Assistant.
+Tu tarea: convertirlos en REGLAS ACCIONABLES cortas (máx 25 palabras cada una).
+Una regla accionable empieza con un verbo y dice exactamente qué hacer o qué evitar.
+
+Ejemplos de BUENAS reglas:
+- "Cuando Alexa Media Player cae tras reinicio de HA, recargar la integración vía config_entries API"
+- "Las bombillas del salón son Zigbee vía Z2M — si unavailable, cortar/dar corriente"
+- "PVPC se auto-recupera solo — no recargar hasta 10min después del error"
+- "El ESP_Modulo_2_Puerta necesita IP estática — suele caer cuando el router asigna nueva IP"
+
+LEARNINGS:
+${learnings.slice(-50).map((l, i) => `[${i}] (${l.type}) ${l.context}: ${l.lesson}${l.solution ? ' → ' + l.solution : ''}`).join('\n')}
+
+Responde SOLO con un JSON array de strings (las reglas). Máx 20 reglas. Solo las más útiles y accionables.`;
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: BG_MODEL, max_tokens: 1024, messages: [{ role: 'user', content: prompt }] })
+    });
+
+    if (!response.ok) return;
+    const data = await response.json();
+    const text = data.content[0]?.text || '';
+    const match = text.match(/\[[\s\S]*\]/);
+    if (match) {
+      const rules = JSON.parse(match[0]);
+      saveJSON(path.join(DATA_DIR, 'distilled_rules.json'), rules);
+      console.log(`[distill] ${rules.length} reglas guardadas.`);
+    }
+  } catch (err) {
+    console.log(`[distill] Error: ${err.message}`);
+  }
+}
+
+// ── Chequeo periódico de actualizaciones del sistema ────────────────────────
+
+async function checkSystemUpdates() {
+  try {
+    if (!ANTHROPIC_API_KEY) return;
+    console.log('[updates] Verificando actualizaciones del sistema...');
+
+    const [core, os, sup, addons] = await Promise.all([
+      fetch('http://supervisor/core/info', { headers: { Authorization: `Bearer ${HA_TOKEN}` } }).then(r => r.json()).catch(() => ({})),
+      fetch('http://supervisor/os/info', { headers: { Authorization: `Bearer ${HA_TOKEN}` } }).then(r => r.json()).catch(() => ({})),
+      fetch('http://supervisor/supervisor/info', { headers: { Authorization: `Bearer ${HA_TOKEN}` } }).then(r => r.json()).catch(() => ({})),
+      fetch('http://supervisor/addons', { headers: { Authorization: `Bearer ${HA_TOKEN}` } }).then(r => r.json()).catch(() => ({ data: { addons: [] } }))
+    ]);
+
+    const updates = [];
+    const coreData = core.data || core;
+    const osData = os.data || os;
+    const supData = sup.data || sup;
+    const addonList = (addons.data || addons).addons || [];
+
+    if (coreData.update_available) updates.push(`HA Core: ${coreData.version} → ${coreData.version_latest}`);
+    if (osData.update_available) updates.push(`HA OS: ${osData.version} → ${osData.version_latest}`);
+    if (supData.update_available) updates.push(`Supervisor: ${supData.version} → ${supData.version_latest}`);
+    const updatableAddons = addonList.filter(a => a.update_available);
+    for (const a of updatableAddons) updates.push(`Add-on ${a.name}: ${a.version} → ${a.version_latest}`);
+
+    if (updates.length > 0) {
+      console.log(`[updates] ${updates.length} actualizaciones disponibles`);
+      const thoughtsFile = path.join(DATA_DIR, 'pending_thoughts.json');
+      let thoughts = loadJSON(thoughtsFile, []);
+      // No duplicar si ya hay un pensamiento de updates reciente
+      const recentUpdate = thoughts.find(t => t.title && t.title.includes('actualizaciones') && t.status === 'pending' && (Date.now() - new Date(t.created).getTime()) < 24 * 3600_000);
+      if (!recentUpdate) {
+        thoughts.push({
+          id: Date.now(), type: 'optimization', priority: 'medium', status: 'pending',
+          title: `${updates.length} actualizaciones disponibles`,
+          detail: updates.join('\n') + '\n\nPuedo actualizarlas automáticamente. Los add-ons se actualizan sin interrupciones. El Core y OS reinician brevemente. ¿Quieres que lo haga?',
+          created: new Date().toISOString()
+        });
+        if (thoughts.length > 50) thoughts = thoughts.slice(-50);
+        saveJSON(thoughtsFile, thoughts);
+        console.log(`[updates] Pensamiento creado con las ${updates.length} actualizaciones.`);
+      }
+    } else {
+      console.log('[updates] Sistema al día, sin actualizaciones pendientes.');
+    }
+  } catch (err) {
+    console.log(`[updates] Error: ${err.message}`);
+  }
+}
 }
