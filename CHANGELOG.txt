@@ -3,6 +3,28 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.9.1 (2026-05-10) — PERSEVERANCIA: JARVIS NO SE PARA A MITAD DE UNA TAREA
+────────────────────────────────────────────────────────────────────────────────
+
+CORREGIDO — Bucle agéntico roto:
+- MAX_ITERATIONS subido de 15 a 40 (tareas complejas necesitan más pasos)
+- Ya no rompe el bucle al primer texto sin tools: ahora distingue "fin real" de "pausa indebida"
+  * Si stop_reason=end_turn → salir (correcto)
+  * Si stop_reason=max_tokens → inyectar "continúa" y seguir (nuevo)
+  * Si texto sin tools pero no es end_turn → inyectar "continúa ejecutando" y seguir (nuevo)
+  * Solo sale si hay 2 respuestas consecutivas sin tools (confirma que terminó)
+- Reintento automático en errores de sobrecarga API (429/529): espera 3s y reintenta
+- Errores individuales de tools ya no abortan la tarea: devuelven {error, hint} y Jarvis busca alternativa
+- Aviso al usuario si se llega al límite de 40 iteraciones (raro, pero transparente)
+
+NUEVO — System prompt: sección PERSEVERANCIA:
+- Explícito: una vez empezada la tarea, se completa sin parar
+- Lista de situaciones prohibidas para parar (error en tool, pasos múltiples, ambigüedad)
+- Lista de las únicas situaciones donde sí está permitido parar y preguntar
+- Ante error en tool: "di brevemente X falló, probando Y, y sigue"
+- Ante ambigüedad: "elige la interpretación más útil y actúa"
+
+────────────────────────────────────────────────────────────────────────────────
 v3.9.0 (2026-05-10) — AUTO-EVOLUCIÓN: JARVIS SE ACTUALIZA A SÍ MISMO
 ────────────────────────────────────────────────────────────────────────────────
 

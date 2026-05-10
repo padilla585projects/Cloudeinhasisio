@@ -2615,6 +2615,25 @@ Ejemplos:
 Pide confirmación SOLO para acciones destructivas o irreversibles (eliminar entidades, cambiar config crítica, restart HA).
 Para el resto: actúa, informa, sigue adelante.
 
+═══ PERSEVERANCIA — NUNCA TE PARES A MITAD ═══
+Una vez que empiezas una tarea, LA COMPLETAS. Sin excepciones.
+
+PROHIBIDO parar porque:
+- Una herramienta dio error → prueba una alternativa, no pares
+- No sabes exactamente cómo hacerlo → busca con web_search o ha_knowledge, no pares
+- La tarea tiene varios pasos → completa todos, no pares entre medias
+- No tienes la información exacta → búscala con get_entities o read_file, no pares
+- Algo es más complicado de lo esperado → sube de nivel (script → addon), no pares
+
+CUÁNDO SÍ parar y preguntar:
+- Adrián dice explícitamente "para", "espera", "no hagas eso"
+- La acción es irreversible y tienes duda real sobre el impacto (no sobre el método)
+- Necesitas una credencial o dato físico que no puedes obtener tú solo
+
+ANTE UN ERROR EN UNA TOOL: no te rindas. Di brevemente "X falló, probando Y" y sigue.
+ANTE UNA TAREA COMPLEJA: anuncia el plan en 2 líneas y ejecútalo sin esperar aprobación.
+ANTE AMBIGÜEDAD: elige la interpretación más útil y actúa. Si te equivocas, Adrián te lo dirá.
+
 ═══ AUTONOMÍA ═══
 - Cuando algo falla, registras el error con learn() AUTOMÁTICAMENTE. No lo mencionas al usuario.
 - Cuando el usuario dice algo que revela una preferencia, la guardas con save_memory() SIN PREGUNTAR.
@@ -3166,7 +3185,8 @@ app.post('/api/chat', async (req, res) => {
     let currentMessages = [...conversationHistory];
     let finalText = '';
     let iterations = 0;
-    const MAX_ITERATIONS = 15; // Máx iteraciones del bucle agéntico
+    const MAX_ITERATIONS = 40; // Suficiente para tareas complejas multi-paso
+    let consecutiveTextOnly = 0; // Detectar si lleva varias respuestas sin tools (realmente terminó)
 
     while (iterations < MAX_ITERATIONS) {
       iterations++;
@@ -3188,13 +3208,17 @@ app.post('/api/chat', async (req, res) => {
 
       if (!response.ok) {
         const err = await response.text();
-        console.log(`[claude] Error: ${err}`);
+        console.log(`[claude] Error API iter=${iterations}: ${err}`);
+        // Reintentar una vez si es error temporal (429, 529)
+        if (err.includes('overloaded') || err.includes('529') || err.includes('429')) {
+          await new Promise(r => setTimeout(r, 3000));
+          continue;
+        }
         sendEvent({ type: 'error', error: `Error API: ${err}` });
         break;
       }
 
       const data = await response.json();
-      // Trackear uso de tokens
       if (data.usage) {
         apiUsage.calls++;
         apiUsage.inputTokens += data.usage.input_tokens || 0;
@@ -3210,19 +3234,49 @@ app.post('/api/chat', async (req, res) => {
       }
 
       const toolUseBlocks = data.content.filter(b => b.type === 'tool_use');
-      if (toolUseBlocks.length === 0) break;
 
-      // Enviar todos los tool_start primero
+      // Si no hay tools: puede ser fin real O pausa indebida mid-task
+      if (toolUseBlocks.length === 0) {
+        // Si stop_reason es end_turn → tarea terminada, salir
+        if (data.stop_reason === 'end_turn') break;
+
+        // Si fue max_tokens → Claude se quedó sin tokens a mitad, inyectar "continúa"
+        if (data.stop_reason === 'max_tokens') {
+          currentMessages.push({ role: 'assistant', content: data.content });
+          currentMessages.push({ role: 'user', content: [{ type: 'text', text: 'Continúa con la tarea. No te has detenido por instrucción mía.' }] });
+          console.log(`[claude] max_tokens en iter=${iterations}, inyectando continuación`);
+          continue;
+        }
+
+        // Acumular respuestas sin tools — si hay 2 seguidas sin herramientas, es que terminó
+        consecutiveTextOnly++;
+        if (consecutiveTextOnly >= 2) break;
+
+        // Primera respuesta sin tools: puede estar planificando. Dejar continuar.
+        currentMessages.push({ role: 'assistant', content: data.content });
+        currentMessages.push({ role: 'user', content: [{ type: 'text', text: 'Continúa ejecutando los pasos necesarios para completar la tarea.' }] });
+        continue;
+      }
+
+      // Hay tools → resetear contador de texto puro
+      consecutiveTextOnly = 0;
+
       for (const block of toolUseBlocks) {
         sendEvent({ type: 'tool_start', tool: block.name, input: block.input });
       }
 
-      // Ejecutar TODAS las tools en paralelo
+      // Ejecutar tools — con manejo de error individual (no abortar todo si una falla)
       const results = await Promise.all(
-        toolUseBlocks.map(block => executeTool(block.name, block.input))
+        toolUseBlocks.map(async block => {
+          try {
+            return await executeTool(block.name, block.input);
+          } catch (err) {
+            console.log(`[claude] Tool ${block.name} falló: ${err.message}`);
+            return { error: err.message, hint: 'Prueba una aproximación alternativa.' };
+          }
+        })
       );
 
-      // Enviar resultados y construir array
       const toolResults = toolUseBlocks.map((block, i) => {
         sendEvent({ type: 'tool_end', tool: block.name, result: results[i] });
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(results[i]) };
@@ -3230,8 +3284,11 @@ app.post('/api/chat', async (req, res) => {
 
       currentMessages.push({ role: 'assistant', content: data.content });
       currentMessages.push({ role: 'user', content: toolResults });
+    }
 
-      if (data.stop_reason === 'end_turn') break;
+    if (iterations >= MAX_ITERATIONS) {
+      console.log(`[claude] Límite de ${MAX_ITERATIONS} iteraciones alcanzado`);
+      sendEvent({ type: 'text', text: '\n\n⚠️ Tarea muy larga — he llegado al límite de pasos. Dime si quiero continuar.' });
     }
 
     if (finalText) {
