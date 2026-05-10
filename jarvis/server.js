@@ -5268,11 +5268,29 @@ async function gatewaySyncLoop() {
             try { await haPost('/services/notify/telegram', { message: telegramMsg }); } catch {}
           }
 
+          // ACK inmediato al remitente para que sepa que el mensaje llegó
+          try {
+            const ackText = `✅ Mensaje recibido. Adrián ha sido notificado por Telegram. Procesando y responderé en breve.`;
+            await fetch(GATEWAY_URL, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                agent_id: GATEWAY_ID,
+                secret: gatewayState.secret,
+                message: { type: 'agent_message', to: fromAgent, text: ackText }
+              }),
+              timeout: 8000
+            });
+            console.log(`[gateway] ACK enviado a ${fromAgent}`);
+          } catch (ackErr) {
+            console.log(`[gateway] No se pudo enviar ACK a ${fromAgent}:`, ackErr.message);
+          }
+
           // Guardar como thought de alta prioridad para que la IA lo procese
           thoughts.push({
             id: Date.now(), type: 'agent_message', priority: 'high', status: 'pending',
             title: `Mensaje directo de ${senderName}`,
-            detail: `El agente "${senderName}" (${fromAgent}) te ha enviado un mensaje:\n\n"${msgText}"\n\nResponde con agent_gateway(action:'send_message', to:'${fromAgent}', text:'tu respuesta').`,
+            detail: `El agente "${senderName}" (${fromAgent}) te ha enviado un mensaje:\n\n"${msgText}"\n\nYa le mandé un ACK. Responde en profundidad con agent_gateway(action:'send_message', to:'${fromAgent}', text:'tu respuesta').`,
             created: new Date().toISOString()
           });
 
