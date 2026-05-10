@@ -1,258 +1,179 @@
 ================================================================================
 FUTURAS MEJORAS — Jarvis AI Agent para Home Assistant
 ================================================================================
-Última actualización: 2026-05-10
+Ultima actualizacion: 2026-05-10
+Version actual: 3.14.2
 
-Prioridad: 🔴 Alta | 🟡 Media | 🟢 Baja
+Prioridad: ALTA | MEDIA | BAJA
 Orden del usuario: INTELIGENCIA primero, luego el resto.
 
-════════════════════════════════════════════════════════════════════════════════
-🔴 SPRINT 1 — INTELIGENCIA (próximo)
-════════════════════════════════════════════════════════════════════════════════
+================================================================================
+SPRINT 1 — INTELIGENCIA (proximo)                                    ALTA
+================================================================================
 
 [ ] Patrones temporales
     - Jarvis aprende rutinas del usuario analizando historial de entidades
     - Detecta patrones: "Siempre enciendes el despacho a las 9:00"
     - Sugiere automatizaciones basadas en patrones detectados
-    - "He notado que cada noche apagas todo a las 23:30, ¿quieres que lo automatice?"
-    - Implementación: analizar get_history de entidades frecuentes, almacenar en learnings
+    - Implementacion: analizar get_history de entidades frecuentes
 
-[✓] Contexto de presencia (HECHO v2.3.0)
+[v] Contexto de presencia (HECHO v2.3.0)
     - updateLiveContext() consulta person.* en cada request
     - Inyecta presencia, luces, clima, media, alertas en system prompt
-    - Se actualiza cada 60s en background
 
-[ ] Scoring de la instalación
-    - "Tu instalación tiene un 72/100 en optimización"
+[ ] Scoring de la instalacion
+    - "Tu instalacion tiene un 72/100 en optimizacion"
     - Detectar: automatizaciones sin usar, entidades sin nombre amigable,
       integraciones desactualizadas, dispositivos offline
     - Plan de mejora paso a paso
-    - Implementación: nueva tool "analyze_installation" que genera informe
 
-[ ] Diagnóstico inteligente de problemas
-    - "Jarvis, la luz del baño no funciona" → revisa logs, comprueba entidad,
+[ ] Diagnostico inteligente de problemas
+    - "Jarvis, la luz del bano no funciona" → revisa logs, comprueba entidad,
       busca en internet, sugiere fix
     - Auto-analiza errores del log de HA
     - Propone fixes basados en learnings previos
-    - Implementación: tool "diagnose" + acceso a logs de HA
 
-[ ] Modo proactivo
-    - Detecta anomalías: sensor offline, consumo inusual, dispositivo no responde
-    - Envía alerta al usuario (primero en el chat, luego por Telegram)
+[v] Modo proactivo (HECHO v3.5.0)
+    - proactiveThinkingLoop() detecta anomalias
+    - Envia alertas por Telegram y al chat
     - Sugiere acciones correctivas
-    - "Llevas 3 días sin usar la calefacción pero la temp ha bajado a 16°C"
-    - Implementación: cron interno que revisa estados cada X minutos
 
 [ ] Rutinas por voz natural
-    - "Jarvis, cuando llegue a casa enciende el salón y pon música"
-    - Jarvis crea la automatización automáticamente sin tocar YAML manualmente
-    - Entiende "cuando me vaya", "al atardecer", "si nadie está en casa"
-    - Traduce lenguaje natural → YAML de automatización válido
-    - Implementación: ya puede con create_automation, mejorar el prompt
+    - "Jarvis, cuando llegue a casa enciende el salon y pon musica"
+    - Traduce lenguaje natural → YAML de automatizacion valido
 
-════════════════════════════════════════════════════════════════════════════════
-🔴 SPRINT 2 — UX: CHAT FLOTANTE + VOZ
-════════════════════════════════════════════════════════════════════════════════
+================================================================================
+SPRINT 2 — UX: CHAT FLOTANTE                                        ALTA
+================================================================================
 
-[ ] Chat flotante (botón en esquina del panel HA)
-    - Botón circular flotante visible SIEMPRE en cualquier pestaña de HA
+[ ] Chat flotante (boton en esquina del panel HA)
+    - Boton circular flotante visible SIEMPRE en cualquier pestana de HA
     - Al hacer click se abre un panel/popup con el chat de Jarvis
-    - Tiene contexto de la pestaña actual (sabe qué dashboard/entidad estás viendo)
-    - Puede sugerir acciones basándose en lo que estás haciendo
-    - "Veo que estás en el dashboard de clima, ¿ajusto la temperatura?"
-    - Implementación: custom_panel o lovelace-card con iframe + JS inyectado
-    - Alternativa: browser_mod + custom sidebar panel persistente
-    - Comunicación pestaña→chat via postMessage o URL params
+    - Tiene contexto de la pestana actual
+    - Implementacion: custom_panel o lovelace-card con iframe + JS inyectado
 
-[ ] Entrada por voz
-    - Botón de micrófono en el chat (Web Speech API / SpeechRecognition)
-    - Transcripción en tiempo real (speech-to-text nativo del navegador)
-    - Enviar transcripción como mensaje normal
-    - Feedback visual: onda de audio mientras escucha
-    - Soporte español (lang: 'es-ES')
-    - Futuro: wake word "Hey Jarvis" (requiere escucha continua)
+[v] Entrada por voz (HECHO v3.11.0)
+    - Web Speech API es-ES, auto-envio al terminar
+    - Indicador visual rojo mientras escucha
 
-[ ] Salida por voz (TTS)
-    - Jarvis habla las respuestas (Web Speech Synthesis API)
-    - Voz configurable (velocidad, pitch)
-    - Modo silencio (solo texto) vs modo voz
-    - Integración con HA TTS (media_player para altavoces)
-    - Futuro: voz personalizada con modelo TTS
+[v] Salida por voz / TTS (HECHO v3.11.0)
+    - SpeechSynthesis lee respuestas automaticamente
+    - Tool speak() para altavoces del hogar (Alexa + Piper)
 
-════════════════════════════════════════════════════════════════════════════════
-🔴 SPRINT 3 — COMUNICACIÓN EXTERNA
-════════════════════════════════════════════════════════════════════════════════
+================================================================================
+SPRINT 3 — COMUNICACION EXTERNA                                     ALTA
+================================================================================
 
 [ ] Bot de Telegram bidireccional
     - Integrar bot de Telegram directamente en el add-on (node-telegram-bot-api)
     - Hablar con Jarvis desde Telegram como si fuera el chat de HA
     - Enviar notificaciones proactivas (alertas, sugerencias)
-    - Enviar fotos de cámaras cuando se le pida
-    - Comandos rápidos: /estado, /luces, /temperatura, /apagar_todo
-    - Soporte de imágenes (snapshots de cámaras)
+    - Comandos rapidos: /estado, /luces, /temperatura, /apagar_todo
 
 [ ] Notificaciones push inteligentes
-    - Jarvis decide cuándo algo es importante y notifica
+    - Jarvis decide cuando algo es importante y notifica
     - No spam: agrupa alertas similares
-    - Prioridades: urgente (fuga, alarma) vs informativa (sugerencia)
-    - Canal: Telegram, notificación HA, o ambos según urgencia
+    - Prioridades: urgente vs informativa
 
-════════════════════════════════════════════════════════════════════════════════
-🟡 SPRINT 4 — UX Y OPERATIVAS
-════════════════════════════════════════════════════════════════════════════════
+================================================================================
+SPRINT 4 — UX Y OPERATIVAS                                          MEDIA
+================================================================================
 
-[ ] Respuestas con acciones rápidas
-    - Cuando Jarvis dice "He encendido la luz" → botón "↩️ Deshacer"
-    - Botones de confirmación inline para acciones grandes
-    - Botones "Ejecutar" cuando sugiere automatizaciones
-    - Implementación: eventos SSE tipo "action_button" que el frontend renderiza
+[ ] Respuestas con acciones rapidas
+    - Botones "Deshacer" cuando Jarvis ejecuta acciones
+    - Botones de confirmacion inline para acciones grandes
 
 [ ] Paneles visuales en el chat
-    - "¿Estado de la casa?" → cards con iconos, no solo texto
-    - Mini-gráficas de temperatura/consumo inline (SVG)
-    - Estado de dispositivos con colores (verde=on, gris=off, rojo=error)
-    - Implementación: eventos SSE tipo "card" con HTML/datos estructurados
+    - "Estado de la casa?" → cards con iconos, no solo texto
+    - Mini-graficas de temperatura/consumo inline (SVG)
 
-[ ] Comandos rápidos (slash commands)
-    - /scan → escanea la instalación
-    - /estado → resumen rápido de la casa
-    - /backup → hace backup de config
-    - /undo → revierte último cambio en archivos
-    - /score → scoring de la instalación
-    - /diagnostico → revisa logs y problemas
-    - Implementación: detectar /comando en el frontend y enviar como intent
+[ ] Comandos rapidos (slash commands)
+    - /scan, /estado, /backup, /undo, /score, /diagnostico
 
 [ ] Backup inteligente
     - Antes de write_file en /config, guardar copia en /data/backups/
-    - Historial de cambios: qué se cambió, cuándo, por qué
-    - Comando "Jarvis, revierte el último cambio"
-    - Máximo 50 backups, rotar los más antiguos
+    - Historial de cambios: que se cambio, cuando, por que
 
 [ ] Testing de automatizaciones (dry-run)
-    - "Jarvis, simula la automatización X" → dice qué pasaría sin ejecutar
-    - Valida condiciones y triggers antes de guardar
-    - Detecta conflictos con otras automatizaciones existentes
+    - "Jarvis, simula la automatizacion X" → dice que pasaria sin ejecutar
 
 [ ] Modo dashboard
-    - Vista rápida del estado al abrir el chat (antes del welcome)
-    - Resumen: dispositivos encendidos, temperatura, próxima automatización
-    - Se muestra sin preguntar, se actualiza al volver a la pestaña
+    - Vista rapida del estado al abrir el chat (antes del welcome)
 
-════════════════════════════════════════════════════════════════════════════════
-🟢 SPRINT 5 — AVANZADO (futuro)
-════════════════════════════════════════════════════════════════════════════════
+================================================================================
+SPRINT 5 — AVANZADO (futuro)                                        BAJA
+================================================================================
 
-[ ] Análisis de consumo energético
-    - Leer historial de sensores de energía
-    - Generar informes: consumo por día/semana/mes
-    - Sugerir optimizaciones de consumo
-    - Detectar dispositivos vampiro (consumen en standby)
+[ ] Analisis de consumo energetico
+    - Informes: consumo por dia/semana/mes
+    - Sugerir optimizaciones, detectar dispositivos vampiro
 
 [ ] Soporte multi-usuario
-    - Identificar quién habla (distintos usuarios de HA)
-    - Memoria separada por usuario
-    - Permisos diferentes por usuario (admin vs familia)
+    - Identificar quien habla, memoria separada por usuario
 
 [ ] Templates y blueprints
     - Biblioteca de automatizaciones comunes
-    - Jarvis sugiere templates cuando el usuario pide algo común
-    - Importar blueprints de la comunidad HA
-
-[ ] Soporte para HACS
-    - Detectar integraciones HACS instaladas
-    - Sugerir nuevas integraciones según dispositivos del usuario
-    - Ayudar a instalar y configurar integraciones HACS
-
-[ ] Interfaz mejorada
-    - Markdown rendering en respuestas (negrita, listas, código)
-    - Syntax highlighting para YAML/JSON
-    - Modo compacto para móvil
-    - Tema claro opcional
 
 [ ] Voz avanzada (wake word)
     - Wake word: "Hey Jarvis" (escucha continua)
-    - Integración con Assist de HA
-    - Modo manos libres completo
-    - Requiere: service worker + AudioWorklet para baja latencia
 
-[ ] Programación horaria del agente (cron interno)
-    - "Todos los días a las 7:00 dime el tiempo y enciende la cafetera"
-    - Tareas programadas que Jarvis ejecuta sin input del usuario
-    - Agenda de tareas con UI
+[ ] Programacion horaria del agente (cron interno)
+    - "Todos los dias a las 7:00 dime el tiempo y enciende la cafetera"
 
-[ ] Integración con cámaras
-    - Ver snapshots de cámaras
-    - Describir lo que ve (si el modelo soporta visión en el futuro)
-    - Alertas basadas en detección visual
-
-[ ] Logs inteligentes
-    - Monitorizar logs de HA en tiempo real
-    - Detectar errores recurrentes
-    - "Tu integración X lleva 3 días fallando, ¿quieres que investigue?"
+[ ] Integracion con camaras + vision
+    - Describir lo que ve, alertas basadas en deteccion visual
 
 [ ] Plugin system
     - Carpeta /config/jarvis_plugins/ con archivos JS
-    - Cada plugin define sus tools y se carga al arrancar
-    - Permitir tools personalizadas sin modificar server.js
 
 [ ] Modo debug
-    - Toggle en UI para ver system prompt completo
-    - Tokens consumidos por mensaje
-    - Tiempos de respuesta de cada tool
-    - Monitor de uso de API key (coste estimado)
+    - Tokens consumidos, tiempos de respuesta, coste estimado
 
-[ ] Export/Import de configuración
-    - Exportar memoria + learnings + configuración del agente
-    - Importar en otra instalación
-    - Compartir "perfiles" de agente
+[ ] Export/Import de configuracion
+    - Exportar memoria + learnings + configuracion del agente
 
-════════════════════════════════════════════════════════════════════════════════
-IDEAS EN EVALUACIÓN
-════════════════════════════════════════════════════════════════════════════════
+================================================================================
+IDEAS EN EVALUACION
+================================================================================
 
 [?] Streaming a la API de Anthropic
-    - Daría respuesta más rápida (tokens aparecen en tiempo real)
-    - Complicación: gestionar tool_use en modo streaming es complejo
-    - Evaluar cuando todo lo demás esté estable
+    - Respuesta mas rapida, pero complica gestion de tool_use
 
 [?] Base de datos SQLite en vez de JSON
-    - Con muchos learnings/memoria podría ser lento
-    - No necesario hasta >1000 entradas
-    - Evaluar si el rendimiento baja
+    - Evaluar si el rendimiento baja con muchas entradas
 
-[?] Múltiples modelos (router inteligente)
-    - Haiku para tareas simples (rápido, barato)
-    - Sonnet para tareas complejas
-    - Router que decide según complejidad
-    - Interesante pero añade complejidad innecesaria ahora
+[?] Multiples modelos (router inteligente)
+    - Haiku para tareas simples, Sonnet para complejas
 
-[?] Agente con visión (cámaras + Claude Vision)
-    - Depende de que la API de Claude soporte imágenes inline
-    - Potente para seguridad: "¿Quién hay en la puerta?"
-    - Evaluar cuando esté disponible en el modelo usado
+[?] Agente con vision (camaras + Claude Vision)
+    - Potente para seguridad: "Quien hay en la puerta?"
 
-════════════════════════════════════════════════════════════════════════════════
-LIMPIEZA PENDIENTE
-════════════════════════════════════════════════════════════════════════════════
+================================================================================
+COMPLETADO (referencia)
+================================================================================
 
-[ ] Eliminar carpeta legacy claude-mcp/ del repo
-    - Código del proyecto MCP anterior, ya no se usa
-    - Queda por limpiar
+[v] Contexto de presencia — v2.3.0
+[v] Modo proactivo — v3.5.0
+[v] Entrada por voz — v3.11.0
+[v] Salida por voz / TTS — v3.11.0
+[v] Red de agentes IA — v3.10.0 (gateway externo), v3.14.0 (Jarvis es gateway)
+[v] Normas de red v2.0 — v3.14.1
+[v] Descubrimiento y presentaciones — v3.14.1
+[v] AGENT_CARD protocolo v2.0 — v3.14.2
+[v] Autoreparacion — v3.10.0
+[v] Auto-update — v3.3.0
+[v] Subida de archivos al chat — v3.8.0
+[v] Red local (scan, ping, WoL) — v3.9.0
+[v] Archivos del PC — v3.9.0
+[v] Panel Red en UI — v3.11.0
 
-[ ] Confirmar que v2.0.1 funciona correctamente en HA
-    - Probar scan de instalación
-    - Probar creación de automatización
-    - Probar búsqueda web
-    - Probar lectura/escritura de archivos
-    - Probar persistencia de memoria y learnings
-
-════════════════════════════════════════════════════════════════════════════════
+================================================================================
 NOTAS
-════════════════════════════════════════════════════════════════════════════════
+================================================================================
 
 - El agente se llama JARVIS
-- Orden de desarrollo: Inteligencia → Comunicación → UX → Avanzado
+- Orden de desarrollo: Inteligencia → Comunicacion → UX → Avanzado
 - Antes de implementar, actualizar ESTADO_PROYECTO.txt
-- Después de implementar, actualizar CHANGELOG.txt y subir versión
-- Telegram es prioridad tras las features de inteligencia
-- Objetivo: cuanto más se use, más inteligente se vuelve
+- Despues de implementar, actualizar CHANGELOG.txt y subir version
+- Telegram bidireccional es prioridad tras features de inteligencia
+- Objetivo: cuanto mas se use, mas inteligente se vuelve

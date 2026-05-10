@@ -3,6 +3,23 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.14.3 (2026-05-11) — Edge TTS: voz natural con acento español
+────────────────────────────────────────────────────────────────────────────────
+
+TTS — Reemplazado OpenAI TTS por Microsoft Edge TTS:
+  - Voces neurales con acento español de España (no americano).
+  - 8 voces disponibles: Alvaro, Elvira, Dario, Irene, Saul, Triana, Teo, Abril.
+  - Gratis, sin API key, sin limites de uso.
+  - Nuevo endpoint GET /api/tts/voices para listar voces disponibles.
+  - Dependencia: node-edge-tts (npm).
+
+UI — Selector de voz rapido en el header:
+  - Boton junto a "Voz" que muestra la voz actual.
+  - Dropdown con todas las voces, icono genero y descripcion.
+  - Al seleccionar una voz, Jarvis dice "Hola, soy <nombre>" como preview.
+  - La seleccion se guarda en localStorage y persiste entre sesiones.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.14.2 (2026-05-10) — AGENT_CARD.txt actualizado al protocolo v2.0
 ────────────────────────────────────────────────────────────────────────────────
 

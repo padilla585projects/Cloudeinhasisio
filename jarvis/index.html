@@ -399,10 +399,18 @@
     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
     <span id="local-folder-label">PC</span>
   </button>
-  <button id="tts-btn" onclick="toggleTTS()" title="Activar/silenciar voz de Jarvis" style="background:transparent;border:1px solid var(--border);border-radius:10px;padding:6px 10px;color:var(--text2);cursor:pointer;font-size:11px;font-family:'DM Mono',monospace;display:flex;align-items:center;gap:5px;transition:all 0.2s;flex-shrink:0;">
+  <button id="tts-btn" onclick="toggleTTS()" title="Activar/silenciar voz de Jarvis" style="background:transparent;border:1px solid var(--border);border-radius:10px 0 0 10px;padding:6px 10px;color:var(--text2);cursor:pointer;font-size:11px;font-family:'DM Mono',monospace;display:flex;align-items:center;gap:5px;transition:all 0.2s;flex-shrink:0;">
     <svg id="tts-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M15.54 8.46a5 5 0 010 7.07"/></svg>
     <span id="tts-label">Voz</span>
   </button>
+  <button id="voice-picker-btn" onclick="toggleVoicePicker()" title="Cambiar voz de Jarvis" style="background:transparent;border:1px solid var(--border);border-left:none;border-radius:0 10px 10px 0;padding:6px 6px;color:var(--text2);cursor:pointer;font-size:10px;font-family:'DM Mono',monospace;display:flex;align-items:center;gap:3px;transition:all 0.2s;flex-shrink:0;">
+    <span id="voice-name" style="max-width:50px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+    <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+  </button>
+  <div id="voice-picker-panel" style="display:none;position:absolute;top:50px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;z-index:1001;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,0.5);min-width:200px;">
+    <div style="padding:8px 12px;border-bottom:1px solid var(--border);font-size:11px;color:var(--text2);font-family:'DM Mono',monospace;">Voz de Jarvis</div>
+    <div id="voice-picker-list" style="padding:4px;max-height:300px;overflow-y:auto;"></div>
+  </div>
   <button id="network-btn" onclick="toggleNetworkPanel()" title="Red de agentes IA" style="background:transparent;border:1px solid var(--border);border-radius:10px;padding:6px 10px;color:var(--text2);cursor:pointer;font-size:11px;font-family:'DM Mono',monospace;display:flex;align-items:center;gap:5px;transition:all 0.2s;flex-shrink:0;position:relative;" onmouseover="this.style.borderColor='var(--accent2)';this.style.color='var(--accent2)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text2)'">
     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><line x1="12" y1="7" x2="5" y2="17"/><line x1="12" y1="7" x2="19" y2="17"/></svg>
     <span>Red</span>
@@ -826,7 +834,9 @@
   let isListening = false;
   let ttsEnabled = localStorage.getItem('jarvis_tts') !== 'false';
   let currentAudio = null;
-  let ttsAvailable = null; // null=sin comprobar, true=OpenAI ok, false=usar fallback
+  let ttsAvailable = null;
+  let edgeVoices = [];
+  let currentVoice = localStorage.getItem('jarvis_tts_voice') || 'es-ES-AlvaroNeural';
 
   async function checkTTSAvailable() {
     try {
@@ -835,23 +845,68 @@
       ttsAvailable = !!d.available;
     } catch { ttsAvailable = false; }
   }
-  checkTTSAvailable();
 
-  // Fallback: Web Speech API cuando OpenAI no está configurado
-  let voiceSelected = null;
-  function initFallbackTTS() {
-    if (!('speechSynthesis' in window)) return;
-    const load = () => {
-      const voices = speechSynthesis.getVoices();
-      voiceSelected = voices.find(v => v.lang === 'es-ES' && v.localService) ||
-        voices.find(v => v.lang.startsWith('es') && v.localService) ||
-        voices.find(v => v.lang === 'es-ES') ||
-        voices.find(v => v.lang.startsWith('es')) || voices[0];
-    };
-    speechSynthesis.onvoiceschanged = load;
-    load();
+  async function loadVoices() {
+    try {
+      const r = await fetch('api/tts/voices');
+      const d = await r.json();
+      edgeVoices = d.voices || [];
+      updateVoicePickerList();
+      updateVoiceName();
+    } catch { edgeVoices = []; }
   }
-  initFallbackTTS();
+
+  function updateVoiceName() {
+    const el = document.getElementById('voice-name');
+    if (!el) return;
+    const v = edgeVoices.find(x => x.id === currentVoice);
+    el.textContent = v ? v.name : currentVoice.split('-').pop().replace('Neural', '');
+  }
+
+  function updateVoicePickerList() {
+    const list = document.getElementById('voice-picker-list');
+    if (!list) return;
+    list.innerHTML = edgeVoices.map(v => {
+      const active = v.id === currentVoice;
+      const icon = v.gender === 'M' ? '👨' : '👩';
+      return '<div onclick="selectVoice(\'' + v.id + '\')" style="padding:8px 12px;cursor:pointer;border-radius:6px;display:flex;align-items:center;gap:8px;font-size:12px;font-family:\'DM Sans\',sans-serif;' +
+        (active ? 'background:var(--accent);color:#fff;' : 'color:var(--text);') +
+        '" onmouseover="if(this.style.background!==\'var(--accent)\')this.style.background=\'rgba(255,255,255,0.05)\'" onmouseout="if(this.style.background!==\'var(--accent)\')this.style.background=\'transparent\'">' +
+        '<span>' + icon + '</span>' +
+        '<div><div style="font-weight:500;">' + v.name + '</div>' +
+        '<div style="font-size:10px;opacity:0.7;">' + v.desc + '</div></div>' +
+        (active ? '<span style="margin-left:auto;">✓</span>' : '') +
+        '</div>';
+    }).join('');
+  }
+
+  window.selectVoice = function(voiceId) {
+    currentVoice = voiceId;
+    localStorage.setItem('jarvis_tts_voice', voiceId);
+    updateVoicePickerList();
+    updateVoiceName();
+    document.getElementById('voice-picker-panel').style.display = 'none';
+    // Preview: decir el nombre de la voz
+    const v = edgeVoices.find(x => x.id === voiceId);
+    if (v && ttsEnabled) speak('Hola, soy ' + v.name);
+  };
+
+  window.toggleVoicePicker = function() {
+    const panel = document.getElementById('voice-picker-panel');
+    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+  };
+
+  // Cerrar picker al hacer click fuera
+  document.addEventListener('click', (e) => {
+    const panel = document.getElementById('voice-picker-panel');
+    const btn = document.getElementById('voice-picker-btn');
+    if (panel && btn && !panel.contains(e.target) && !btn.contains(e.target)) {
+      panel.style.display = 'none';
+    }
+  });
+
+  checkTTSAvailable();
+  loadVoices();
   updateTTSBtn();
 
   function cleanForTTS(text) {
@@ -873,12 +928,13 @@
     const clean = cleanForTTS(text);
     if (!clean) return;
 
+    // Edge TTS (servidor)
     if (ttsAvailable) {
       try {
         const r = await fetch('api/tts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: clean })
+          body: JSON.stringify({ text: clean, voice: currentVoice })
         });
         if (!r.ok) throw new Error('tts error');
         const blob = await r.blob();
@@ -887,14 +943,16 @@
         currentAudio.onended = () => { URL.revokeObjectURL(url); currentAudio = null; };
         currentAudio.play();
         return;
-      } catch { /* fallback */ }
+      } catch (e) { console.warn('[tts] Edge TTS fallback:', e); }
     }
 
-    // Fallback Web Speech API
+    // Fallback: Web Speech API del navegador
     if (!('speechSynthesis' in window)) return;
     const utt = new SpeechSynthesisUtterance(clean);
     utt.lang = 'es-ES'; utt.rate = 1.05; utt.pitch = 1.0; utt.volume = 1.0;
-    if (voiceSelected) utt.voice = voiceSelected;
+    const voices = speechSynthesis.getVoices();
+    const esVoice = voices.find(v => v.lang === 'es-ES') || voices.find(v => v.lang.startsWith('es'));
+    if (esVoice) utt.voice = esVoice;
     speechSynthesis.speak(utt);
   }
 

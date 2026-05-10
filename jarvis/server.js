@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const { exec } = require('child_process');
 const net = require('net');
 const dgram = require('dgram');
+const { EdgeTTS } = require('node-edge-tts');
 
 const app = express();
 app.use(cors());
@@ -88,7 +89,7 @@ function findAgentByKey(apiKey) {
   return null;
 }
 
-const JARVIS_VERSION = '3.14.2';
+const JARVIS_VERSION = '3.14.3';
 
 const NETWORK_NORMS = {
   version: '2.0',
@@ -4162,16 +4163,31 @@ app.get('/api/cost', (req, res) => {
   });
 });
 
-// TTS status — informa si OpenAI TTS está disponible
+// TTS status — Edge TTS siempre disponible (gratis, sin API key)
 app.get('/api/tts/status', (req, res) => {
-  res.json({ available: !!OPENAI_API_KEY });
+  res.json({ available: true, engine: 'edge-tts' });
 });
 
-// TTS via OpenAI — devuelve audio/mpeg listo para reproducir
+// TTS voces disponibles
+const EDGE_VOICES = [
+  { id: 'es-ES-AlvaroNeural', name: 'Alvaro', gender: 'M', desc: 'Masculina natural' },
+  { id: 'es-ES-ElviraNeural', name: 'Elvira', gender: 'F', desc: 'Femenina natural' },
+  { id: 'es-ES-DarioNeural', name: 'Dario', gender: 'M', desc: 'Masculina joven' },
+  { id: 'es-ES-IreneNeural', name: 'Irene', gender: 'F', desc: 'Femenina suave' },
+  { id: 'es-ES-SaulNeural', name: 'Saul', gender: 'M', desc: 'Masculina grave' },
+  { id: 'es-ES-TrianaNeural', name: 'Triana', gender: 'F', desc: 'Femenina clara' },
+  { id: 'es-ES-TeoNeural', name: 'Teo', gender: 'M', desc: 'Masculina calmada' },
+  { id: 'es-ES-AbrilNeural', name: 'Abril', gender: 'F', desc: 'Femenina brillante' },
+];
+
+app.get('/api/tts/voices', (req, res) => {
+  res.json({ voices: EDGE_VOICES });
+});
+
+// TTS via Microsoft Edge TTS — gratis, acento español de España
 app.post('/api/tts', async (req, res) => {
-  const { text, voice = 'nova', model = 'tts-1' } = req.body || {};
+  const { text, voice = 'es-ES-AlvaroNeural' } = req.body || {};
   if (!text) return res.status(400).json({ error: 'text requerido' });
-  if (!OPENAI_API_KEY) return res.status(503).json({ error: 'OPENAI_API_KEY no configurado' });
 
   try {
     const clean = text
@@ -4186,20 +4202,19 @@ app.post('/api/tts', async (req, res) => {
       .trim()
       .slice(0, 4096);
 
-    const r = await fetch('https://api.openai.com/v1/audio/speech', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, voice, input: clean, response_format: 'mp3' })
-    });
+    if (!clean) return res.status(400).json({ error: 'text vacío tras limpiar' });
 
-    if (!r.ok) {
-      const err = await r.text();
-      return res.status(r.status).json({ error: err });
-    }
+    const tts = new EdgeTTS({ voice, lang: 'es-ES', outputFormat: 'audio-24khz-48kbitrate-mono-mp3' });
+    const tmpFile = `/tmp/tts-${Date.now()}-${Math.random().toString(36).slice(2)}.mp3`;
+    await tts.ttsPromise(clean, tmpFile);
 
     res.setHeader('Content-Type', 'audio/mpeg');
-    r.body.pipe(res);
+    const stream = fs.createReadStream(tmpFile);
+    stream.pipe(res);
+    stream.on('end', () => fs.unlink(tmpFile, () => {}));
+    stream.on('error', () => { fs.unlink(tmpFile, () => {}); res.status(500).end(); });
   } catch (err) {
+    console.error('[tts] Edge TTS error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

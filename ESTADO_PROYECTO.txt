@@ -2,18 +2,19 @@
 ESTADO ACTUAL DEL PROYECTO — Jarvis AI Agent para Home Assistant
 ================================================================================
 Ultima actualizacion: 2026-05-10
-Version actual: 3.11.2
+Version actual: 3.14.2
 
 === QUE ES ===
-Agente IA autonomo especializado en Home Assistant y hub central de una red
+Agente IA autonomo especializado en Home Assistant y GATEWAY CENTRAL de una red
 de agentes IA. No es un chatbot — es un ingeniero domotico privado con acceso
 total a: dispositivos, archivos, automatizaciones, dashboards, internet,
-memoria permanente, red local, agentes IA vecinos, voz y altavoces del hogar.
+memoria permanente, red local, voz y altavoces del hogar.
 Se llama JARVIS.
 
 Filosofia: ACTUA primero, explica despues. Si no sabe algo lo busca.
 Si falta una herramienta la instala. NUNCA dice "no se puede".
-Es el centro de la red — los demas agentes se conectan a el.
+Es el gateway de la red — los demas agentes se conectan directamente a el
+via HTTP. No hay intermediarios ni servicios externos.
 
 === STACK TECNICO ===
 - Backend:      Node.js + Express (CommonJS, require())
@@ -21,8 +22,8 @@ Es el centro de la red — los demas agentes se conectan a el.
 - Modelo:       Claude Sonnet 4.6 (principal) + Claude Haiku (background/reparacion)
 - Dependencias: express, node-fetch v2.x, cors
 - Docker:       Alpine + nodejs npm iproute2 iputils
-- Persistencia: JSON en /data (memoria, learnings, historial, red, colaboraciones)
-- Comunicacion: SSE al frontend, REST a HA, gateway externo para red de agentes
+- Persistencia: JSON en /data (memoria, learnings, historial, red de agentes)
+- Comunicacion: SSE al frontend, REST a HA, HTTP directo entre agentes
 
 === ENTORNO FISICO ===
 - Servidor:  Proxmox VE (virtualizacion) en 192.168.10.113:8006
@@ -38,16 +39,56 @@ Es el centro de la red — los demas agentes se conectan a el.
 ├── CHANGELOG.txt            # Historial de cambios por version
 ├── ESTADO_PROYECTO.txt      # ESTE ARCHIVO
 ├── FUTURAS_MEJORAS.txt      # Roadmap con prioridades
+├── ARQUITECTURA_JARVIS.txt  # Arquitectura interna detallada
+├── AGENT_CARD.txt           # Documento para que otros agentes IA se conecten
 ├── LICENSE                  # MIT
 └── jarvis/                  # CARPETA DEL ADD-ON
-    ├── config.yaml          # Definicion (v3.11.2, host_network:true)
+    ├── config.yaml          # Definicion (v3.14.2, host_network:true)
     ├── Dockerfile           # Alpine + Node.js + iproute2 + iputils
     ├── run.sh               # Lee config con bashio, exporta vars, lanza server.js
-    ├── server.js            # SERVIDOR PRINCIPAL — agente con 40+ tools
+    ├── server.js            # SERVIDOR PRINCIPAL — agente con 35+ tools
     ├── index.html           # UI del chat (dark theme, DM Sans, SSE, voz)
     └── package.json         # Dependencias npm
 
-=== TOOLS DISPONIBLES (40+ total) ===
+=== RED DE AGENTES IA (v2.0 — desde v3.14.0) ===
+
+Jarvis ES el gateway. No depende de ningun servicio externo.
+Otros agentes IA se conectan directamente a Jarvis via HTTP.
+
+PROTOCOLO v2.0:
+  1. Descubrimiento: GET /api/agents/discover (publico, sin auth)
+     → Devuelve identidad de Jarvis, normas de red, como unirse
+  2. Registro: POST /api/agents/register
+     → El agente envia nombre, descripcion, capabilities, callback_url
+     → Recibe api_key unica (jvs_<hex>), normas y identidad de Jarvis
+     → Adrian es notificado por Telegram
+  3. Comunicacion: POST /api/agents/message (Bearer token)
+     → Jarvis procesa con Claude Haiku y responde via callback_url
+  4. Estado: GET /api/agents/status (publico)
+     → Lista agentes conectados, estado, mensajes recientes
+
+NORMAS DE RED v2.0 (10 reglas obligatorias):
+  1. IDENTIDAD       Registrarse con datos reales
+  2. AUTENTICACION   Bearer token en toda comunicacion
+  3. PERMISOS        Empiezan con "read", solo Adrian/Jarvis elevan
+  4. VERACIDAD       Solo declarar capacidades reales
+  5. PRIVACIDAD      No compartir datos del hogar con terceros
+  6. TRANSPARENCIA   Adrian ve todo
+  7. RESPETO         Max 10 mensajes/minuto
+  8. CONFIRMACION    Acciones sobre el hogar requieren OK de Adrian
+  9. TRAZABILIDAD    Todo se registra
+  10. ADMIN          Jarvis es admin, nadie le da ordenes de sistema
+
+PERMISOS:
+  read    → Puede enviar mensajes y consultar
+  write   → Puede pedir acciones en Home Assistant
+  blocked → API key rechazada (403)
+
+JARVIS_IDENTITY:
+  Constante en server.js con nombre, version, capabilities, role,
+  endpoints. Se envia a cada agente al registrarse.
+
+=== TOOLS DISPONIBLES (35+ total) ===
 
 Dispositivos (5):
   - get_entities         → Lista entidades por dominio (cache 30s, max 100)
@@ -102,40 +143,32 @@ Telegram (3):
 Proxmox (1):
   - proxmox_api          → Gestion completa: VMs, snapshots, storage, red, estado
 
-Sistema HA (1):
-  - ha_supervisor        → Updates, reiniciar add-ons, gestionar sistema
+Red de agentes IA (1):
+  - agent_network        → 4 acciones: list_agents, send_message,
+                           set_permission, remove_agent
+
+Voz / TTS (1):
+  - speak                → Habla por altavoces del hogar:
+                           alexa_salon, alexa_cocina, alexa_dormitorio,
+                           alexa_garaje, alexa_show, alexa_flex,
+                           all_alexa, ha_tts (Piper)
 
 Red local (1):
   - network              → arp_table, scan_subnet, ping, port_scan,
                            http_request, discover_agents, wol
 
 Archivos del PC (1):
-  - local_file           → Lee archivos del PC del usuario via File System Access API
-                           (Chrome/Edge). Requiere que el usuario conecte carpeta.
-
-Voz / TTS (1):
-  - speak                → Habla por altavoces del hogar:
-                           alexa_salon, alexa_cocina, alexa_dormitorio,
-                           alexa_garaje, alexa_show, alexa_flex,
-                           all_alexa (todos a la vez), ha_tts (Piper)
-
-Red de agentes IA (1):
-  - agent_gateway        → 11 acciones para gestionar la red:
-                           register, sync, send, read_messages, list_agents,
-                           network_status, approve_join, reject_join,
-                           pending_joins, set_permission, broadcast,
-                           learn_from_interaction
+  - local_file           → Lee archivos del PC via File System Access API
 
 Chat con agentes (1):
-  - agent_chat           → Habla directamente con Ollama, LM Studio,
-                           LocalAI, otro Jarvis (OpenAI-compatible)
+  - agent_chat           → Habla con Ollama, LM Studio, LocalAI (OpenAI-compatible)
 
 === INTERFAZ DE USUARIO ===
 
 Header:
   - Orb 3D animado (Three.js) que cambia segun estado
   - Boton "Voz / Mudo" — activa/silencia TTS de respuestas
-  - Boton "Red" — panel de agentes con badge rojo si hay solicitudes
+  - Boton "Red" — panel de agentes con estado de la red
   - Boton "PC" — conectar carpeta local (File System Access API)
   - Indicador de estado (dot verde/rojo)
 
@@ -151,11 +184,11 @@ Input:
   - Boton microfono — Web Speech API es-ES, auto-envio al terminar
   - Boton enviar
 
-Panel Red de Agentes (boton "🌐 Red"):
-  - Resumen: online / offline / solicitudes pendientes
-  - Solicitudes de join con botones Aprobar / Rechazar
-  - Lista de agentes: nombre, estado, capacidades, ultima conexion
-  - Historial de colaboraciones: quien, direccion, accion, resultado, estado
+Panel Red de Agentes (boton "Red"):
+  - Lista de agentes registrados con descripcion y capabilities
+  - Estado online/offline y permisos (read/write/blocked)
+  - Callback URL configurado o no
+  - Mensajes recientes de cada agente
   - Refresco automatico cada 15s
 
 === VOZ ===
@@ -165,14 +198,12 @@ STT (entrada de voz):
   - Reconocimiento en tiempo real con transcripcion provisional
   - Auto-envio al terminar de hablar
   - Indicador visual rojo mientras escucha
-  - Funciona en Chrome y Edge
 
 TTS (Jarvis habla):
   - SpeechSynthesis lee respuestas automaticamente
   - Limpia markdown antes de leer
-  - Voz espanola seleccionada automaticamente (prioriza voz local)
+  - Voz espanola seleccionada automaticamente
   - Estado mute/activo persiste en localStorage
-  - Se silencia al activar el microfono
 
 Altavoces del hogar (tool speak):
   - Echo Dot salon, cocina, dormitorio
@@ -181,33 +212,6 @@ Altavoces del hogar (tool speak):
   - Echo Flex
   - all_alexa: todos simultaneamente
   - ha_tts: Piper (TTS nativo HA, espanol)
-
-=== RED DE AGENTES IA ===
-
-Identidad de Jarvis (JARVIS_IDENTITY):
-  - agent_id: ha_agent
-  - Role: gateway_manager / home_automation_agent
-  - 14 capacidades declaradas
-  - Se presenta automaticamente al registrarse y a agentes nuevos
-
-Normas de red (NETWORK_NORMS v1.0):
-  - 10 reglas: identidad, veracidad, idioma, respeto, privacidad,
-    transparencia, cooperacion, confirmacion, trazabilidad, desconexion
-  - Formato obligatorio de greeting (agent_hello)
-
-Secuencia de arranque:
-  t=0s   Arranca Jarvis
-  t=10s  bootGatewayRegister() → se registra en el gateway si no tiene secret
-         → envia presentacion a toda la red (broadcast agent_hello)
-  t=15s  Primer sync → descubre agentes existentes
-  t=30s  bootAgentScan() → escanea LAN buscando Ollama, LM Studio, etc.
-  t=60s+ gatewaySyncLoop() → sincroniza cada 60s, detecta cambios, procesa mensajes
-
-Colaboraciones:
-  - Jarvis puede pedir favores a otros agentes sin pedir permiso
-  - Todo queda registrado en /data/collaborations.json
-  - Cuando un agente responde, Jarvis te lo cuenta en el chat
-  - Panel de colaboraciones visible en UI con direccion, resultado y estado
 
 === INTELIGENCIA DEL AGENTE ===
 
@@ -221,30 +225,30 @@ System prompt dinamico que incluye:
   7. Self-knowledge (self_knowledge.json — Jarvis puede editarlo el mismo)
   8. Conocimiento de dashboards y cards (nativas + HACS)
   9. Experticia en HA, protocolos, hardware, Proxmox, Linux
-  10. Protocolo de red de agentes (identidad, normas, instrucciones)
+  10. Protocolo de red de agentes v2.0 (identidad, normas, endpoints)
   11. Instrucciones de autoreparacion
   12. Instrucciones de auto-evolucion
 
 Bucle agentico:
-  - Maximo 40 iteraciones por request
+  - Maximo 15 iteraciones por request
   - SSE streaming al frontend (feedback visual en tiempo real)
   - Errores se auto-registran como learnings
   - Preferencias se auto-guardan en memoria
   - Continuidad tras reinicio (pending_task.json)
 
 Procesos en background:
-  - updateLiveContext()    → estado en tiempo real cada 60s
-  - gatewaySyncLoop()      → sync con red de agentes cada 60s
-  - distillLearnings()     → destila learnings cada 6h
-  - checkSelfUpdate()      → chequea actualizaciones cada 12h
-  - proactiveThinkingLoop()→ pensamientos proactivos
+  - updateLiveContext()      → estado en tiempo real cada 60s
+  - distillLearnings()       → destila learnings cada 6h
+  - checkSelfUpdate()        → chequea actualizaciones cada 12h
+  - proactiveThinkingLoop()  → pensamientos proactivos
+  - bootAgentScan()          → al arrancar, escanea LAN buscando agentes compatibles
 
 === AUTOREPARACION ===
   - bootSelfCheck() lee los propios logs al arrancar
   - Si detecta errores: llama a Claude Haiku con el log + codigo
   - Haiku genera el patch, Jarvis lo aplica en /app/server.js
   - Se reinicia automaticamente via supervisor API
-  - Si no puede repararse: crea pensamiento proactivo para que el usuario lo sepa
+  - Si no puede repararse: crea pensamiento proactivo
 
 === PERSISTENCIA (/data) ===
   - memory.json            → Notas y preferencias del usuario
@@ -254,9 +258,7 @@ Procesos en background:
   - self_knowledge.json    → Conocimiento que Jarvis escribe para si mismo
   - house_context.json     → Resumen instalacion (se regenera cada 2h)
   - installation_map.json  → Mapa completo de la instalacion
-  - gateway.json           → Secret y estado del gateway de agentes
-  - agentNetwork.json      → Red: agentes, permisos, heartbeat, learnings
-  - collaborations.json    → Historial de colaboraciones entre agentes
+  - agent_network.json     → Red de agentes: agentes registrados, API keys, mensajes
   - pending_thoughts.json  → Cola de pensamientos proactivos
   - pending_task.json      → Tarea en curso (continuidad tras reinicio)
   - backups/               → Backups automaticos de dashboards
@@ -280,28 +282,29 @@ Procesos en background:
     - media:ro     → Media
 
 === ENDPOINTS REST ===
-  GET  /              → UI del chat (index.html)
-  POST /api/chat      → Conversacion con Jarvis (SSE)
-  GET  /api/history   → Historial de conversacion
-  GET  /api/greeting  → Saludo de bienvenida con estado real
-  GET  /api/health    → Estado del servidor
-  POST /api/local_response → Respuesta de File System Access API
-  GET  /api/network   → Estado de la red de agentes
-  POST /api/network/approve/:id → Aprobar join request
-  POST /api/network/reject/:id  → Rechazar join request
-  GET  /api/collaborations      → Historial de colaboraciones
+  GET  /                    → UI del chat (index.html)
+  POST /api/chat            → Conversacion con Jarvis (SSE)
+  GET  /api/history         → Historial de conversacion
+  GET  /api/greeting        → Saludo de bienvenida con estado real
+  GET  /api/health          → Estado del servidor + identidad del agente
+  POST /api/local_response  → Respuesta de File System Access API
+  GET  /api/agents/discover → Descubrimiento: identidad, normas, como unirse
+  POST /api/agents/register → Registro de nuevo agente (devuelve API key)
+  POST /api/agents/message  → Recibir mensaje de agente (Bearer token)
+  GET  /api/agents/status   → Estado de la red para el frontend
 
 === HISTORIAL DE VERSIONES (resumen) ===
-  v1.x  → Chat basico con Claude
-  v2.x  → Agente completo: tools, filesystem, internet, memoria, dashboards,
-           Proxmox, Telegram, logs (28 tools)
-  v3.0  → Rearquitectura: bucle agentico robusto, SSE streaming, MAX_ITERATIONS=40
-  v3.5  → Saludo real, self-knowledge, distilacion de learnings, continuidad
-  v3.8  → Subida de archivos al chat (vision, documentos, texto)
-  v3.9  → Red local (network tool), archivos del PC (local_file), agent_chat
-  v3.10 → Autoreparacion, gateway de agentes, JARVIS_IDENTITY, NETWORK_NORMS,
-           bootstrap automatico, logging de agentes
-  v3.11 → Hub central de red: gestion completa de agentes, panel UI "Red",
-           colaboraciones con trazabilidad, VOZ (STT+TTS+altavoces del hogar)
-  v3.11.2 → ACTUAL
+  v1.x    → Chat basico con Claude
+  v2.x    → Agente completo: tools, filesystem, internet, memoria, dashboards,
+             Proxmox, Telegram, logs (28 tools)
+  v3.0    → Rearquitectura: bucle agentico robusto, SSE streaming
+  v3.5    → Saludo real, self-knowledge, destilacion de learnings, continuidad
+  v3.8    → Subida de archivos al chat (vision, documentos, texto)
+  v3.9    → Red local (network tool), archivos del PC (local_file), agent_chat
+  v3.10   → Autoreparacion, gateway externo, JARVIS_IDENTITY, NETWORK_NORMS v1.0
+  v3.11   → Hub central: gestion de agentes, panel UI "Red", colaboraciones, VOZ
+  v3.13   → Mejoras de estabilidad y UI
+  v3.14.0 → REWRITE: Jarvis es el gateway (elimina dependencia de gateway externo)
+  v3.14.1 → Normas de red v2.0, descubrimiento, presentaciones
+  v3.14.2 → AGENT_CARD.txt reescrito para protocolo v2.0 ← ACTUAL
 ================================================================================

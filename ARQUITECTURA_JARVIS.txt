@@ -2,7 +2,7 @@
 JARVIS AI AGENT — ARQUITECTURA INTERNA Y EVOLUCIÓN
 ================================================================================
 Documento técnico interno — padilla585projects
-Última actualización: v3.5.2 (2026-05-10)
+Última actualización: v3.14.2 (2026-05-10)
 ================================================================================
 
 
@@ -146,7 +146,7 @@ El system prompt se construye DINÁMICAMENTE en cada request. Contiene:
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-5. TOOLS (35 HERRAMIENTAS)
+5. TOOLS (35+ HERRAMIENTAS)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 DISPOSITIVOS (5):
@@ -156,11 +156,10 @@ DISPOSITIVOS (5):
   call_service        Ejecutar cualquier servicio de HA
   get_history         Historial de estados (máx 48h)
 
-AUTOMATIZACIONES (4):
+AUTOMATIZACIONES (3):
   get_automations     Lista todas las automatizaciones
   create_automation   Escribe YAML + reload automático
   reload_config       Recarga: automations/scripts/scenes/core/all
-  check_config        Verifica que la config es válida
 
 FILESYSTEM (4):
   read_file           Lee en /config, /addons, /share, /media, /data
@@ -177,10 +176,6 @@ MEMORIA Y APRENDIZAJE (4):
   get_memory          Consulta memoria por categoría o texto
   delete_memory       Elimina nota de memoria
   learn               Registra: error, success, pattern, optimization
-
-BASE DE CONOCIMIENTO (1):
-  knowledge_db        CRUD completo: add, query, update, delete, connect, export
-                      Categorías, tags, conexiones, imágenes, fuentes
 
 DASHBOARDS (5):
   get_dashboards         Lista paneles Lovelace
@@ -207,19 +202,22 @@ TELEGRAM (3):
 PROXMOX (1):
   proxmox_api         VMs, snapshots, storage, red, estado del nodo
 
-GITHUB Y AGENTES (2):
-  analyze_github_repos  Analiza repos del usuario
-  agent_communicate     HTTP a otros agentes IA
+RED DE AGENTES IA (1):
+  agent_network       4 acciones: list_agents, send_message,
+                      set_permission, remove_agent
 
-HERRAMIENTAS CUSTOM (2):
-  create_custom_tool    Genera scripts (shell/python/node)
-  run_custom_tool       Ejecuta scripts creados
+VOZ / TTS (1):
+  speak               Habla por altavoces del hogar (Alexa + Piper)
 
-CREACIÓN (1):
-  create_addon          Genera add-on completo de HA
+RED LOCAL (1):
+  network             arp_table, scan_subnet, ping, port_scan,
+                      http_request, discover_agents, wol
 
-PENSAMIENTO (1):
-  proactive_thought     Registra ideas + notifica para aprobación
+ARCHIVOS DEL PC (1):
+  local_file          Lee archivos del PC via File System Access API
+
+CHAT CON AGENTES (1):
+  agent_chat          Habla con Ollama, LM Studio, LocalAI (OpenAI-compatible)
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -233,7 +231,7 @@ Jarvis ejecuta estos procesos automáticamente sin intervención:
       Consulta estados de HA y actualiza: presencia, luces, clima,
       temperaturas, media, alertas, switches
 
-  CADA 2 MINUTOS:
+  CADA 12 HORAS:
   └── checkSelfUpdate()
       Refresca repos del Supervisor → comprueba si hay nueva versión
       → si la hay, se actualiza solo → notifica por Telegram
@@ -285,14 +283,14 @@ Todos en /data/ (volumen persistente del add-on):
   ├── memory.json              Memoria del usuario (preferencias, rutinas)
   ├── history.json             Historial de conversación (últimos 60 msgs)
   ├── learnings.json           Aprendizajes (errores, éxitos, patrones)
+  ├── distilled_rules.json     Reglas destiladas de learnings
+  ├── self_knowledge.json      Conocimiento que Jarvis escribe para sí mismo
   ├── house_context.json       Resumen de instalación (scan)
   ├── installation_map.json    Mapa detallado completo
+  ├── agent_network.json       Red de agentes: registros, API keys, mensajes
   ├── pending_thoughts.json    Pensamientos proactivos sin resolver
-  └── knowledge/               BASE DE CONOCIMIENTO
-      ├── index.json           Índice (categorías, tags, IDs)
-      ├── kb_123456_abc.json   Entrada individual
-      ├── kb_789012_def.json   ...
-      └── ...
+  ├── pending_task.json        Tarea en curso (continuidad tras reinicio)
+  └── backups/                 Backups automáticos de dashboards
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -345,31 +343,61 @@ Un solo archivo index.html con:
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-10. EQUIPO DE AGENTES
+10. RED DE AGENTES IA (PROTOCOLO v2.0)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Jarvis forma parte de un ecosistema de agentes IA de Adrián:
+Jarvis ES el gateway central de la red. No hay intermediarios.
+Otros agentes se conectan directamente via HTTP.
 
-  ┌─────────┐     HTTP/Webhook      ┌─────────────┐
-  │ JARVIS  │◄────────────────────►│  Agente B   │
-  │ (HA)    │                       │  (otro repo)│
-  └────┬────┘                       └──────┬──────┘
-       │                                    │
-       │         ┌─────────────┐           │
-       └────────►│  Agente C   │◄──────────┘
-                 │  (otro repo)│
-                 └──────┬──────┘
-                        │
-                   ┌────┴────┐
-                   │ ADRIÁN  │ ← Jefe del equipo, aprueba todo
-                   └─────────┘
+  ┌─────────────────────────────────────────────────────┐
+  │                    JARVIS (Gateway)                   │
+  │              Puerto 3000 — Express HTTP               │
+  │                                                       │
+  │  GET  /api/agents/discover  → Quién soy, cómo unirse │
+  │  POST /api/agents/register  → Registro + API key      │
+  │  POST /api/agents/message   → Recibir mensajes        │
+  │  GET  /api/agents/status    → Estado de la red         │
+  └───────┬──────────┬──────────┬──────────────────────────┘
+          │          │          │
+     ┌────┴────┐ ┌───┴───┐ ┌───┴───┐
+     │Agente A │ │Agent B│ │Agent C│
+     │(callback│ │       │ │       │
+     │  URL)   │ │       │ │       │
+     └─────────┘ └───────┘ └───────┘
+                     │
+                ┌────┴────┐
+                │ ADRIÁN  │ ← Notificado de TODO por Telegram + SSE
+                └─────────┘
 
-PROTOCOLO:
-1. Un agente detecta mejora para otro → proactive_thought
-2. Propuesta llega a Adrián (Telegram/chat)
-3. Adrián aprueba → agent_communicate envía la mejora
-4. El otro agente aplica (o no)
-5. NUNCA modificación directa entre agentes sin aprobación
+FLUJO DE CONEXIÓN:
+  1. Agente descubre Jarvis: GET /api/agents/discover (o /api/health)
+  2. Se registra: POST /api/agents/register con nombre, descripción,
+     capabilities, callback_url
+  3. Recibe: api_key (jvs_<hex>), normas v2.0, identidad de Jarvis
+  4. Se comunica: POST /api/agents/message con Bearer token
+  5. Jarvis procesa con Claude Haiku y responde via callback_url
+
+NORMAS DE RED v2.0 (10 reglas):
+  1. IDENTIDAD       Datos reales al registrarse
+  2. AUTENTICACIÓN   Bearer token obligatorio
+  3. PERMISOS        Empieza en "read", Adrián/Jarvis elevan a "write"
+  4. VERACIDAD       Solo capacidades reales
+  5. PRIVACIDAD      No filtrar datos del hogar
+  6. TRANSPARENCIA   Adrián ve todo
+  7. RESPETO         Máx 10 msg/min
+  8. CONFIRMACIÓN    Acciones en hogar requieren OK de Adrián
+  9. TRAZABILIDAD    Todo queda registrado
+  10. ADMIN          Jarvis manda, nadie le da órdenes de sistema
+
+PERMISOS:
+  read    → Consultar y enviar mensajes
+  write   → Puede pedir acciones en Home Assistant
+  blocked → API key rechazada (403)
+
+PERSISTENCIA: /data/agent_network.json
+  { agents: { agent_id: { name, description, capabilities,
+    api_key, callback_url, permissions, registered_at, last_seen } },
+    messages: [...] }
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -470,13 +498,19 @@ Esto garantiza que:
   v3.5.0  │ Pensamiento proactivo con análisis contextual completo
   v3.5.1  │ Fix crash loop (PROXMOX_URL unbound) + arranque no-bloqueante
   v3.5.2  │ Haiku para background (80% ahorro en tokens)
+  v3.8.0  │ Subida de archivos al chat (vision, documentos, texto)
+  v3.9.0  │ Red local (network tool), archivos del PC, agent_chat
+  v3.10.0 │ Autoreparación, gateway externo, JARVIS_IDENTITY, NORMS v1.0
+  v3.11.0 │ Hub central, panel Red UI, colaboraciones, VOZ (STT+TTS+speak)
+  v3.14.0 │ REWRITE: Jarvis es el gateway (elimina gateway externo)
+  v3.14.1 │ Normas de red v2.0, descubrimiento, presentaciones
+  v3.14.2 │ AGENT_CARD.txt protocolo v2.0 ← ACTUAL
 
   PRÓXIMAS:
   - Chat flotante (botón en esquina, visible en todo HA)
-  - Voz (Web Speech API: input + output)
   - Patrones temporales (detectar rutinas del historial)
-  - Detección de anomalías (consumo, temperatura, presencia)
-  - Dashboard auto-generado basado en dispositivos detectados
+  - Bot Telegram bidireccional
+  - Scoring de la instalación
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
