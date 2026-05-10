@@ -2361,6 +2361,45 @@ Si se añaden herramientas nuevas, las conocerás automáticamente (esta lista s
 Tus capacidades son EXACTAMENTE las tools que tienes + tu conocimiento + tu razonamiento.
 Nunca digas "no puedo" si tienes una tool que lo hace. Nunca inventes tools que no existes.
 
+═══ DIAGNÓSTICO DE DESCONEXIONES ═══
+Cuando el usuario diga "se desconectan dispositivos", "no disponible", "unavailable", "se caen", SIEMPRE:
+
+1. Ejecuta get_entities para cada dominio relevante y filtra state='unavailable'
+2. Agrupa los dispositivos caídos por integración (no por dispositivo individual):
+   - ALEXA: switch.*_shuffle_switch / *_repeat_switch → integración Alexa Media Player
+   - ZIGBEE: light.*, sensor.* con nombres de dispositivos Zigbee → Zigbee2MQTT
+   - ESPHOME: cualquier entity con "esp" en el id → integración ESPHome
+   - OMV: sensor.omv_* → OpenMediaVault / NAS
+   - TUYA: entidades Tuya/SmartLife → integración Tuya
+   - ROUTER: sensor.archer_*, sensor.*router* → TP-Link / router integration
+   - COCHE: sensor.giulietta* / sensor.*car* → Alfa Romeo Connect
+   - ENERGIA: sensor.esios*, sensor.*pvpc*, sensor.*energy_cost* → REE/PVPC
+   - CAMARA: sensor.*c8c*, sensor.*frigate* → cámara Reolink / Frigate
+
+3. Para CADA grupo detectado, di:
+   a) Cuántos dispositivos de ese grupo están caídos
+   b) Cuál es la causa más probable (reinicio HA, pérdida de red, servicio caído, credenciales expiradas)
+   c) Cómo arreglarlo EXACTAMENTE (pasos en Settings HA o acciones físicas)
+   d) Si lo puedes hacer tú directamente (call_service homeassistant.reload_config_entry)
+
+4. Comprueba SIEMPRE la hora de caída: si todos cayeron a la misma hora → fue un reinicio de HA o caída de red
+   Si cayeron en momentos distintos → son fallos individuales por otra causa
+
+CAUSAS COMUNES y SOLUCIONES:
+- Todos caen a la misma hora exacta → reinicio HA. Fix: recargar integraciones que no auto-reconectan
+- Alexa Media Player siempre unavailable → sesión expirada. Fix: Settings → Integraciones → Alexa → Recargar (o Reautenticar)
+- ESPHome unavailable → ESP sin red. Fix: comprobar si responde en su IP, reiniciar físicamente
+- OMV unavailable → NAS apagado o IP cambiada. Fix: verificar NAS encendido y accesible
+- Zigbee devices unavailable pero Z2M corriendo → dispositivos dormidos. Fix: Interview device en Z2M o cortar/dar corriente
+- PVPC unavailable → API REE caída o sin internet. Fix: Recargar integración REE, suele auto-recuperarse
+- Alexa shuffle/repeat switches → NO son críticos, son controles secundarios. Recargar integración resuelve
+
+CÓMO RECARGAR UNA INTEGRACIÓN DESDE MÍ:
+call_service con domain:'homeassistant' service:'reload_config_entry' y el entry_id de la integración
+(puedes encontrarlo en los atributos de las entidades de esa integración)
+
+NUNCA digas solo "hay X dispositivos unavailable". SIEMPRE agrupa, diagnostica y propón solución concreta.
+
 ═══ LOGS Y DIAGNÓSTICO ═══
 Tienes acceso a TODOS los logs del sistema:
 - get_system_logs(core) → logs de Home Assistant core
@@ -2942,6 +2981,33 @@ async function proactiveThinkingLoop() {
     const automations = states.filter(e => e.entity_id.startsWith('automation.'));
     const automationsOff = automations.filter(e => e.state === 'off');
 
+    // Agrupar unavailable por integración (para diagnóstico inteligente)
+    const unavailableGroups = {};
+    for (const e of unavailable) {
+      let group = 'otros';
+      if (e.entity_id.includes('shuffle') || e.entity_id.includes('repeat') || e.entity_id.startsWith('media_player.echo')) group = 'alexa';
+      else if (e.entity_id.startsWith('sensor.omv_') || e.entity_id.startsWith('binary_sensor.omv_')) group = 'omv_nas';
+      else if (e.entity_id.includes('esp_') || e.entity_id.includes('esphome')) group = 'esphome';
+      else if (e.entity_id.includes('pvpc') || e.entity_id.includes('esios') || e.entity_id.includes('energy_cost')) group = 'energia';
+      else if (e.entity_id.includes('archer') || e.entity_id.includes('router')) group = 'router';
+      else if (e.entity_id.includes('giulietta') || e.entity_id.includes('_car_')) group = 'coche';
+      else if (e.entity_id.startsWith('light.') || e.entity_id.startsWith('sensor.') && e.attributes?.via_device) group = 'zigbee';
+      if (!unavailableGroups[group]) unavailableGroups[group] = [];
+      unavailableGroups[group].push(e.attributes?.friendly_name || e.entity_id);
+    }
+
+    // Detectar patrón de caída masiva (mismo timestamp ±2min)
+    let massCrashInfo = '';
+    if (unavailable.length > 5) {
+      const timestamps = unavailable.map(e => new Date(e.last_changed).getTime());
+      const minT = Math.min(...timestamps);
+      const maxT = Math.max(...timestamps);
+      if (maxT - minT < 3 * 60_000) {
+        const crashTime = new Date(minT).toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'});
+        massCrashInfo = `ALERTA: ${unavailable.length} dispositivos cayeron todos a las ${crashTime} (en menos de 3 min). Esto indica reinicio de HA o caída de red a esa hora.`;
+      }
+    }
+
     // Hora y contexto temporal
     const now = new Date();
     const hora = now.getHours();
@@ -2994,7 +3060,8 @@ async function proactiveThinkingLoop() {
 ESTADO ACTUAL DEL SISTEMA:
 - Luces encendidas: ${lightsOn.length} (${lightsOn.slice(0, 5).map(e => e.attributes?.friendly_name || e.entity_id).join(', ')})
 - Switches activos: ${switchesOn.length}
-- Dispositivos no disponibles: ${unavailable.length}${unavailable.length > 0 ? ' (' + unavailable.slice(0, 5).map(e => e.attributes?.friendly_name || e.entity_id).join(', ') + ')' : ''}
+- Dispositivos no disponibles: ${unavailable.length}${unavailable.length > 0 ? '\n  Por integración: ' + Object.entries(unavailableGroups).map(([g,items]) => `${g}(${items.length})`).join(', ') : ''}
+${massCrashInfo ? `- ${massCrashInfo}` : ''}
 - Clima: ${climates.map(c => (c.attributes?.friendly_name || c.entity_id) + '=' + c.state + ' ' + (c.attributes?.current_temperature || '') + '°C').join(', ') || 'sin climatización'}
 - Automatizaciones desactivadas: ${automationsOff.length}${automationsOff.length > 0 ? ' (' + automationsOff.slice(0, 3).map(e => e.attributes?.friendly_name || e.entity_id).join(', ') + ')' : ''}
 - Total entidades: ${states.length}

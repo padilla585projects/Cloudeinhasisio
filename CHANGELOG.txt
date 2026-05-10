@@ -3,6 +3,19 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.6.1 (2026-05-10)
+────────────────────────────────────────────────────────────────────────────────
+
+MEJORADO — Diagnóstico inteligente de desconexiones:
+- Nueva sección en el system prompt: Jarvis ahora sabe agrupar dispositivos unavailable
+  por integración (Alexa, ESPHome, OMV, Zigbee, PVPC, Router...) y dar solución concreta
+- Detección de caída masiva: si >5 dispositivos caen en <3 min, identifica que fue un
+  reinicio de HA o caída de red y lo indica en el pensamiento proactivo
+- El loop proactivo ahora agrupa unavailable por integración antes de analizar
+- Jarvis ya no dirá "hay X dispositivos caídos" — dirá exactamente qué integración
+  falló, por qué y cómo arreglarlo paso a paso
+
+────────────────────────────────────────────────────────────────────────────────
 v3.6.0 (2026-05-10)
 ────────────────────────────────────────────────────────────────────────────────
 
