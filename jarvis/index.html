@@ -440,6 +440,7 @@
 
 <footer>
   <button class="clear-btn" onclick="clearChat()" id="clear-btn" style="display:none">🗑 Limpiar chat</button>
+  <button class="clear-btn" onclick="showLogs()" id="logs-btn" style="display:inline-block;border-color:var(--accent);color:var(--accent)">📋 Logs</button>
   <div class="input-row">
     <textarea id="input" placeholder="Escribe un comando o pregunta..." rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
     <button id="send-btn" onclick="sendMessage()">
@@ -611,6 +612,36 @@
       </div>
     `;
     document.getElementById('clear-btn').style.display = 'none';
+  }
+
+  async function showLogs() {
+    try {
+      const res = await fetch('api/logs?lines=100');
+      const data = await res.json();
+      const container = document.getElementById('messages');
+      // Quitar logs anteriores si los hay
+      const prev = document.getElementById('logs-panel');
+      if (prev) { prev.remove(); return; }
+
+      const panel = document.createElement('div');
+      panel.className = 'message ai';
+      panel.id = 'logs-panel';
+      let html = '<div style="background:#0a0e14;border:1px solid var(--border);border-radius:var(--radius);padding:12px;max-height:400px;overflow-y:auto;">';
+      html += '<div style="color:var(--accent);font-weight:500;margin-bottom:8px;">📋 Logs internos de Jarvis <span onclick="document.getElementById(\'logs-panel\').remove()" style="float:right;cursor:pointer;color:var(--text2)">✕</span></div>';
+      html += '<pre style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--text2);white-space:pre-wrap;margin:0;">';
+      for (const log of data.logs) {
+        const time = log.ts.split('T')[1].split('.')[0];
+        const color = log.msg.includes('Error') || log.msg.includes('error') ? 'var(--error)' :
+                      log.msg.includes('boot') || log.msg.includes('OK') ? 'var(--success)' : 'var(--text2)';
+        html += `<span style="color:${color}">[${time}] ${log.msg}</span>\n`;
+      }
+      html += '</pre></div>';
+      panel.innerHTML = html;
+      container.appendChild(panel);
+      container.scrollTop = container.scrollHeight;
+    } catch (e) {
+      alert('No se pudieron cargar logs: ' + e.message);
+    }
   }
 
   async function sendMessage() {

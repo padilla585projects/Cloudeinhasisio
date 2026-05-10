@@ -60,6 +60,17 @@ try {
   }
 } catch {}
 
+// ── Logs internos (ring buffer para /api/logs) ──────────────────────────────
+const internalLogs = [];
+const MAX_LOGS = 200;
+const originalLog = console.log;
+console.log = function(...args) {
+  const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+  internalLogs.push({ ts: new Date().toISOString(), msg });
+  if (internalLogs.length > MAX_LOGS) internalLogs.shift();
+  originalLog.apply(console, args);
+};
+
 console.log(`[init] Memoria: ${userMemory.length} notas | Historial: ${conversationHistory.length} msgs | Learnings: ${learnings.length}`);
 
 // Limitar historial
@@ -2757,7 +2768,22 @@ app.post('/api/chat', async (req, res) => {
 
 // Health
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', model: MODEL, memories: userMemory.length, learnings: learnings.length, history: conversationHistory.length });
+  res.json({
+    status: 'ok',
+    version: '3.3.1',
+    model: MODEL,
+    memories: userMemory.length,
+    learnings: learnings.length,
+    history: conversationHistory.length,
+    ha_connected: !!liveContext,
+    api_key_set: !!ANTHROPIC_API_KEY,
+    uptime: Math.floor(process.uptime()) + 's'
+  });
+});
+
+app.get('/api/logs', (req, res) => {
+  const lines = parseInt(req.query.lines) || 50;
+  res.json({ logs: internalLogs.slice(-lines) });
 });
 
 // Pending thoughts — pensamientos proactivos sin resolver
@@ -2785,35 +2811,52 @@ app.post('/api/pending_thoughts/:id', (req, res) => {
 // ── Arrancar ─────────────────────────────────────────────────────────────────
 
 const PORT = 3000;
-app.listen(PORT, '0.0.0.0', async () => {
-  console.log(`Jarvis AI Agent v3.3.0 corriendo en puerto ${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Jarvis AI Agent v3.3.1 corriendo en puerto ${PORT}`);
   console.log(`Modelo: ${MODEL} | Config: ${HA_CONFIG} | Data: ${DATA_DIR}`);
+  console.log(`API Key: ${ANTHROPIC_API_KEY ? 'configurada (' + ANTHROPIC_API_KEY.slice(0, 10) + '...)' : '⚠️ NO CONFIGURADA'}`);
+  console.log(`HA Token: ${HA_TOKEN ? 'presente' : '⚠️ NO DISPONIBLE'}`);
+  console.log(`[boot] Servidor listo. Iniciando tareas de background...`);
 
-  // Scan inicial si no hay contexto o tiene más de 2 horas
-  const needsScan = !houseContext || (() => {
+  // Todo lo de background va SIN await para no bloquear
+  // Esperar 5 segundos antes de intentar APIs (dar tiempo a HA)
+  setTimeout(async () => {
     try {
-      const data = JSON.parse(fs.readFileSync(HOUSE_CONTEXT_FILE, 'utf8'));
-      return (Date.now() - new Date(data.updatedAt).getTime()) > 7200_000;
-    } catch { return true; }
-  })();
+      console.log('[boot] Intentando conectar con Home Assistant...');
 
-  if (needsScan) {
-    await scanInstallation();
-  }
+      // Scan inicial si no hay contexto o tiene más de 2 horas
+      const needsScan = !houseContext || (() => {
+        try {
+          const data = JSON.parse(fs.readFileSync(HOUSE_CONTEXT_FILE, 'utf8'));
+          return (Date.now() - new Date(data.updatedAt).getTime()) > 7200_000;
+        } catch { return true; }
+      })();
 
-  // Contexto en tiempo real — actualizar al arrancar y cada 60s
-  await updateLiveContext();
+      if (needsScan) {
+        console.log('[boot] Escaneando instalación...');
+        await scanInstallation().catch(e => console.log(`[boot] Scan falló (no crítico): ${e.message}`));
+      }
+
+      // Contexto en tiempo real
+      console.log('[boot] Cargando contexto en tiempo real...');
+      await updateLiveContext().catch(e => console.log(`[boot] LiveContext falló (no crítico): ${e.message}`));
+
+      console.log('[boot] Inicialización completa. Jarvis operativo.');
+    } catch (err) {
+      console.log(`[boot] Error en inicialización (no crítico, el chat funciona): ${err.message}`);
+    }
+  }, 5000);
+
+  // Timers — todos empiezan después de dar tiempo al sistema
   setInterval(updateLiveContext, 60_000);
 
-  // ── Bucle proactivo — Jarvis piensa por sí mismo cada 5 minutos ──
+  // Bucle proactivo — empieza a los 3 minutos
   setInterval(proactiveThinkingLoop, 5 * 60_000);
-  // Primera ejecución a los 2 minutos (dar tiempo a que se estabilice)
-  setTimeout(proactiveThinkingLoop, 2 * 60_000);
+  setTimeout(proactiveThinkingLoop, 3 * 60_000);
 
-  // ── Auto-update — comprueba si hay nueva versión cada 2 minutos ──
+  // Auto-update — empieza a los 2 minutos
   setInterval(checkSelfUpdate, 2 * 60_000);
-  // Primera comprobación a los 30 segundos
-  setTimeout(checkSelfUpdate, 30_000);
+  setTimeout(checkSelfUpdate, 2 * 60_000);
 });
 
 // ── Pensamiento proactivo en background ─────────────────────────────────────
