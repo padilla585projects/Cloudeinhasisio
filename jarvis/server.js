@@ -5470,13 +5470,25 @@ async function gatewaySyncLoop() {
           const msgText = msg.text || JSON.stringify(msg);
           console.log(`[gateway] 💬 Mensaje directo de ${senderName}: ${msgText.slice(0, 100)}`);
 
-          // Notificar por Telegram inmediatamente
-          const telegramMsg = `💬 *${senderName}* (red de agentes):\n\n${msgText}\n\n_Para responder envía al gateway: agent\\_gateway con type=agent\\_message to=${fromAgent}_`;
-          try {
-            await haPost('/services/telegram_bot/send_message', { message: telegramMsg, parse_mode: 'markdown' });
-          } catch {
-            try { await haPost('/services/notify/telegram', { message: telegramMsg }); } catch {}
+          // Notificar por Telegram inmediatamente — múltiples intentos con logging
+          const telegramMsg = `<b>${senderName}</b> (red de agentes):\n\n${msgText}\n\n<i>Responde: agent_gateway action=send_message to=${fromAgent}</i>`;
+          const telegramAttempts = [
+            { domain: 'telegram_bot', service: 'send_message', data: { message: telegramMsg, parse_mode: 'html' } },
+            { domain: 'notify',       service: 'telegram',      data: { message: telegramMsg } },
+            { domain: 'notify',       service: 'notify',         data: { message: `[${senderName}] ${msgText.slice(0, 200)}` } },
+          ];
+          let telegramSent = false;
+          for (const attempt of telegramAttempts) {
+            try {
+              await haPost(`/services/${attempt.domain}/${attempt.service}`, attempt.data);
+              console.log(`[gateway] Telegram enviado via ${attempt.domain}.${attempt.service}`);
+              telegramSent = true;
+              break;
+            } catch (tgErr) {
+              console.warn(`[gateway] Telegram ${attempt.domain}.${attempt.service} falló:`, tgErr.message);
+            }
           }
+          if (!telegramSent) console.error('[gateway] ⚠️ No se pudo notificar por Telegram — revisa la integración telegram_bot en HA');
 
           // ACK inmediato al remitente para que sepa que el mensaje llegó
           try {
