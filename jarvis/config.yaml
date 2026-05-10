@@ -1,6 +1,6 @@
 name: "Jarvis AI Agent"
 description: "Jarvis — Asistente IA para Home Assistant. Control por voz y texto."
-version: "3.13.6"
+version: "3.13.7"
 slug: "jarvis_ai_agent"
 init: false
 arch:
@@ -16,7 +16,7 @@ ports_description:
   3000/tcp: "Interfaz web del agente"
 ingress: true
 ingress_port: 3000
-panel_icon: mdi:robot-happy
+panel_icon: mdi:robot
 panel_title: Jarvis
 homeassistant_api: true
 host_network: true

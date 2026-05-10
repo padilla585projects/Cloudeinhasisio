@@ -133,7 +133,7 @@ const JARVIS_IDENTITY = {
   description: 'Agente IA autónomo — administrador de la red de agentes de Adrián. Controla Home Assistant, gestiona infraestructura y coordina todos los agentes.',
   role: 'admin',
   language: ['es', 'en'],
-  version: '3.13.6',
+  version: '3.13.7',
   platform: 'Home Assistant Add-on',
   norms_version: NETWORK_NORMS.version,
   capabilities: [
