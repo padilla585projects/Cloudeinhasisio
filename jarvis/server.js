@@ -159,7 +159,7 @@ console.log(`[init] Memoria: ${userMemory.length} notas | Historial: ${conversat
 
 // Limitar historial
 function saveHistory() {
-  if (conversationHistory.length > 60) conversationHistory = conversationHistory.slice(-60);
+  if (conversationHistory.length > 30) conversationHistory = conversationHistory.slice(-30);
   saveJSON(HISTORY_FILE, conversationHistory);
 }
 
@@ -3248,26 +3248,7 @@ Eres EL MAYOR ESPECIALISTA en:
 - Proxmox: virtualización, VMs, contenedores, backups, networking
 - Linux: administración de sistemas, Docker, networking, SSH
 
-AUTOMATIZACIÓN Y CONTROL INDUSTRIAL:
-- PLCs: Siemens (S7-1200/1500, TIA Portal, STEP 7), Allen-Bradley (Studio 5000), Schneider (M340, Unity Pro), Omron, Beckhoff (TwinCAT), Wago, Phoenix Contact
-- Protocolos industriales: Modbus TCP/RTU, OPC-UA, PROFINET, PROFIBUS, EtherNet/IP, EtherCAT, BACnet, MQTT Sparkplug B, CANopen, IO-Link, HART
-- SCADA/HMI: Ignition, WinCC, FactoryTalk View, Wonderware/AVEVA, Node-RED industrial, Grafana industrial
-- Sensores industriales: RTD (PT100/PT1000), termopares (J/K/T/N), presión (4-20mA, HART), caudal (electromagnético, Coriolis, ultrasónico, vórtex), nivel (radar, ultrasónico, presión diferencial), vibración, proximidad (inductivo, capacitivo, fotoeléctrico)
-- Actuadores: variadores de frecuencia (VFD), servomotores, válvulas proporcionales, contactores, relés de seguridad, cilindros neumáticos/hidráulicos
-- Redes industriales: topologías en anillo/estrella, switches gestionados industriales, VLANs OT, firewalls industriales, DMZ IT/OT
-- Normas: IEC 61131-3 (lenguajes PLC: ST, LD, FBD, IL, SFC), ISA-95 (niveles 0-4), IEC 62443 (ciberseguridad OT), ISA-88 (batch), NAMUR
-- Integración IT/OT: pasarelas Modbus→MQTT, OPC-UA→HA, gateway industrial→Home Assistant, Siemens→Node-RED→HA
-- Instrumentación: lazos de control PID, cascada, feedforward, ratio, split-range
-- Seguridad funcional: SIL (IEC 61508/61511), PLCs de seguridad, relés de seguridad, parada de emergencia
-- Industria 4.0: edge computing, digital twins, mantenimiento predictivo, ML en planta, IIoT
-
-APLICACIÓN EN CASA INTELIGENTE:
-- Los protocolos industriales (Modbus, OPC-UA) se integran en HA para control de equipos pesados
-- Sensores industriales (4-20mA, PT100) son más precisos que los domésticos → ideales para piscinas, calderas, solar
-- PLCs baratos (ESP32 con OpenPLC, Wago) pueden controlar sistemas domésticos complejos (riego, HVAC, piscina)
-- La filosofía SCADA (monitorizar, alarmar, actuar) mejora la supervisión del hogar
-- Lazos PID: perfecto para control de temperatura de suelo radiante, piscina, invernadero
-- Modbus RTU: muchos inversores solares, contadores de energía y VFDs hablan Modbus → intégralos en HA
+- Automatización industrial: PLCs (Siemens S7, Allen-Bradley, Schneider), Modbus TCP/RTU, OPC-UA, SCADA/HMI, sensores 4-20mA, VFDs — expertise completa, usa web_search para detalles específicos
 
 SI NO SABES ALGO → lo buscas con ha_knowledge o web_search. NUNCA inventes.
 SI FALTA UNA HERRAMIENTA → la buscas con search_hacs_resources y la instalas con install_hacs_resource.
@@ -3415,39 +3396,8 @@ FILOSOFÍA DE EQUIPO:
 ═══ DASHBOARDS Y FRONTEND ═══
 Puedes VER y MODIFICAR dashboards de Lovelace. Conoces estas cards:
 
-CARDS NATIVAS DE HA:
-- entities, glance, button, light, thermostat, media-control, weather-forecast
-- gauge, history-graph, logbook, map, picture-elements, picture-entity
-- markdown, todo-list, energy, area, tile (nueva, recomendada)
-- grid, horizontal-stack, vertical-stack (layouts)
-- conditional, entity-filter (dinámicas)
-
-CARDS POPULARES (HACS/custom):
-- mushroom (mushroom-entity-card, mushroom-light-card, mushroom-climate-card, mushroom-chips-card) → modernas, minimalistas
-- mini-graph-card → gráficas compactas de sensores
-- button-card → botones ultra-personalizables con templates
-- card-mod → CSS custom para cualquier card
-- layout-card → layouts avanzados (grid, masonry, horizontal)
-- swipe-card → carrusel de cards
-- auto-entities → genera listas automáticas según filtros
-- apexcharts-card → gráficas avanzadas
-- browser-mod → popups, sidebar custom, service browser
-- decluttering-card → templates reutilizables
-- stack-in-card → agrupar sin bordes
-- tabbed-card → pestañas dentro de una card
-- weather-card → clima animado
-- vacuum-card → control de robots aspirador
-- frigate-card → cámaras con detección objetos
-
-BUENAS PRÁCTICAS DE DASHBOARD:
-- Usar tile card (nativa) para dispositivos simples → rápida y nativa
-- Mushroom para estética moderna y minimalista
-- Una vista por zona/habitación (salón, dormitorio, cocina)
-- Vista "Estado" como homepage con resumen general
-- Usar chips (mushroom-chips) para indicadores rápidos (presencia, clima, alertas)
-- Colores semánticos: verde=ok, amarillo=precaución, rojo=alerta
-- Responsive: sections + grid para que funcione en móvil y desktop
-- Imágenes: usar picture-elements con plano de la casa para control visual
+Conoces todas las cards nativas (tile, entities, button, glance, gauge, history-graph, map, picture-elements, conditional, grid, horizontal-stack, vertical-stack...) y las HACS populares (mushroom, mini-graph-card, button-card, card-mod, auto-entities, apexcharts-card, browser-mod, layout-card, swipe-card...).
+Usa get_installed_frontend para ver qué cards tiene Adrián instaladas. Usa tile para lo simple, mushroom para estética moderna.
 
 CUANDO EL USUARIO PIDE CAMBIOS EN EL DASHBOARD:
 1. Primero consulta get_dashboard_config para ver qué tiene
@@ -3724,12 +3674,26 @@ IMPORTANTE: Cuando añadas conocimiento permanente o tools nuevas, infórmale a 
   return prompt;
 }
 
+// Divide el prompt en parte estática (cacheable) y dinámica (fresca).
+// La estática es todo lo anterior a CONTEXTO ACTUAL — no cambia entre requests.
+function buildSystemPromptArray() {
+  const full = buildSystemPrompt();
+  const splitMarker = '\n═══ CONTEXTO ACTUAL ═══\n';
+  const splitAt = full.indexOf(splitMarker);
+  if (splitAt === -1) return [{ type: 'text', text: full }];
+  return [
+    { type: 'text', text: full.slice(0, splitAt), cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: full.slice(splitAt) }
+  ];
+}
+
 // ── Contexto en tiempo real (se inyecta en cada request) ─────────────────────
 
 let liveContext = '';
 
 // ── Contador de uso de API (tokens estimados) ───────────────────────────────
-let apiUsage = { calls: 0, inputTokens: 0, outputTokens: 0, lastReset: new Date().toISOString() };
+let apiUsage = { calls: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, lastReset: new Date().toISOString() };
+let saverMode = false; // Modo ahorro: usa Haiku, menos iteraciones, menos tokens
 
 async function updateLiveContext() {
   try {
@@ -3939,7 +3903,7 @@ app.post('/api/chat', async (req, res) => {
     let currentMessages = [...conversationHistory];
     let finalText = '';
     let iterations = 0;
-    const MAX_ITERATIONS = 40; // Suficiente para tareas complejas multi-paso
+    const MAX_ITERATIONS = saverMode ? 10 : 20;
     let consecutiveTextOnly = 0; // Detectar si lleva varias respuestas sin tools (realmente terminó)
 
     while (iterations < MAX_ITERATIONS) {
@@ -3949,12 +3913,13 @@ app.post('/api/chat', async (req, res) => {
         headers: {
           'Content-Type': 'application/json',
           'x-api-key': ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01'
+          'anthropic-version': '2023-06-01',
+          'anthropic-beta': 'prompt-caching-2024-07-31'
         },
         body: JSON.stringify({
-          model: MODEL,
-          max_tokens: 8192,
-          system: buildSystemPrompt(),
+          model: saverMode ? BG_MODEL : MODEL,
+          max_tokens: saverMode ? 4096 : 8192,
+          system: buildSystemPromptArray(),
           tools,
           messages: currentMessages
         })
@@ -3977,6 +3942,8 @@ app.post('/api/chat', async (req, res) => {
         apiUsage.calls++;
         apiUsage.inputTokens += data.usage.input_tokens || 0;
         apiUsage.outputTokens += data.usage.output_tokens || 0;
+        apiUsage.cacheReadTokens += data.usage.cache_read_input_tokens || 0;
+        apiUsage.cacheCreationTokens += data.usage.cache_creation_input_tokens || 0;
       }
       console.log(`[claude] iter=${iterations} stop=${data.stop_reason} blocks=${data.content.map(b => b.type).join(',')} tokens=${data.usage ? data.usage.input_tokens + '+' + data.usage.output_tokens : '?'}`);
 
@@ -4033,7 +4000,10 @@ app.post('/api/chat', async (req, res) => {
 
       const toolResults = toolUseBlocks.map((block, i) => {
         sendEvent({ type: 'tool_end', tool: block.name, result: results[i] });
-        return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(results[i]) };
+        const raw = JSON.stringify(results[i]);
+        const limit = saverMode ? 2000 : 4000;
+        const content = raw.length > limit ? raw.slice(0, limit) + '\n...[truncado para ahorrar tokens]' : raw;
+        return { type: 'tool_result', tool_use_id: block.id, content };
       });
 
       currentMessages.push({ role: 'assistant', content: data.content });
@@ -4065,20 +4035,61 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
+function calcCost(usage) {
+  // Sonnet 4.6: $3/MTok input, $15/MTok output, $3.75/MTok cache write, $0.30/MTok cache read
+  // Haiku 4.5:  $0.80/MTok input, $4/MTok output, $1/MTok cache write, $0.08/MTok cache read
+  const sonnetIn = 3 / 1e6, sonnetOut = 15 / 1e6;
+  const sonnetCacheW = 3.75 / 1e6, sonnetCacheR = 0.30 / 1e6;
+  const cost =
+    usage.inputTokens * sonnetIn +
+    usage.outputTokens * sonnetOut +
+    (usage.cacheCreationTokens || 0) * sonnetCacheW +
+    (usage.cacheReadTokens || 0) * sonnetCacheR;
+  return Math.round(cost * 10000) / 10000; // 4 decimales
+}
+
 // Health
 app.get('/api/health', (req, res) => {
+  const cost = calcCost(apiUsage);
   res.json({
     status: 'ok',
-    version: '3.11.3',
-    model: MODEL,
+    version: '3.12.0',
+    model: saverMode ? BG_MODEL : MODEL,
+    saver_mode: saverMode,
     memories: userMemory.length,
     learnings: learnings.length,
     history: conversationHistory.length,
     ha_connected: !!liveContext,
     api_key_set: !!ANTHROPIC_API_KEY,
     uptime: Math.floor(process.uptime()) + 's',
-    api_usage: apiUsage
+    api_usage: { ...apiUsage, cost_usd: cost }
   });
+});
+
+// Endpoint para HA REST sensor — coste de sesión actual
+app.get('/api/cost', (req, res) => {
+  const cost = calcCost(apiUsage);
+  res.json({
+    state: cost.toFixed(4),
+    unit_of_measurement: 'USD',
+    attributes: {
+      calls: apiUsage.calls,
+      input_tokens: apiUsage.inputTokens,
+      output_tokens: apiUsage.outputTokens,
+      cache_read_tokens: apiUsage.cacheReadTokens,
+      cache_creation_tokens: apiUsage.cacheCreationTokens,
+      saver_mode: saverMode,
+      model: saverMode ? BG_MODEL : MODEL,
+      since: apiUsage.lastReset
+    }
+  });
+});
+
+// Activar / desactivar modo ahorro
+app.post('/api/saver', (req, res) => {
+  saverMode = req.body.enabled !== undefined ? !!req.body.enabled : !saverMode;
+  console.log(`[saver] Modo ahorro ${saverMode ? 'ACTIVADO (Haiku, 10 iter, 2k tokens/tool)' : 'desactivado (Sonnet, 20 iter, 4k tokens/tool)'}`);
+  res.json({ saver_mode: saverMode, model: saverMode ? BG_MODEL : MODEL });
 });
 
 app.get('/api/logs', (req, res) => {

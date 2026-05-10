@@ -408,6 +408,11 @@
     <span>Red</span>
     <span id="network-badge" style="display:none;background:var(--error);color:#fff;border-radius:50%;width:14px;height:14px;font-size:9px;display:none;align-items:center;justify-content:center;position:absolute;top:-4px;right:-4px;"></span>
   </button>
+  <button id="saver-btn" onclick="toggleSaverMode()" title="Modo ahorro: usa Haiku en vez de Sonnet — mucho más barato" style="background:transparent;border:1px solid var(--border);border-radius:10px;padding:6px 10px;color:var(--text2);cursor:pointer;font-size:11px;font-family:'DM Mono',monospace;display:flex;align-items:center;gap:5px;transition:all 0.2s;flex-shrink:0;" onmouseover="this.style.borderColor='#f59e0b';this.style.color='#f59e0b'" onmouseout="if(!saverModeActive){this.style.borderColor='var(--border)';this.style.color='var(--text2)'}">
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+    <span id="saver-label">Ahorro</span>
+  </button>
+  <span id="cost-badge" title="Coste estimado de la sesión actual (se resetea al reiniciar Jarvis)" style="font-size:10px;color:var(--text2);font-family:'DM Mono',monospace;flex-shrink:0;opacity:0.7;cursor:default;">$0.0000</span>
   <div class="status-dot" id="status-dot" title="Conectado"></div>
 </header>
 
@@ -1604,6 +1609,53 @@
     } catch (e) { console.log('Error resolviendo pensamiento:', e); }
   };
 
+  // ── Modo ahorro y badge de coste ─────────────────────────────────────────────
+  let saverModeActive = false;
+
+  async function toggleSaverMode() {
+    try {
+      const res = await fetch('api/saver', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+      const d = await res.json();
+      saverModeActive = d.saver_mode;
+      updateSaverBtn();
+    } catch(e) { console.warn('saver toggle error', e); }
+  }
+
+  function updateSaverBtn() {
+    const btn = document.getElementById('saver-btn');
+    const label = document.getElementById('saver-label');
+    if (!btn) return;
+    if (saverModeActive) {
+      btn.style.borderColor = '#f59e0b';
+      btn.style.color = '#f59e0b';
+      label.textContent = '⚡ Ahorro';
+    } else {
+      btn.style.borderColor = 'var(--border)';
+      btn.style.color = 'var(--text2)';
+      label.textContent = 'Ahorro';
+    }
+  }
+
+  async function updateCostBadge() {
+    try {
+      const res = await fetch('api/cost');
+      const d = await res.json();
+      const badge = document.getElementById('cost-badge');
+      if (badge) {
+        badge.textContent = '$' + parseFloat(d.state).toFixed(4);
+        badge.title = `Coste sesión: $${d.state} USD\nLlamadas: ${d.attributes.calls}\nTokens entrada: ${d.attributes.input_tokens.toLocaleString()}\nTokens salida: ${d.attributes.output_tokens.toLocaleString()}\nCache leído: ${(d.attributes.cache_read_tokens||0).toLocaleString()}\nModelo: ${d.attributes.model}\nDesde: ${new Date(d.attributes.since).toLocaleTimeString('es-ES')}`;
+      }
+      // Sync estado del modo ahorro con el servidor
+      if (d.attributes.saver_mode !== saverModeActive) {
+        saverModeActive = d.attributes.saver_mode;
+        updateSaverBtn();
+      }
+    } catch(e) {}
+  }
+
+  // Actualizar badge de coste cada 30 segundos
+  setInterval(updateCostBadge, 30000);
+
   // Inicialización
   async function init() {
     await loadHistory();
@@ -1615,6 +1667,7 @@
       await loadPendingThoughts();
     }
     document.getElementById('input').focus();
+    updateCostBadge(); // Cargar coste inicial
   }
   init();
 

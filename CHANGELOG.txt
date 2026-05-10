@@ -3,6 +3,33 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.12.0 (2026-05-10) — OPTIMIZACIÓN DE TOKENS + MODO AHORRO + COSTE EN UI
+────────────────────────────────────────────────────────────────────────────────
+
+AHORRO DE TOKENS (~75% menos coste por mensaje):
+  - Prompt caching (anthropic-beta): la parte estática del system prompt (~5500 tokens)
+    se cachea. En conversaciones normales cuesta solo un 10% en lecturas de caché.
+  - System prompt dividido en estático (cacheado) + dinámico (fresco cada request).
+  - Bloque PLC/industrial comprimido de 20 líneas a 1 línea (-250 tokens).
+  - Lista de cards Lovelace comprimida de 30 líneas a 2 líneas (-300 tokens).
+  - Tool results truncados a 4000 chars en modo normal, 2000 en modo ahorro.
+  - MAX_ITERATIONS: 40 → 20 (modo normal) / 10 (modo ahorro).
+  - Historial de conversación: 60 → 30 mensajes.
+
+MODO AHORRO (botón ⚡ Ahorro en el header):
+  - Activa/desactiva via POST /api/saver (toggle).
+  - En modo ahorro: modelo Haiku 4.5 (~80% más barato que Sonnet), 10 iteraciones,
+    tool results a 2000 chars.
+  - Ideal para tareas simples (encender luces, preguntar estado, etc.).
+
+COSTE VISIBLE EN HASSIO:
+  - Badge $0.0000 en el header — coste estimado de la sesión actual en USD.
+  - Se actualiza cada 30 segundos. Hover para ver desglose completo.
+  - GET /api/cost → endpoint para sensor REST de HA con tokens + modelo + coste.
+  - GET /api/health incluye ahora cost_usd, cache_read_tokens, cache_creation_tokens.
+  - Rastreo de tokens de caché en apiUsage (cacheReadTokens, cacheCreationTokens).
+
+────────────────────────────────────────────────────────────────────────────────
 v3.11.3 (2026-05-10) — FIX: REGISTRO EN GATEWAY VÍA JOIN_REQUEST + POLLING
 ────────────────────────────────────────────────────────────────────────────────
 
