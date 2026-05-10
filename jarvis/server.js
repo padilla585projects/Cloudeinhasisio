@@ -4109,11 +4109,51 @@ app.post('/api/chat', async (req, res) => {
     const userMsg = lastMsg?.content || '';
     saveJSON(PENDING_TASK_FILE, { status: 'running', message: userMsg, startedAt: new Date().toISOString() });
 
+    // Auto-clasificar complejidad para elegir modelo óptimo
+    function classifyQuery(msg) {
+      if (saverMode) return 'simple'; // Modo ahorro forzado
+      const text = (typeof msg === 'string' ? msg : JSON.stringify(msg)).toLowerCase();
+
+      // Señales de tarea compleja → Sonnet obligatorio
+      const complexPatterns = [
+        /crea|automatiz|programa|configura|instala|desarroll|implementa/,
+        /modifica|cambia|arregla|corrige|actualiza|reescribe/,
+        /por qu[eé]|qu[eé] falla|diagn[oó]stica|analiza|investiga|revisa los logs/,
+        /a[ñn]ade una tool|nuevo endpoint|nueva capacidad|evoluciona/,
+        /github|server\.js|index\.html|dockerfile/,
+        /automatizaci[oó]n|script|dashboard|lovelace/,
+        /compara|resume|explica detalladamente|c[oó]mo funciona/,
+      ];
+      if (complexPatterns.some(p => p.test(text))) return 'complex';
+
+      // Mensaje muy largo → probablemente complejo
+      if (text.length > 200) return 'complex';
+
+      // Señales claras de tarea simple → Haiku
+      const simplePatterns = [
+        /^(enciende|apaga|sube|baja|activa|desactiva|pon|quita|abre|cierra|bloquea)/,
+        /^(qu[eé] temperatura|cu[aá]nto|est[aá] encendido|est[aá] apagado|estado de|hora|tiempo)/,
+        /^(hola|buenos|buenas|gracias|ok|vale|perfecto|s[ií]|no)/,
+        /luz|luces|persiana|calefacci[oó]n|aire|alarma|puerta|ventana/,
+        /temperatura|humedad|presencia|bater[ií]a|consumo/,
+      ];
+      // Solo simple si hay señal positiva Y el mensaje es corto
+      if (text.length < 120 && simplePatterns.some(p => p.test(text))) return 'simple';
+
+      return 'complex'; // Por defecto Sonnet si no está claro
+    }
+
+    const queryType = classifyQuery(lastMsg?.content || '');
+    const activeModel = queryType === 'simple' ? BG_MODEL : MODEL;
+    const activeMaxTokens = queryType === 'simple' ? 4096 : 8192;
+    const activeMaxIter = queryType === 'simple' ? 8 : 20;
+    if (queryType === 'simple') console.log(`[auto] Query simple → Haiku`);
+
     // Usar historial completo del servidor (no depender del frontend)
     let currentMessages = [...conversationHistory];
     let finalText = '';
     let iterations = 0;
-    const MAX_ITERATIONS = saverMode ? 8 : 20;
+    const MAX_ITERATIONS = saverMode ? 8 : activeMaxIter;
     let consecutiveTextOnly = 0; // Detectar si lleva varias respuestas sin tools (realmente terminó)
 
     while (iterations < MAX_ITERATIONS) {
@@ -4127,8 +4167,8 @@ app.post('/api/chat', async (req, res) => {
           'anthropic-beta': 'prompt-caching-2024-07-31'
         },
         body: JSON.stringify({
-          model: saverMode ? BG_MODEL : MODEL,
-          max_tokens: saverMode ? 4096 : 8192,
+          model: activeModel,
+          max_tokens: activeMaxTokens,
           system: buildSystemPromptArray(),
           tools,
           messages: currentMessages
@@ -4211,7 +4251,7 @@ app.post('/api/chat', async (req, res) => {
       const toolResults = toolUseBlocks.map((block, i) => {
         sendEvent({ type: 'tool_end', tool: block.name, result: results[i] });
         const raw = JSON.stringify(results[i]);
-        const maxLen = saverMode ? 2000 : 8000;
+        const maxLen = (saverMode || activeModel === BG_MODEL) ? 2000 : 8000;
         const content = raw.length > maxLen ? raw.slice(0, maxLen) + '\n...[truncado para ahorrar tokens]' : raw;
         return { type: 'tool_result', tool_use_id: block.id, content };
       });
