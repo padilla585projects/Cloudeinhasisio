@@ -3,6 +3,29 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v2.6.0 (2026-05-10) — LOGS DEL SISTEMA + TELEGRAM INTEGRADO
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — LOGS COMPLETOS DEL SISTEMA:
+- get_system_logs: Lee logs de core, supervisor, host y cualquier add-on
+- get_error_log: Lee home-assistant.log directamente (errores de integraciones)
+- Filtrado por texto: buscar "ERROR", "WARNING", nombre de integración
+- Resumen automático de errores/warnings encontrados
+- Jarvis revisa logs AUTOMÁTICAMENTE cuando algo falla (no le dice al usuario "revisa los logs")
+
+NUEVO — TELEGRAM BIDIRECCIONAL:
+- telegram_send: Envía mensajes por Telegram (usa el bot ya configurado en HA)
+- telegram_send_image: Envía imágenes/snapshots de cámaras por Telegram
+- telegram_get_updates: Lee últimos mensajes recibidos por el bot
+- Auto-detección del servicio (telegram_bot.send_message o notify.telegram)
+- Instrucciones en prompt para alertas automáticas por Telegram
+
+MEJORA — SYSTEM PROMPT:
+- Sección de logs y diagnóstico: cuándo y cómo revisar logs
+- Sección de Telegram: cuándo notificar, cómo usar cada tool
+- Jarvis notifica por Telegram automáticamente si hay problemas graves
+
+────────────────────────────────────────────────────────────────────────────────
 v2.5.0 (2026-05-10) — EXPERTO HA + PROXMOX + AUTO-INSTALACIÓN
 ────────────────────────────────────────────────────────────────────────────────
 

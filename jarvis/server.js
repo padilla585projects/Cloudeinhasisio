@@ -551,6 +551,72 @@ const tools = [
       },
       required: ['action']
     }
+  },
+
+  // ─── Logs del sistema ───
+  {
+    name: 'get_system_logs',
+    description: 'Lee los logs del sistema de HA (core, supervisor, add-ons, host). CLAVE para diagnosticar problemas, ver errores, entender qué pasa en el sistema.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        source: { type: 'string', enum: ['core', 'supervisor', 'host', 'addon'], description: 'Fuente de logs: core (HA), supervisor, host (OS), addon (un add-on específico)' },
+        addon_slug: { type: 'string', description: 'Slug del add-on si source=addon (ej: "jarvis_ai_agent")' },
+        lines: { type: 'number', description: 'Número de líneas a obtener (default: 100, max: 500)' },
+        filter: { type: 'string', description: 'Filtrar logs que contengan este texto (ej: "ERROR", "WARNING", un nombre de integración)' }
+      },
+      required: ['source']
+    }
+  },
+  {
+    name: 'get_error_log',
+    description: 'Lee el archivo home-assistant.log directamente. Contiene errores, warnings y debug de HA core. Útil para ver problemas de integraciones.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        lines: { type: 'number', description: 'Últimas N líneas (default: 100)' },
+        filter: { type: 'string', description: 'Filtrar por texto (ej: "ERROR", "zigbee", nombre de integración)' }
+      }
+    }
+  },
+
+  // ─── Telegram ───
+  {
+    name: 'telegram_send',
+    description: 'Envía un mensaje por Telegram al usuario. Usa el servicio notify de HA con el bot ya configurado.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', description: 'Texto del mensaje a enviar' },
+        title: { type: 'string', description: 'Título del mensaje (opcional)' },
+        target: { type: 'string', description: 'Chat ID específico (opcional, usa el default si no se pone)' },
+        parse_mode: { type: 'string', enum: ['html', 'markdown', 'markdownv2'], description: 'Formato del mensaje (default: html)' }
+      },
+      required: ['message']
+    }
+  },
+  {
+    name: 'telegram_send_image',
+    description: 'Envía una imagen por Telegram (snapshot de cámara, gráfica, etc.)',
+    input_schema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'URL de la imagen o ruta local (/config/www/...)' },
+        caption: { type: 'string', description: 'Texto debajo de la imagen' },
+        entity_id: { type: 'string', description: 'Entity ID de cámara para snapshot (ej: camera.salon)' }
+      },
+      required: ['caption']
+    }
+  },
+  {
+    name: 'telegram_get_updates',
+    description: 'Lee los últimos mensajes recibidos por el bot de Telegram. Útil para saber si el usuario ha enviado algo por Telegram.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: 'Número de mensajes a obtener (default: 10)' }
+      }
+    }
   }
 ];
 
@@ -1256,6 +1322,221 @@ async function executeTool(name, input) {
         }
       }
 
+      // ─── Logs del sistema ───
+      case 'get_system_logs': {
+        const maxLines = Math.min(input.lines || 100, 500);
+        let logText = '';
+
+        try {
+          switch (input.source) {
+            case 'core': {
+              const res = await fetch(`http://supervisor/core/logs`, {
+                headers: { Authorization: `Bearer ${HA_TOKEN}` }
+              });
+              logText = await res.text();
+              break;
+            }
+            case 'supervisor': {
+              const res = await fetch(`http://supervisor/supervisor/logs`, {
+                headers: { Authorization: `Bearer ${HA_TOKEN}` }
+              });
+              logText = await res.text();
+              break;
+            }
+            case 'host': {
+              const res = await fetch(`http://supervisor/host/logs`, {
+                headers: { Authorization: `Bearer ${HA_TOKEN}` }
+              });
+              logText = await res.text();
+              break;
+            }
+            case 'addon': {
+              const slug = input.addon_slug || 'jarvis_ai_agent';
+              const res = await fetch(`http://supervisor/addons/${slug}/logs`, {
+                headers: { Authorization: `Bearer ${HA_TOKEN}` }
+              });
+              logText = await res.text();
+              break;
+            }
+            default:
+              return { error: `Fuente no válida: ${input.source}` };
+          }
+        } catch (err) {
+          return { error: `Error obteniendo logs: ${err.message}` };
+        }
+
+        // Procesar: últimas N líneas + filtro opcional
+        let lines = logText.split('\n');
+        if (input.filter) {
+          const f = input.filter.toLowerCase();
+          lines = lines.filter(l => l.toLowerCase().includes(f));
+        }
+        lines = lines.slice(-maxLines);
+
+        return {
+          source: input.source,
+          lines_count: lines.length,
+          filter: input.filter || null,
+          logs: lines.join('\n')
+        };
+      }
+
+      case 'get_error_log': {
+        // Leer home-assistant.log directamente del filesystem
+        const logPath = path.join(HA_CONFIG, 'home-assistant.log');
+        if (!fs.existsSync(logPath)) {
+          // Fallback: intentar via API
+          try {
+            const res = await fetch(`${HA_URL}/api/error_log`, {
+              headers: { Authorization: `Bearer ${HA_TOKEN}` }
+            });
+            if (res.ok) {
+              let text = await res.text();
+              const maxLines = input.lines || 100;
+              let lines = text.split('\n');
+              if (input.filter) {
+                const f = input.filter.toLowerCase();
+                lines = lines.filter(l => l.toLowerCase().includes(f));
+              }
+              lines = lines.slice(-maxLines);
+              return { source: 'api', lines_count: lines.length, logs: lines.join('\n') };
+            }
+          } catch {}
+          return { error: 'No se encuentra home-assistant.log' };
+        }
+
+        const content = fs.readFileSync(logPath, 'utf8');
+        let lines = content.split('\n');
+        if (input.filter) {
+          const f = input.filter.toLowerCase();
+          lines = lines.filter(l => l.toLowerCase().includes(f));
+        }
+        const maxLines = input.lines || 100;
+        lines = lines.slice(-maxLines);
+
+        // Resumen de errores/warnings
+        const errors = lines.filter(l => l.includes('ERROR')).length;
+        const warnings = lines.filter(l => l.includes('WARNING')).length;
+
+        return {
+          source: 'file',
+          lines_count: lines.length,
+          errors_found: errors,
+          warnings_found: warnings,
+          filter: input.filter || null,
+          logs: lines.join('\n')
+        };
+      }
+
+      // ─── Telegram ───
+      case 'telegram_send': {
+        // Usar el servicio notify de HA (ya tiene bot configurado)
+        try {
+          // Primero intentar detectar el servicio de notify de Telegram
+          const services = await haGet('/services');
+          const telegramNotify = services.find(s =>
+            s.domain === 'notify' && (
+              (s.services && Object.keys(s.services).some(k => k.includes('telegram'))) ||
+              s.domain === 'telegram_bot'
+            )
+          );
+
+          // Intentar notify.telegram o telegram_bot.send_message
+          const msgData = {
+            message: input.message,
+            ...(input.title ? { title: input.title } : {}),
+            ...(input.parse_mode ? { data: { parse_mode: input.parse_mode } } : {})
+          };
+
+          // Probar diferentes servicios de Telegram
+          const attempts = [
+            { domain: 'telegram_bot', service: 'send_message', data: { message: input.message, title: input.title || '', parse_mode: input.parse_mode || 'html', ...(input.target ? { target: input.target } : {}) } },
+            { domain: 'notify', service: 'telegram', data: msgData },
+            { domain: 'notify', service: 'notify', data: msgData }
+          ];
+
+          for (const attempt of attempts) {
+            try {
+              await haPost(`/services/${attempt.domain}/${attempt.service}`, attempt.data);
+              console.log(`[telegram] Mensaje enviado via ${attempt.domain}.${attempt.service}`);
+              return { success: true, method: `${attempt.domain}.${attempt.service}`, message: 'Mensaje enviado por Telegram' };
+            } catch (e) {
+              continue;
+            }
+          }
+
+          return { error: 'No se encontró servicio de Telegram. Verifica que telegram_bot o notify.telegram está configurado en HA.' };
+        } catch (err) {
+          return { error: `Telegram: ${err.message}` };
+        }
+      }
+
+      case 'telegram_send_image': {
+        try {
+          const data = {
+            caption: input.caption || '',
+          };
+
+          if (input.entity_id && input.entity_id.startsWith('camera.')) {
+            // Snapshot de cámara
+            data.url = `${HA_URL}/api/camera_proxy/${input.entity_id}`;
+          } else if (input.url) {
+            if (input.url.startsWith('/config/www/')) {
+              data.url = input.url.replace('/config/www/', '/local/');
+            } else {
+              data.url = input.url;
+            }
+          }
+
+          // Intentar enviar foto
+          const attempts = [
+            { domain: 'telegram_bot', service: 'send_photo', data: { url: data.url, caption: data.caption, ...(input.entity_id ? { entity_id: input.entity_id } : {}) } },
+            { domain: 'notify', service: 'telegram', data: { message: data.caption, data: { photo: [{ url: data.url, caption: data.caption }] } } }
+          ];
+
+          for (const attempt of attempts) {
+            try {
+              await haPost(`/services/${attempt.domain}/${attempt.service}`, attempt.data);
+              return { success: true, method: `${attempt.domain}.${attempt.service}` };
+            } catch { continue; }
+          }
+
+          return { error: 'No se pudo enviar imagen. Verifica telegram_bot en HA.' };
+        } catch (err) {
+          return { error: err.message };
+        }
+      }
+
+      case 'telegram_get_updates': {
+        // Leer últimos mensajes/eventos de Telegram via HA states
+        try {
+          const states = await haGet('/states');
+          const telegramEntities = states.filter(e =>
+            e.entity_id.includes('telegram') || e.entity_id.includes('last_message')
+          );
+
+          // También buscar en eventos recientes si hay
+          let lastMessages = [];
+          try {
+            const events = await haGet('/events');
+            const telegramEvents = events.filter(e => e.event_type && e.event_type.includes('telegram'));
+            lastMessages = telegramEvents.slice(0, input.limit || 10);
+          } catch {}
+
+          return {
+            telegram_entities: telegramEntities.map(e => ({
+              entity_id: e.entity_id,
+              state: e.state,
+              attributes: e.attributes
+            })),
+            recent_events: lastMessages,
+            note: 'Para recibir comandos de Telegram, configura una automatización que escuche telegram_command o telegram_text events.'
+          };
+        } catch (err) {
+          return { error: err.message };
+        }
+      }
+
       default:
         return { error: `Tool desconocida: ${name}` };
     }
@@ -1342,8 +1623,28 @@ Tienes acceso TOTAL:
 - Internet: buscar documentación, soluciones, información, wiki HA
 - Memoria: guardar y recordar preferencias, patrones, configuraciones
 - Aprendizaje: registrar errores, éxitos, optimizaciones
+- Logs: leer logs de core, supervisor, host, add-ons, filtrar errores/warnings
+- Telegram: enviar mensajes, imágenes, leer actualizaciones del bot
 - Sistema: escanear instalación, verificar config, info del host
 - Proxmox: ver VMs, estado servidor, snapshots, backups, recursos
+
+═══ LOGS Y DIAGNÓSTICO ═══
+Tienes acceso a TODOS los logs del sistema:
+- get_system_logs(core) → logs de Home Assistant core
+- get_system_logs(supervisor) → logs del supervisor
+- get_system_logs(host) → logs del sistema operativo
+- get_system_logs(addon, slug) → logs de cualquier add-on
+- get_error_log() → home-assistant.log (errores de integraciones)
+ÚSALOS para: diagnosticar problemas, ver errores recientes, entender qué pasa.
+Cuando algo falla → revisa los logs AUTOMÁTICAMENTE. No le digas al usuario "revisa los logs".
+
+═══ TELEGRAM ═══
+El usuario tiene un bot de Telegram configurado en HA. Puedes:
+- Enviar mensajes: telegram_send (avisos, alertas, respuestas)
+- Enviar imágenes: telegram_send_image (snapshots de cámaras, gráficas)
+- Leer mensajes: telegram_get_updates (ver si el usuario escribió algo)
+Usa Telegram para: alertas importantes, notificaciones proactivas, confirmaciones.
+Si algo grave pasa (dispositivo caído, error crítico) → notifica por Telegram automáticamente.
 
 ═══ DASHBOARDS Y FRONTEND ═══
 Puedes VER y MODIFICAR dashboards de Lovelace. Conoces estas cards:
