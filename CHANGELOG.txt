@@ -3,6 +3,26 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.3.0 (2026-05-10) — AUTO-UPDATE
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — AUTO-UPDATE AUTOMÁTICO:
+- Jarvis comprueba cada 2 minutos si hay nueva versión disponible
+- Si detecta update: se actualiza SOLO sin intervención humana
+- Refresca el repositorio del Supervisor antes de comprobar
+- Notifica por Telegram cuando se actualiza ("v3.2 → v3.3, reiniciando...")
+- Fallback con múltiples endpoints del Supervisor (self + slug)
+- Silencioso si no hay updates (no spamea logs)
+
+FLUJO COMPLETO AHORA:
+  1. Tú haces push al repo desde cualquier máquina
+  2. HA detecta la nueva versión (Supervisor refresh cada 2min)
+  3. Jarvis se auto-actualiza
+  4. Te notifica por Telegram que se ha actualizado
+  5. Se reinicia con la nueva versión
+  → TODO AUTOMÁTICO, sin tocar nada en HA
+
+────────────────────────────────────────────────────────────────────────────────
 v3.2.0 (2026-05-10) — BASE DE CONOCIMIENTO + SCRIPTS DE SINCRONIZACIÓN
 ────────────────────────────────────────────────────────────────────────────────
 

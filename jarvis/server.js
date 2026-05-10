@@ -2786,7 +2786,7 @@ app.post('/api/pending_thoughts/:id', (req, res) => {
 
 const PORT = 3000;
 app.listen(PORT, '0.0.0.0', async () => {
-  console.log(`Jarvis AI Agent v3.2.0 corriendo en puerto ${PORT}`);
+  console.log(`Jarvis AI Agent v3.3.0 corriendo en puerto ${PORT}`);
   console.log(`Modelo: ${MODEL} | Config: ${HA_CONFIG} | Data: ${DATA_DIR}`);
 
   // Scan inicial si no hay contexto o tiene más de 2 horas
@@ -2809,6 +2809,11 @@ app.listen(PORT, '0.0.0.0', async () => {
   setInterval(proactiveThinkingLoop, 5 * 60_000);
   // Primera ejecución a los 2 minutos (dar tiempo a que se estabilice)
   setTimeout(proactiveThinkingLoop, 2 * 60_000);
+
+  // ── Auto-update — comprueba si hay nueva versión cada 2 minutos ──
+  setInterval(checkSelfUpdate, 2 * 60_000);
+  // Primera comprobación a los 30 segundos
+  setTimeout(checkSelfUpdate, 30_000);
 });
 
 // ── Pensamiento proactivo en background ─────────────────────────────────────
@@ -2898,5 +2903,80 @@ NO generes pensamientos triviales. Solo cosas que realmente importen.`;
     console.log(`[proactive] Análisis completo. ${toolCalls.length} pensamientos generados.`);
   } catch (err) {
     console.log(`[proactive] Error: ${err.message}`);
+  }
+}
+
+// ── Auto-update — Jarvis se actualiza solo ──────────────────────────────────
+
+async function checkSelfUpdate() {
+  try {
+    // Pedir al Supervisor que refresque la info del repositorio
+    await fetch('http://supervisor/store/repositories', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${HA_TOKEN}`, 'Content-Type': 'application/json' }
+    });
+
+    // Comprobar si hay update disponible para este add-on
+    const res = await fetch('http://supervisor/addons/self/info', {
+      headers: { Authorization: `Bearer ${HA_TOKEN}` }
+    });
+
+    if (!res.ok) {
+      // Fallback: intentar por slug
+      const res2 = await fetch('http://supervisor/addons/local_jarvis_ai_agent/info', {
+        headers: { Authorization: `Bearer ${HA_TOKEN}` }
+      });
+      if (!res2.ok) return;
+      var info = await res2.json();
+    } else {
+      var info = await res.json();
+    }
+
+    const current = info.data?.version;
+    const latest = info.data?.version_latest;
+
+    if (!current || !latest || current === latest) return;
+
+    console.log(`[update] Nueva versión disponible: ${current} → ${latest}`);
+
+    // Actualizar automáticamente
+    const updateRes = await fetch('http://supervisor/addons/self/update', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${HA_TOKEN}`, 'Content-Type': 'application/json' }
+    });
+
+    if (updateRes.ok) {
+      console.log(`[update] Actualización a v${latest} iniciada. El add-on se reiniciará.`);
+
+      // Notificar por Telegram
+      try {
+        await haPost('/services/telegram_bot/send_message', {
+          message: `🔄 *JARVIS — AUTO-UPDATE*\n\nActualización: v${current} → v${latest}\nEl add-on se está reiniciando...`,
+          parse_mode: 'markdown'
+        });
+      } catch {}
+    } else {
+      // Fallback con slug explícito
+      const updateRes2 = await fetch('http://supervisor/addons/local_jarvis_ai_agent/update', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${HA_TOKEN}`, 'Content-Type': 'application/json' }
+      });
+      if (updateRes2.ok) {
+        console.log(`[update] Actualización a v${latest} iniciada (via slug).`);
+        try {
+          await haPost('/services/telegram_bot/send_message', {
+            message: `🔄 *JARVIS — AUTO-UPDATE*\n\nActualización: v${current} → v${latest}\nReiniciando...`,
+            parse_mode: 'markdown'
+          });
+        } catch {}
+      } else {
+        console.log(`[update] Error al actualizar: ${updateRes2.status}`);
+      }
+    }
+  } catch (err) {
+    // Silencioso — no spamear logs si el supervisor no responde bien
+    if (err.message && !err.message.includes('ECONNREFUSED')) {
+      console.log(`[update] ${err.message}`);
+    }
   }
 }
