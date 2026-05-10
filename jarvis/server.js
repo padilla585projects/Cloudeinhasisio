@@ -4069,7 +4069,7 @@ app.post('/api/chat', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '3.11.2',
+    version: '3.11.3',
     model: MODEL,
     memories: userMemory.length,
     learnings: learnings.length,
@@ -4156,7 +4156,7 @@ app.post('/api/pending_thoughts/:id', (req, res) => {
 
 const PORT = 3000;
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Jarvis AI Agent v3.11.2 corriendo en puerto ${PORT}`);
+  console.log(`Jarvis AI Agent v3.11.3 corriendo en puerto ${PORT}`);
   console.log(`Modelo: ${MODEL} | Config: ${HA_CONFIG} | Data: ${DATA_DIR}`);
   console.log(`API Key: ${ANTHROPIC_API_KEY ? 'configurada (' + ANTHROPIC_API_KEY.slice(0, 10) + '...)' : '⚠️ NO CONFIGURADA'}`);
   console.log(`HA Token: ${HA_TOKEN ? 'presente' : '⚠️ NO DISPONIBLE'}`);
@@ -5060,35 +5060,69 @@ async function bootGatewayRegister() {
     await gatewaySendPresentation();
     return;
   }
+
+  // Si hay un join_request pendiente, hacer polling
+  if (gatewayState.joinRequestId) {
+    console.log(`[gateway] Comprobando aprobación de join_request ${gatewayState.joinRequestId}...`);
+    try {
+      const res = await fetch(GATEWAY_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agent_id: GATEWAY_ID, message: 'check_join', context: { request_id: gatewayState.joinRequestId } }),
+        timeout: 10000
+      });
+      const data = await res.json();
+      if (data.secret) {
+        gatewayState.secret = data.secret;
+        gatewayState.joinRequestId = null;
+        gatewayNoSecretLogged = true;
+        saveJSON(GATEWAY_FILE, gatewayState);
+        console.log('[gateway] ✓ Join aprobado — conectado a la red. Enviando presentación...');
+        await gatewaySendPresentation();
+        return;
+      }
+      console.log(`[gateway] Join aún pendiente (${gatewayState.joinRequestId}). Reintentando en 60s...`);
+    } catch (e) {
+      console.log(`[gateway] Error comprobando join: ${e.message}`);
+    }
+    setTimeout(bootGatewayRegister, 60_000);
+    return;
+  }
+
+  // Sin request_id — enviar join_request
   try {
-    console.log('[gateway] Sin secret — registrando en la red de agentes IA...');
+    console.log('[gateway] Sin secret — enviando join_request a la red de agentes IA...');
     const res = await fetch(GATEWAY_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        agent_id: GATEWAY_ID,
-        message: 'bootstrap_register',
-        identity: JARVIS_IDENTITY,
-        norms: NETWORK_NORMS,
-      }),
+      body: JSON.stringify({ agent_id: GATEWAY_ID, message: 'join_request', identity: JARVIS_IDENTITY }),
       timeout: 10000
     });
-    if (!res.ok) {
-      console.log(`[gateway] Registro fallido — HTTP ${res.status}`);
-      return;
-    }
+    if (!res.ok) { console.log(`[gateway] join_request fallido — HTTP ${res.status}`); setTimeout(bootGatewayRegister, 60_000); return; }
     const data = await res.json();
     if (data.secret) {
       gatewayState.secret = data.secret;
       gatewayNoSecretLogged = true;
       saveJSON(GATEWAY_FILE, gatewayState);
-      console.log('[gateway] ✓ Registrado. Enviando presentación a la red...');
+      console.log('[gateway] ✓ Registrado (auto-aprobado). Enviando presentación...');
       await gatewaySendPresentation();
+    } else if (data.request_id) {
+      gatewayState.joinRequestId = data.request_id;
+      saveJSON(GATEWAY_FILE, gatewayState);
+      console.log(`[gateway] join_request enviado (request_id: ${data.request_id}). Esperando aprobación del administrador del gateway...`);
+      pendingThoughts.push({ id: Date.now(), type: 'gateway_pending', priority: 'high', status: 'pending',
+        title: 'Jarvis esperando aprobación en la red de agentes',
+        detail: `He enviado una solicitud de registro al gateway de la red de agentes IA (request_id: ${data.request_id}). Necesito que el administrador (Numa) la apruebe para poder sincronizarme con la red. Mientras tanto no puedo comunicarme con otros agentes.`,
+        created: new Date().toISOString() });
+      saveJSON(PENDING_THOUGHTS_FILE, pendingThoughts);
+      setTimeout(bootGatewayRegister, 60_000);
     } else {
-      console.log(`[gateway] Registro sin secret: ${JSON.stringify(data)}`);
+      console.log(`[gateway] Respuesta inesperada: ${JSON.stringify(data)}`);
+      setTimeout(bootGatewayRegister, 120_000);
     }
   } catch (e) {
-    console.log(`[gateway] Error en registro: ${e.message}`);
+    console.log(`[gateway] Error en join_request: ${e.message}`);
+    setTimeout(bootGatewayRegister, 60_000);
   }
 }
 

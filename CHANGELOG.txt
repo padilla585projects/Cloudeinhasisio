@@ -3,6 +3,21 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.11.3 (2026-05-10) — FIX: REGISTRO EN GATEWAY VÍA JOIN_REQUEST + POLLING
+────────────────────────────────────────────────────────────────────────────────
+
+FIX CRÍTICO — bootGatewayRegister(): el mensaje 'bootstrap_register' no existe
+  en el gateway. Jarvis nunca podía obtener su secret y el sync nunca funcionaba.
+  La red de agentes (panel 🌐 Red) siempre aparecía vacía.
+
+NUEVO — Flujo correcto de registro:
+  1. Jarvis envía join_request con su identidad completa al arrancar
+  2. Guarda el request_id en gateway.json (persiste entre reinicios)
+  3. Hace polling cada 60s con check_join hasta ser aprobado por el administrador
+  4. Cuando se aprueba, guarda el secret y comienza el sync loop normalmente
+  5. Crea pensamiento proactivo para informar al usuario que está esperando aprobación
+
+────────────────────────────────────────────────────────────────────────────────
 v3.11.2 (2026-05-10) — LOG DE COLABORACIONES ENTRE AGENTES
 ────────────────────────────────────────────────────────────────────────────────
 
