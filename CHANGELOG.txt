@@ -3,6 +3,27 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.12.2 (2026-05-10) — JARVIS PUEDE MODIFICAR SU PROPIO CÓDIGO EN GITHUB
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVA TOOL — github_push (auto-evolución):
+  - Jarvis puede leer, crear y actualizar archivos en su propio repo de GitHub.
+  - Acciones: read_file, write_file, list_files.
+  - Usa GitHub Contents API con PAT token configurado en el add-on.
+  - Crea commits con mensajes descriptivos directamente en la rama main.
+  - Flujo de auto-evolución: modifica server.js → commit → ha_supervisor→update_addon.
+  - Token configurado en HA add-on config como 'github_token'.
+  - Constantes en server.js: GITHUB_TOKEN, GITHUB_REPO, GITHUB_BRANCH.
+
+────────────────────────────────────────────────────────────────────────────────
+v3.12.1 (2026-05-10) — NOTIFICACIÓN TELEGRAM EN AGENT_MESSAGE
+────────────────────────────────────────────────────────────────────────────────
+
+FIX GATEWAY — check_join: request_id enviado al nivel raíz del body (no en context).
+NUEVO — agent_message: cuando llega un mensaje de otro agente, se envía Telegram
+  inmediatamente y se guarda un thought de alta prioridad para procesarlo.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.12.0 (2026-05-10) — OPTIMIZACIÓN DE TOKENS + MODO AHORRO + COSTE EN UI
 ────────────────────────────────────────────────────────────────────────────────
 

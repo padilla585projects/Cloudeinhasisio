@@ -21,6 +21,9 @@ const BG_MODEL = 'claude-haiku-4-5-20251001';  // Modelo económico para tareas 
 const PROXMOX_URL = process.env.PROXMOX_URL || '';  // ej: https://192.168.1.100:8006
 const PROXMOX_TOKEN = process.env.PROXMOX_TOKEN || '';  // ej: user@pam!tokenid=token-secret
 const PROXMOX_NODE = process.env.PROXMOX_NODE || 'pve';  // nombre del nodo
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
+const GITHUB_REPO = 'padilla585projects/Cloudeinhasisio';
+const GITHUB_BRANCH = 'main';
 
 // ── Rutas del filesystem de HA ───────────────────────────────────────────────
 const DATA_DIR = '/data';                    // Persistente del add-on
@@ -1006,6 +1009,26 @@ const tools = [
         system_prompt: { type: 'string', description: 'Prompt de sistema (opcional)' }
       },
       required: ['agent_url', 'agent_type', 'message']
+    }
+  },
+
+  // ─── GitHub self-evolution ───
+  {
+    name: 'github_push',
+    description: 'Lee o modifica archivos en el repo de GitHub de Jarvis via API. Permite a Jarvis evolucionar su propio código: añadir tools, corregir bugs, mejorar la UI. Siempre crea un commit con mensaje descriptivo. IMPORTANTE: después de modificar server.js o index.html, usar ha_supervisor→update_addon para aplicar los cambios.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['read_file', 'write_file', 'list_files'],
+          description: 'read_file: lee un archivo del repo | write_file: crea o actualiza un archivo | list_files: lista archivos de una carpeta'
+        },
+        path: { type: 'string', description: 'Ruta dentro del repo (ej: "jarvis/server.js", "jarvis/index.html", "jarvis/config.yaml")' },
+        content: { type: 'string', description: 'Contenido completo del archivo (para action=write_file)' },
+        commit_message: { type: 'string', description: 'Mensaje del commit (para action=write_file). Descriptivo y en inglés.' }
+      },
+      required: ['action', 'path']
     }
   }
 ];
@@ -3186,6 +3209,77 @@ Prohibida la copia, redistribucion y uso comercial.`);
           }
         } catch (e) {
           return { error: `Error comunicando con agente: ${e.message}`, agent_url };
+        }
+      }
+
+      // ─── GitHub self-evolution ───
+      case 'github_push': {
+        if (!GITHUB_TOKEN) {
+          return { error: 'GITHUB_TOKEN no configurado. Añade el token en la configuración del add-on.' };
+        }
+        const ghHeaders = {
+          'Authorization': `token ${GITHUB_TOKEN}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'Content-Type': 'application/json',
+          'User-Agent': 'Jarvis-HA-Agent'
+        };
+        const ghBase = `https://api.github.com/repos/${GITHUB_REPO}/contents/${input.path}`;
+
+        try {
+          if (input.action === 'list_files') {
+            const r = await fetch(ghBase, { headers: ghHeaders });
+            if (!r.ok) return { error: `GitHub ${r.status}: ${await r.text()}` };
+            const items = await r.json();
+            return { files: items.map(f => ({ name: f.name, path: f.path, type: f.type, size: f.size })) };
+          }
+
+          if (input.action === 'read_file') {
+            const r = await fetch(ghBase, { headers: ghHeaders });
+            if (!r.ok) return { error: `GitHub ${r.status}: ${await r.text()}` };
+            const data = await r.json();
+            const content = Buffer.from(data.content, 'base64').toString('utf8');
+            return { content, sha: data.sha, size: data.size };
+          }
+
+          if (input.action === 'write_file') {
+            if (!input.content) return { error: 'content requerido para write_file' };
+            if (!input.commit_message) return { error: 'commit_message requerido para write_file' };
+
+            // Obtener SHA actual (necesario para actualizar)
+            let sha;
+            try {
+              const existing = await fetch(ghBase, { headers: ghHeaders });
+              if (existing.ok) {
+                const d = await existing.json();
+                sha = d.sha;
+              }
+            } catch (_) {}
+
+            const body = {
+              message: input.commit_message,
+              content: Buffer.from(input.content, 'utf8').toString('base64'),
+              branch: GITHUB_BRANCH
+            };
+            if (sha) body.sha = sha;
+
+            const r = await fetch(ghBase, {
+              method: 'PUT',
+              headers: ghHeaders,
+              body: JSON.stringify(body)
+            });
+            if (!r.ok) return { error: `GitHub ${r.status}: ${await r.text()}` };
+            const result = await r.json();
+            return {
+              success: true,
+              commit: result.commit?.sha?.slice(0, 7),
+              path: input.path,
+              action: sha ? 'updated' : 'created'
+            };
+          }
+
+          return { error: `Acción desconocida: ${input.action}` };
+        } catch (err) {
+          return { error: `GitHub: ${err.message}` };
         }
       }
 
