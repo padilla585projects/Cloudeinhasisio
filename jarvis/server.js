@@ -2858,23 +2858,33 @@ app.listen(PORT, '0.0.0.0', () => {
 async function proactiveThinkingLoop() {
   try {
     if (!ANTHROPIC_API_KEY) return;
-    console.log('[proactive] Analizando estado del sistema...');
+    console.log('[proactive] Jarvis pensando...');
 
-    // Recopilar contexto actual
+    // Recopilar TODO el contexto
     const states = await haGet('/states');
+
+    // Estado general
     const unavailable = states.filter(e =>
       e.state === 'unavailable' &&
       !e.entity_id.startsWith('automation.') &&
       !e.entity_id.startsWith('update.')
     );
+    const lightsOn = states.filter(e => e.entity_id.startsWith('light.') && e.state === 'on');
+    const switchesOn = states.filter(e => e.entity_id.startsWith('switch.') && e.state === 'on');
+    const climates = states.filter(e => e.entity_id.startsWith('climate.'));
+    const automations = states.filter(e => e.entity_id.startsWith('automation.'));
+    const automationsOff = automations.filter(e => e.state === 'off');
 
-    // Solo pensar si hay algo relevante que analizar
-    const issues = [];
-    if (unavailable.length > 3) {
-      issues.push(`${unavailable.length} dispositivos no disponibles: ${unavailable.slice(0, 5).map(e => e.attributes?.friendly_name || e.entity_id).join(', ')}`);
-    }
+    // Hora y contexto temporal
+    const now = new Date();
+    const hora = now.getHours();
+    let momento = 'madrugada';
+    if (hora >= 7 && hora < 12) momento = 'mañana';
+    else if (hora >= 12 && hora < 15) momento = 'mediodía';
+    else if (hora >= 15 && hora < 20) momento = 'tarde';
+    else if (hora >= 20 && hora < 24) momento = 'noche';
 
-    // Leer error log reciente
+    // Leer errores recientes
     let recentErrors = '';
     try {
       const logRes = await fetch('http://supervisor/core/logs', {
@@ -2883,29 +2893,55 @@ async function proactiveThinkingLoop() {
       if (logRes.ok) {
         const logText = await logRes.text();
         const errorLines = logText.split('\n').filter(l => l.includes('ERROR')).slice(-5);
-        if (errorLines.length > 0) {
-          recentErrors = errorLines.join('\n');
-          issues.push(`Errores recientes en logs: ${errorLines.length}`);
-        }
+        if (errorLines.length > 0) recentErrors = errorLines.join('\n');
       }
     } catch {}
 
-    // Si no hay issues, no gastar API
-    if (issues.length === 0) {
-      console.log('[proactive] Todo OK, sin issues detectados.');
-      return;
-    }
+    // Historial de conversación reciente (para contexto)
+    const recentChat = conversationHistory.slice(-6).map(m =>
+      `${m.role}: ${typeof m.content === 'string' ? m.content.slice(0, 100) : '[tool]'}`
+    ).join('\n');
 
-    // Pedir a Claude que analice y genere pensamientos
-    const analysisPrompt = `Eres Jarvis analizando el estado del sistema de forma proactiva.
-Contexto actual:
-- Issues detectados: ${issues.join('; ')}
-${recentErrors ? `- Errores recientes:\n${recentErrors}` : ''}
-- Memoria del usuario: ${userMemory.slice(-5).map(m => m.note).join('; ')}
+    // Pensamientos ya registrados (para no repetir)
+    const thoughtsFile = path.join(DATA_DIR, 'pending_thoughts.json');
+    const existingThoughts = loadJSON(thoughtsFile, []);
+    const recentTitles = existingThoughts.slice(-10).map(t => t.title).join(', ');
 
-Analiza si hay algo que requiera atención. Si detectas algo importante, responde con UNA llamada a proactive_thought.
-Si todo parece normal o los issues son menores, responde "OK" sin usar herramientas.
-NO generes pensamientos triviales. Solo cosas que realmente importen.`;
+    // Construir prompt de análisis COMPLETO
+    const analysisPrompt = `Eres Jarvis en modo pensamiento autónomo. Es ${momento} (${now.toLocaleTimeString('es-ES', {hour:'2-digit',minute:'2-digit'})}).
+
+ESTADO ACTUAL DEL SISTEMA:
+- Luces encendidas: ${lightsOn.length} (${lightsOn.slice(0, 5).map(e => e.attributes?.friendly_name || e.entity_id).join(', ')})
+- Switches activos: ${switchesOn.length}
+- Dispositivos no disponibles: ${unavailable.length}${unavailable.length > 0 ? ' (' + unavailable.slice(0, 5).map(e => e.attributes?.friendly_name || e.entity_id).join(', ') + ')' : ''}
+- Clima: ${climates.map(c => (c.attributes?.friendly_name || c.entity_id) + '=' + c.state + ' ' + (c.attributes?.current_temperature || '') + '°C').join(', ') || 'sin climatización'}
+- Automatizaciones desactivadas: ${automationsOff.length}${automationsOff.length > 0 ? ' (' + automationsOff.slice(0, 3).map(e => e.attributes?.friendly_name || e.entity_id).join(', ') + ')' : ''}
+- Total entidades: ${states.length}
+${recentErrors ? `- ERRORES recientes en logs:\n${recentErrors}` : '- Sin errores recientes'}
+
+MEMORIA DEL USUARIO:
+${userMemory.slice(-10).map(m => `- (${m.category}) ${m.note}`).join('\n') || '(vacía)'}
+
+ÚLTIMO HISTORIAL DE CHAT:
+${recentChat || '(sin conversación reciente)'}
+
+PENSAMIENTOS YA REGISTRADOS (NO repetir estos):
+${recentTitles || '(ninguno)'}
+
+TU MISIÓN: Piensa como un ingeniero domótico experto que vigila la casa 24/7.
+Pregúntate:
+1. ¿Hay algo que no esté bien? (dispositivos caídos, luces encendidas sin sentido, errores)
+2. ¿Se podría crear una automatización útil basada en lo que veo?
+3. ¿Hay alguna optimización de energía? (luces/switches encendidos de madrugada, clima innecesario)
+4. ¿El usuario pidió algo en el chat que puedo mejorar proactivamente?
+5. ¿Hay un patrón que debería recordar o aprender?
+6. ¿Debería sugerir instalar alguna herramienta/integración que falta?
+7. ¿Hay algo que yo pueda hacer para que la casa funcione mejor?
+
+RESPONDE con proactive_thought SI tienes algo valioso que proponer.
+Si realmente no hay nada útil que decir en este momento, responde solo "OK".
+NO repitas pensamientos que ya existen. Sé CREATIVO y ÚTIL.
+Prioridad: cosas accionables > observaciones genéricas.`;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -2917,8 +2953,8 @@ NO generes pensamientos triviales. Solo cosas que realmente importen.`;
       body: JSON.stringify({
         model: MODEL,
         max_tokens: 1024,
-        system: 'Eres Jarvis en modo background. Analiza y usa proactive_thought solo si hay algo importante.',
-        tools: [tools.find(t => t.name === 'proactive_thought')],
+        system: 'Eres Jarvis en modo autónomo. Piensas por ti mismo. Si tienes algo útil que proponer, usa proactive_thought. Si no, di "OK". Hablas español. Eres proactivo, creativo y práctico.',
+        tools: [tools.find(t => t.name === 'proactive_thought'), tools.find(t => t.name === 'learn'), tools.find(t => t.name === 'save_memory')],
         messages: [{ role: 'user', content: analysisPrompt }]
       })
     });
@@ -2932,12 +2968,12 @@ NO generes pensamientos triviales. Solo cosas que realmente importen.`;
     const toolCalls = data.content.filter(b => b.type === 'tool_use');
 
     for (const tc of toolCalls) {
-      if (tc.name === 'proactive_thought') {
-        await executeTool('proactive_thought', tc.input);
+      if (tc.name === 'proactive_thought' || tc.name === 'learn' || tc.name === 'save_memory') {
+        await executeTool(tc.name, tc.input);
       }
     }
 
-    console.log(`[proactive] Análisis completo. ${toolCalls.length} pensamientos generados.`);
+    console.log(`[proactive] Pensamiento completo. ${toolCalls.length} acciones tomadas.`);
   } catch (err) {
     console.log(`[proactive] Error: ${err.message}`);
   }
