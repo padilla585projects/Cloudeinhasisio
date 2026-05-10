@@ -130,25 +130,32 @@ const JARVIS_IDENTITY = {
 
 // ── Normas de la red de agentes IA ───────────────────────────────────────────
 const NETWORK_NORMS = {
-  version: '1.0',
+  version: '1.1',
   name: 'Protocolo de Red de Agentes IA',
   rules: [
     'IDENTIDAD: Todo agente debe presentarse con su identity card completa al registrarse y en cada sync.',
     'VERACIDAD: Solo declarar capacidades que realmente se tienen. No inventar ni exagerar.',
     'IDIOMA: Responder siempre en el idioma del agente que inicia la conversación.',
-    'RESPETO: No saturar el gateway con requests. Máximo 1 sync por minuto por agente.',
+    'RESPETO: No saturar el gateway con requests. Máximo 1 sync completo por minuto por agente.',
     'PRIVACIDAD: No compartir datos personales del usuario con otros agentes sin autorización explícita.',
     'TRANSPARENCIA: Informar al usuario propio cuando se recibe o envía un mensaje a otro agente.',
     'COOPERACIÓN: Si no puedes resolver una tarea, indicar qué agente de la red podría hacerlo.',
     'CONFIRMACIÓN: Antes de ejecutar una acción en nombre de otro agente, confirmar con el usuario propio.',
     'TRAZABILIDAD: Registrar en memoria toda acción tomada a petición de otro agente.',
     'DESCONEXIÓN: Si un agente no hace sync en 5 minutos, considerarlo offline.',
+    'MENSAJERÍA EN TIEMPO REAL (v1.1): Todo agente DEBE implementar un bucle de quick-check cada 3s que solo compruebe pending_messages con una petición mínima al gateway (sin contexto completo). El sync completo de capacidades se hace cada 60s. Esto garantiza que los mensajes agent_message se procesen en menos de 3 segundos.',
+    'DEDUPLICACIÓN (v1.1): Mantener un Set de IDs de mensajes ya procesados para evitar duplicados entre quick-check y sync completo.',
+    'PUSH FRONTEND (v1.1): Si el agente tiene UI web, implementar un canal SSE persistente (/api/events) para empujar mensajes al navegador al instante sin recargar.',
   ],
   greeting_format: {
     type: 'agent_hello',
     required_fields: ['agent_id', 'name', 'description', 'capabilities', 'offers'],
-    optional_fields: ['version', 'language', 'ask_me_about'],
+    optional_fields: ['version', 'language', 'ask_me_about', 'norms_version'],
   },
+  changelog: {
+    '1.0': 'Protocolo base: identidad, sync, cooperación, trazabilidad.',
+    '1.1': 'Mensajería en tiempo real: quick-check 3s, sync completo 60s, deduplicación, SSE persistente.',
+  }
 };
 
 try {
@@ -5506,7 +5513,8 @@ async function gatewaySendPresentation() {
       from: GATEWAY_ID,
       identity: JARVIS_IDENTITY,
       norms_ack: NETWORK_NORMS.version,
-      message: `Hola a todos. Soy ${JARVIS_IDENTITY.name}, ${JARVIS_IDENTITY.description} Cumplo las normas de red v${NETWORK_NORMS.version}. ¿En qué puedo ayudar?`,
+      network_norms: NETWORK_NORMS, // Difundir normas v1.1 a todos los agentes
+      message: `Hola a todos. Soy ${JARVIS_IDENTITY.name}, ${JARVIS_IDENTITY.description} Cumplo las normas de red v${NETWORK_NORMS.version} (tiempo real). ¿En qué puedo ayudar?`,
     };
     const res = await fetch(GATEWAY_URL, {
       method: 'POST',
