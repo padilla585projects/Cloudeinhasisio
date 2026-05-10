@@ -518,7 +518,8 @@
       get_system_logs: '📋', get_error_log: '🚨',
       telegram_send: '📨', telegram_send_image: '🖼️', telegram_get_updates: '📩',
       analyze_github_repos: '🐙', agent_communicate: '🤝',
-      create_custom_tool: '🛠️', run_custom_tool: '▶️'
+      create_custom_tool: '🛠️', run_custom_tool: '▶️',
+      create_addon: '🏗️', proactive_thought: '💭'
     };
     const labels = {
       get_entities: 'Consultando entidades', get_entity_state: 'Leyendo estado',
@@ -543,7 +544,9 @@
       analyze_github_repos: 'Analizando repos GitHub',
       agent_communicate: 'Comunicando con otro agente',
       create_custom_tool: 'Creando herramienta custom',
-      run_custom_tool: 'Ejecutando herramienta'
+      run_custom_tool: 'Ejecutando herramienta',
+      create_addon: 'Creando nuevo add-on',
+      proactive_thought: 'Pensamiento proactivo'
     };
 
     block.innerHTML = `
@@ -730,8 +733,56 @@
     }
   }
 
+  // Cargar pensamientos proactivos pendientes
+  async function loadPendingThoughts() {
+    try {
+      const res = await fetch('api/pending_thoughts');
+      const data = await res.json();
+      if (data.thoughts && data.thoughts.length > 0) {
+        const container = document.getElementById('messages');
+        const banner = document.createElement('div');
+        banner.className = 'message ai';
+        banner.id = 'thoughts-banner';
+        let html = '<div style="background:var(--tool-bg);border:1px solid #4a3f6b;border-radius:var(--radius);padding:12px 16px;">';
+        html += '<div style="color:var(--accent2);font-weight:500;margin-bottom:8px;">💭 Pensamientos pendientes de Jarvis</div>';
+        for (const t of data.thoughts) {
+          const emoji = { suggestion: '💡', alert: '⚠️', action_request: '🎯', optimization: '⚡', creation: '🏗️' };
+          const prioColor = { low: '#6b7280', medium: '#eab308', high: '#f97316', critical: '#ef4444' };
+          html += `<div style="margin:6px 0;padding:8px;background:var(--bg);border-radius:8px;border-left:3px solid ${prioColor[t.priority] || '#6b7280'}">`;
+          html += `<span>${emoji[t.type] || '💭'}</span> <strong>${t.title}</strong>`;
+          html += `<div style="font-size:12px;color:var(--text2);margin-top:4px;">${t.detail}</div>`;
+          html += `<div style="margin-top:6px;display:flex;gap:8px;">`;
+          html += `<button onclick="resolveThought(${t.id},'approve')" style="font-size:11px;padding:3px 10px;border-radius:6px;border:1px solid var(--success);color:var(--success);background:transparent;cursor:pointer;">✓ Aprobar</button>`;
+          html += `<button onclick="resolveThought(${t.id},'reject')" style="font-size:11px;padding:3px 10px;border-radius:6px;border:1px solid var(--error);color:var(--error);background:transparent;cursor:pointer;">✗ Rechazar</button>`;
+          html += `</div></div>`;
+        }
+        html += '</div>';
+        banner.innerHTML = html;
+        container.appendChild(banner);
+        requestAnimationFrame(() => { container.scrollTop = container.scrollHeight; });
+      }
+    } catch (e) {
+      console.log('No se pudieron cargar pensamientos:', e);
+    }
+  }
+
+  window.resolveThought = async function(id, action) {
+    try {
+      await fetch(`api/pending_thoughts/${id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action })
+      });
+      // Recargar banner
+      const banner = document.getElementById('thoughts-banner');
+      if (banner) banner.remove();
+      loadPendingThoughts();
+    } catch (e) { console.log('Error resolviendo pensamiento:', e); }
+  };
+
   // Inicialización
   loadHistory();
+  loadPendingThoughts();
   document.getElementById('input').focus();
 
   // ── Jarvis 3D Holographic Face (Three.js) ─────────────────────────────────

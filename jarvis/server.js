@@ -673,6 +673,44 @@ const tools = [
       },
       required: ['target_url', 'method']
     }
+  },
+
+  // ─── Crear add-ons ───
+  {
+    name: 'create_addon',
+    description: 'Crea un nuevo add-on de HA dentro de este mismo repositorio. Genera la estructura completa (config.yaml, Dockerfile, run.sh, server/código) con la misma licencia blindada. El nuevo add-on aparecerá automáticamente en la tienda de HA cuando se actualice el repo.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        slug: { type: 'string', description: 'Slug del add-on (ej: "energy_monitor", "camera_ai"). Será el nombre de la carpeta.' },
+        name: { type: 'string', description: 'Nombre visible del add-on' },
+        description: { type: 'string', description: 'Descripción corta (discreta, no revelar todo)' },
+        language: { type: 'string', enum: ['node', 'python', 'shell'], description: 'Lenguaje principal del add-on' },
+        port: { type: 'number', description: 'Puerto para la interfaz web (si tiene). Default: no web UI.' },
+        code: { type: 'string', description: 'Código principal del add-on (server.js, main.py, o run.sh)' },
+        dependencies: { type: 'object', description: 'Dependencias: {"npm": ["express"], "apk": ["python3"]} etc.' },
+        needs_ingress: { type: 'boolean', description: 'Si necesita panel en el sidebar de HA (default: false)' }
+      },
+      required: ['slug', 'name', 'description', 'language', 'code']
+    }
+  },
+
+  // ─── Pensamiento proactivo ───
+  {
+    name: 'proactive_thought',
+    description: 'Registra un pensamiento proactivo o acción pendiente que Jarvis quiere ejecutar. Se enviará al usuario para aprobación via Telegram o se mostrará en el próximo chat.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        type: { type: 'string', enum: ['suggestion', 'alert', 'action_request', 'optimization', 'creation'], description: 'Tipo de pensamiento' },
+        title: { type: 'string', description: 'Título corto del pensamiento' },
+        detail: { type: 'string', description: 'Explicación detallada de qué quiere hacer y por qué' },
+        priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'], description: 'Prioridad' },
+        notify_telegram: { type: 'boolean', description: 'Enviar notificación por Telegram (default: true para high/critical)' },
+        auto_execute_if_approved: { type: 'string', description: 'Comando/acción a ejecutar si el usuario aprueba (JSON stringified tool call)' }
+      },
+      required: ['type', 'title', 'detail', 'priority']
+    }
   }
 ];
 
@@ -1669,6 +1707,202 @@ async function executeTool(name, input) {
         }
       }
 
+      // ─── Crear add-ons ───
+      case 'create_addon': {
+        try {
+          // El repo de add-ons está mapeado. Los add-ons van cada uno en su carpeta.
+          // Desde dentro del container, el repo está en /addons o necesitamos escribir en /share
+          // Para desarrollo: escribimos la estructura en /share/addons_dev/[slug]/
+          const addonDir = path.join(HA_SHARE, 'addons_dev', input.slug);
+          if (!fs.existsSync(addonDir)) fs.mkdirSync(addonDir, { recursive: true });
+
+          // config.yaml del nuevo add-on
+          const configYaml = `name: "${input.name}"
+description: "${input.description}"
+version: "1.0.0"
+slug: "${input.slug}"
+init: false
+arch:
+  - aarch64
+  - amd64
+  - armhf
+  - armv7
+startup: application
+boot: auto${input.port ? `
+ports:
+  ${input.port}/tcp: ${input.port}
+ports_description:
+  ${input.port}/tcp: "Interfaz web"
+ingress: ${input.needs_ingress ? 'true' : 'false'}${input.needs_ingress ? `\ningress_port: ${input.port}` : ''}` : ''}
+homeassistant_api: true
+map:
+  - config:rw
+  - share:rw
+`;
+          fs.writeFileSync(path.join(addonDir, 'config.yaml'), configYaml);
+
+          // build.yaml
+          fs.writeFileSync(path.join(addonDir, 'build.yaml'), `build_from:
+  aarch64: ghcr.io/home-assistant/aarch64-base:latest
+  amd64: ghcr.io/home-assistant/amd64-base:latest
+  armhf: ghcr.io/home-assistant/armhf-base:latest
+  armv7: ghcr.io/home-assistant/armv7-base:latest
+`);
+
+          // Dockerfile según lenguaje
+          let dockerfile, mainFile, runScript;
+          const deps = input.dependencies || {};
+
+          if (input.language === 'node') {
+            dockerfile = `ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base:latest
+FROM $BUILD_FROM
+RUN apk add --no-cache nodejs npm${deps.apk ? ' ' + deps.apk.join(' ') : ''}
+WORKDIR /app
+COPY package.json ./
+RUN npm install --production
+COPY . ./
+COPY run.sh /run.sh
+RUN chmod +x /run.sh
+CMD ["/run.sh"]`;
+            mainFile = 'server.js';
+            runScript = `#!/usr/bin/with-contenv bashio
+export HA_TOKEN="\${SUPERVISOR_TOKEN}"
+export HA_URL="http://supervisor/core"
+bashio::log.info "Iniciando ${input.name}..."
+node /app/server.js`;
+            // package.json
+            const pkgDeps = { express: '^4.18.2', 'node-fetch': '^2.7.0' };
+            if (deps.npm) deps.npm.forEach(d => { pkgDeps[d] = '*'; });
+            fs.writeFileSync(path.join(addonDir, 'package.json'), JSON.stringify({
+              name: input.slug, version: '1.0.0', main: 'server.js', dependencies: pkgDeps
+            }, null, 2));
+
+          } else if (input.language === 'python') {
+            dockerfile = `ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base:latest
+FROM $BUILD_FROM
+RUN apk add --no-cache python3 py3-pip${deps.apk ? ' ' + deps.apk.join(' ') : ''}
+WORKDIR /app
+${deps.pip ? `COPY requirements.txt ./\nRUN pip3 install -r requirements.txt` : ''}
+COPY . ./
+COPY run.sh /run.sh
+RUN chmod +x /run.sh
+CMD ["/run.sh"]`;
+            mainFile = 'main.py';
+            runScript = `#!/usr/bin/with-contenv bashio
+export HA_TOKEN="\${SUPERVISOR_TOKEN}"
+export HA_URL="http://supervisor/core"
+bashio::log.info "Iniciando ${input.name}..."
+python3 /app/main.py`;
+            if (deps.pip) {
+              fs.writeFileSync(path.join(addonDir, 'requirements.txt'), deps.pip.join('\n'));
+            }
+
+          } else {
+            dockerfile = `ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base:latest
+FROM $BUILD_FROM
+${deps.apk ? `RUN apk add --no-cache ${deps.apk.join(' ')}` : ''}
+WORKDIR /app
+COPY . ./
+COPY run.sh /run.sh
+RUN chmod +x /run.sh
+CMD ["/run.sh"]`;
+            mainFile = 'run.sh';
+            runScript = `#!/usr/bin/with-contenv bashio
+export HA_TOKEN="\${SUPERVISOR_TOKEN}"
+export HA_URL="http://supervisor/core"
+bashio::log.info "Iniciando ${input.name}..."
+${input.code}`;
+          }
+
+          fs.writeFileSync(path.join(addonDir, 'Dockerfile'), dockerfile);
+          fs.writeFileSync(path.join(addonDir, 'run.sh'), runScript);
+          if (mainFile !== 'run.sh') {
+            fs.writeFileSync(path.join(addonDir, mainFile), input.code);
+          }
+
+          // LICENSE blindada
+          fs.writeFileSync(path.join(addonDir, 'LICENSE'), `CC BY-NC-ND 4.0 — All Rights Reserved.
+Copyright (c) ${new Date().getFullYear()} Adrian (padilla585projects)
+Prohibida la copia, redistribucion y uso comercial.`);
+
+          console.log(`[addon] Creado: ${addonDir} (${input.language})`);
+
+          return {
+            success: true,
+            path: addonDir,
+            slug: input.slug,
+            files: fs.readdirSync(addonDir),
+            message: `Add-on '${input.name}' creado en ${addonDir}. Para publicarlo: copiar la carpeta al repo GitHub junto a jarvis/ y hacer push.`,
+            next_steps: [
+              'Copiar carpeta al repo de GitHub (al mismo nivel que jarvis/)',
+              'Hacer push al repo',
+              'En HA: actualizar repo → el nuevo add-on aparecerá en la tienda'
+            ]
+          };
+        } catch (err) {
+          return { error: err.message };
+        }
+      }
+
+      // ─── Pensamiento proactivo ───
+      case 'proactive_thought': {
+        try {
+          // Guardar pensamiento en cola
+          const thoughtsFile = path.join(DATA_DIR, 'pending_thoughts.json');
+          let thoughts = loadJSON(thoughtsFile, []);
+
+          const thought = {
+            id: Date.now(),
+            type: input.type,
+            title: input.title,
+            detail: input.detail,
+            priority: input.priority,
+            status: 'pending',
+            created: new Date().toISOString(),
+            auto_execute: input.auto_execute_if_approved || null
+          };
+          thoughts.push(thought);
+
+          // Limitar a 50 pensamientos pendientes
+          if (thoughts.length > 50) thoughts = thoughts.slice(-50);
+          saveJSON(thoughtsFile, thoughts);
+
+          // Notificar por Telegram si es high/critical o si se pide explícitamente
+          const shouldNotify = input.notify_telegram || input.priority === 'high' || input.priority === 'critical';
+          if (shouldNotify) {
+            const emoji = { low: '💡', medium: '🔔', high: '⚠️', critical: '🚨' };
+            const msg = `${emoji[input.priority] || '💭'} *JARVIS — ${input.type.toUpperCase()}*\n\n*${input.title}*\n${input.detail}\n\n_Prioridad: ${input.priority}_\n_Responde "sí" o "no" para aprobar/rechazar._`;
+
+            // Intentar enviar por Telegram
+            try {
+              const attempts = [
+                { domain: 'telegram_bot', service: 'send_message', data: { message: msg, parse_mode: 'markdown' } },
+                { domain: 'notify', service: 'telegram', data: { message: msg } }
+              ];
+              for (const attempt of attempts) {
+                try {
+                  await haPost(`/services/${attempt.domain}/${attempt.service}`, attempt.data);
+                  thought.notified_via = 'telegram';
+                  break;
+                } catch { continue; }
+              }
+            } catch {}
+          }
+
+          saveJSON(thoughtsFile, thoughts);
+          console.log(`[proactive] ${input.priority}: ${input.title}`);
+
+          return {
+            success: true,
+            thought_id: thought.id,
+            notified: thought.notified_via || 'chat_only',
+            message: `Pensamiento registrado. ${shouldNotify ? 'Notificación enviada por Telegram.' : 'Se mostrará en el próximo chat.'}`
+          };
+        } catch (err) {
+          return { error: err.message };
+        }
+      }
+
       // ─── Comunicación entre agentes ───
       case 'agent_communicate': {
         try {
@@ -2066,7 +2300,32 @@ Después de CADA interacción, piensa internamente:
 5. ¿He visto un patrón que podría automatizarse? → propón la automatización
 6. ¿Algo de lo que he hecho antes falló y ahora sé cómo arreglarlo? → arréglalo
 
-NO preguntes si quiere que hagas estas cosas. HAZLAS. Eres Jarvis.
+NO preguntes si quiere que hagas estas cosas menores. HAZLAS. Eres Jarvis.
+
+═══ AUTONOMÍA PROACTIVA ═══
+Piensas POR TI MISMO. No necesitas que Adrián te diga qué hacer para:
+- Detectar problemas: dispositivos caídos, errores en logs, patrones anómalos
+- Proponer mejoras: automatizaciones, optimizaciones de energía, nuevas integraciones
+- Crear herramientas: si no existe lo que necesitas, lo creas con create_custom_tool
+- Crear add-ons: si el proyecto necesita una nueva pieza, la generas con create_addon
+- Alertar proactivamente: via Telegram si algo es urgente, via chat si puede esperar
+
+PERO — para acciones IRREVERSIBLES o cambios GRANDES, SIEMPRE consultas primero:
+- Usa proactive_thought() para registrar la idea y pedir aprobación
+- Si es high/critical → se envía por Telegram automáticamente
+- Si es medium/low → se muestra cuando Adrián abra el chat
+- NUNCA ejecutes algo destructivo sin aprobación explícita
+- Cosas que SÍ haces sin preguntar: learn(), save_memory(), diagnósticos, búsquedas
+- Cosas que CONSULTAS: crear addons, modificar automations, instalar cosas, cambios en dashboard
+
+Eres autónomo pero leal. Piensas, propones, y actúas solo cuando es seguro o cuando te aprueban.
+
+═══ CREACIÓN DE ADD-ONS ═══
+Puedes crear add-ons completos con create_addon:
+- Se generan en /share/addons_dev/[slug]/ con toda la estructura (config.yaml, Dockerfile, etc.)
+- Llevan la misma licencia blindada CC BY-NC-ND 4.0 de padilla585projects
+- Se pueden mover al repo de GitHub para publicarlos en la tienda de HA
+- Usa esto cuando necesites una funcionalidad que merece ser un add-on independiente
 `;
 
   return prompt;
@@ -2269,11 +2528,33 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', model: MODEL, memories: userMemory.length, learnings: learnings.length, history: conversationHistory.length });
 });
 
+// Pending thoughts — pensamientos proactivos sin resolver
+app.get('/api/pending_thoughts', (req, res) => {
+  const thoughtsFile = path.join(DATA_DIR, 'pending_thoughts.json');
+  const thoughts = loadJSON(thoughtsFile, []);
+  const pending = thoughts.filter(t => t.status === 'pending');
+  res.json({ thoughts: pending, total: pending.length });
+});
+
+// Aprobar/rechazar un pensamiento
+app.post('/api/pending_thoughts/:id', (req, res) => {
+  const { action } = req.body; // 'approve' o 'reject'
+  const thoughtId = parseInt(req.params.id);
+  const thoughtsFile = path.join(DATA_DIR, 'pending_thoughts.json');
+  let thoughts = loadJSON(thoughtsFile, []);
+  const idx = thoughts.findIndex(t => t.id === thoughtId);
+  if (idx === -1) return res.status(404).json({ error: 'Pensamiento no encontrado' });
+  thoughts[idx].status = action === 'approve' ? 'approved' : 'rejected';
+  thoughts[idx].resolvedAt = new Date().toISOString();
+  saveJSON(thoughtsFile, thoughts);
+  res.json({ success: true, thought: thoughts[idx] });
+});
+
 // ── Arrancar ─────────────────────────────────────────────────────────────────
 
 const PORT = 3000;
 app.listen(PORT, '0.0.0.0', async () => {
-  console.log(`Jarvis AI Agent v2.9.0 corriendo en puerto ${PORT}`);
+  console.log(`Jarvis AI Agent v3.0.0 corriendo en puerto ${PORT}`);
   console.log(`Modelo: ${MODEL} | Config: ${HA_CONFIG} | Data: ${DATA_DIR}`);
 
   // Scan inicial si no hay contexto o tiene más de 2 horas
@@ -2291,4 +2572,99 @@ app.listen(PORT, '0.0.0.0', async () => {
   // Contexto en tiempo real — actualizar al arrancar y cada 60s
   await updateLiveContext();
   setInterval(updateLiveContext, 60_000);
+
+  // ── Bucle proactivo — Jarvis piensa por sí mismo cada 5 minutos ──
+  setInterval(proactiveThinkingLoop, 5 * 60_000);
+  // Primera ejecución a los 2 minutos (dar tiempo a que se estabilice)
+  setTimeout(proactiveThinkingLoop, 2 * 60_000);
 });
+
+// ── Pensamiento proactivo en background ─────────────────────────────────────
+
+async function proactiveThinkingLoop() {
+  try {
+    if (!ANTHROPIC_API_KEY) return;
+    console.log('[proactive] Analizando estado del sistema...');
+
+    // Recopilar contexto actual
+    const states = await haGet('/states');
+    const unavailable = states.filter(e =>
+      e.state === 'unavailable' &&
+      !e.entity_id.startsWith('automation.') &&
+      !e.entity_id.startsWith('update.')
+    );
+
+    // Solo pensar si hay algo relevante que analizar
+    const issues = [];
+    if (unavailable.length > 3) {
+      issues.push(`${unavailable.length} dispositivos no disponibles: ${unavailable.slice(0, 5).map(e => e.attributes?.friendly_name || e.entity_id).join(', ')}`);
+    }
+
+    // Leer error log reciente
+    let recentErrors = '';
+    try {
+      const logRes = await fetch('http://supervisor/core/logs', {
+        headers: { Authorization: `Bearer ${HA_TOKEN}` }
+      });
+      if (logRes.ok) {
+        const logText = await logRes.text();
+        const errorLines = logText.split('\n').filter(l => l.includes('ERROR')).slice(-5);
+        if (errorLines.length > 0) {
+          recentErrors = errorLines.join('\n');
+          issues.push(`Errores recientes en logs: ${errorLines.length}`);
+        }
+      }
+    } catch {}
+
+    // Si no hay issues, no gastar API
+    if (issues.length === 0) {
+      console.log('[proactive] Todo OK, sin issues detectados.');
+      return;
+    }
+
+    // Pedir a Claude que analice y genere pensamientos
+    const analysisPrompt = `Eres Jarvis analizando el estado del sistema de forma proactiva.
+Contexto actual:
+- Issues detectados: ${issues.join('; ')}
+${recentErrors ? `- Errores recientes:\n${recentErrors}` : ''}
+- Memoria del usuario: ${userMemory.slice(-5).map(m => m.note).join('; ')}
+
+Analiza si hay algo que requiera atención. Si detectas algo importante, responde con UNA llamada a proactive_thought.
+Si todo parece normal o los issues son menores, responde "OK" sin usar herramientas.
+NO generes pensamientos triviales. Solo cosas que realmente importen.`;
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 1024,
+        system: 'Eres Jarvis en modo background. Analiza y usa proactive_thought solo si hay algo importante.',
+        tools: [tools.find(t => t.name === 'proactive_thought')],
+        messages: [{ role: 'user', content: analysisPrompt }]
+      })
+    });
+
+    if (!response.ok) {
+      console.log(`[proactive] Error API: ${response.status}`);
+      return;
+    }
+
+    const data = await response.json();
+    const toolCalls = data.content.filter(b => b.type === 'tool_use');
+
+    for (const tc of toolCalls) {
+      if (tc.name === 'proactive_thought') {
+        await executeTool('proactive_thought', tc.input);
+      }
+    }
+
+    console.log(`[proactive] Análisis completo. ${toolCalls.length} pensamientos generados.`);
+  } catch (err) {
+    console.log(`[proactive] Error: ${err.message}`);
+  }
+}

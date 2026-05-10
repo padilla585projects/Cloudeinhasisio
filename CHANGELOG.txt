@@ -3,6 +3,53 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.0.0 (2026-05-10) — AUTONOMÍA PROACTIVA + CREACIÓN DE ADD-ONS
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — PENSAMIENTO PROACTIVO:
+- Jarvis piensa por sí mismo cada 5 minutos (background loop)
+- Analiza estado del sistema: dispositivos caídos, errores en logs, anomalías
+- Genera pensamientos (suggestion, alert, action_request, optimization, creation)
+- Prioridades: low, medium, high, critical
+- High/critical se notifican automáticamente por Telegram
+- Medium/low se muestran al abrir el chat (banner interactivo)
+- proactive_thought tool: registra ideas y pide aprobación al usuario
+- Endpoint /api/pending_thoughts para consultar y resolver pensamientos
+- Botones aprobar/rechazar directamente en la UI del chat
+- Sistema seguro: NUNCA ejecuta acciones destructivas sin aprobación
+
+NUEVO — CREACIÓN DE ADD-ONS:
+- create_addon tool: genera estructura completa de un nuevo add-on de HA
+- Genera: config.yaml, Dockerfile, run.sh, código principal, build.yaml
+- Soporta Node.js, Python y Shell como lenguajes principales
+- Aplica licencia CC BY-NC-ND 4.0 automáticamente (blindaje)
+- Los add-ons se crean en /share/addons_dev/[slug]/
+- Listos para mover al repo y aparecer en la tienda de HA
+- Mismos privilegios y protección que el add-on principal
+
+MEJORA — SYSTEM PROMPT EXTENDIDO:
+- Nueva sección "Autonomía Proactiva" con reglas claras
+- Jarvis sabe qué puede hacer solo vs qué debe consultar
+- Instrucciones para creación de add-ons
+- Filosofía: autónomo pero leal, piensa y propone
+
+MEJORA — FRONTEND:
+- Banner de pensamientos pendientes al cargar el chat
+- Botones inline para aprobar/rechazar cada pensamiento
+- Iconos y labels para create_addon (🏗️) y proactive_thought (💭)
+- Los pensamientos se eliminan del banner al resolverlos
+
+TOTAL TOOLS: 34 (get_entities, search_entities, get_entity_state, call_service,
+get_history, get_automations, create_automation, reload_config, check_config,
+read_file, write_file, append_file, list_directory, web_search, fetch_url,
+save_memory, get_memory, delete_memory, learn, scan_installation,
+get_dashboards, get_dashboard_config, update_dashboard, get_installed_frontend,
+search_hacs_resources, install_hacs_resource, ha_knowledge, proxmox_api,
+get_system_logs, get_error_log, telegram_send, telegram_send_image,
+telegram_get_updates, analyze_github_repos, agent_communicate,
+create_custom_tool, run_custom_tool, create_addon, proactive_thought)
+
+────────────────────────────────────────────────────────────────────────────────
 v2.8.0 (2026-05-10) — CARA HOLOGRÁFICA + AGENTES INTERCONECTADOS + IDENTIDAD
 ────────────────────────────────────────────────────────────────────────────────
 
