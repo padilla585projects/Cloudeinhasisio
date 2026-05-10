@@ -3,6 +3,36 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.1.0 (2026-05-10) — EQUIPO DE AGENTES + CONOCIMIENTO INDUSTRIAL
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — EQUIPO DE AGENTES IA COLABORATIVO:
+- Los agentes de Adrián son un equipo que puede mejorarse mutuamente
+- Protocolo de mejora mutua: analizar, proponer, aprobar, aplicar
+- Regla de oro: NUNCA modificar el código de otro agente sin aprobación
+- Los agentes comparten descubrimientos, errores y soluciones entre ellos
+- Comunicación via agent_communicate (HTTP/webhook)
+- Toda propuesta entre agentes pasa por proactive_thought → Adrián decide
+
+NUEVO — CONOCIMIENTO DE AUTOMATIZACIÓN INDUSTRIAL:
+- PLCs: Siemens S7, Allen-Bradley, Schneider, Omron, Beckhoff, Wago
+- Protocolos: Modbus TCP/RTU, OPC-UA, PROFINET, PROFIBUS, EtherNet/IP,
+  EtherCAT, BACnet, MQTT Sparkplug B, CANopen, IO-Link, HART
+- SCADA/HMI: Ignition, WinCC, FactoryTalk, Wonderware/AVEVA, Grafana
+- Sensores: RTD, termopares, presión 4-20mA, caudal, nivel, vibración, proximidad
+- Actuadores: VFDs, servos, válvulas proporcionales, cilindros neumáticos
+- Redes OT: switches industriales, VLANs, firewalls IT/OT, DMZ
+- Normas: IEC 61131-3, ISA-95, IEC 62443, ISA-88, NAMUR
+- Control: PID, cascada, feedforward, ratio, split-range
+- Seguridad funcional: SIL, IEC 61508/61511, parada de emergencia
+- Industria 4.0: edge computing, digital twins, mantenimiento predictivo
+- Integración en casa: Modbus→HA para inversores solares, VFDs para HVAC,
+  sensores 4-20mA para piscinas/calderas, OpenPLC en ESP32
+
+MEJORA — IDIOMA FORZADO:
+- Jarvis SIEMPRE responde en español, sin excepción
+
+────────────────────────────────────────────────────────────────────────────────
 v3.0.0 (2026-05-10) — AUTONOMÍA PROACTIVA + CREACIÓN DE ADD-ONS
 ────────────────────────────────────────────────────────────────────────────────
 
