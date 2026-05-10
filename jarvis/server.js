@@ -5018,6 +5018,28 @@ async function gatewaySyncLoop() {
             created: new Date().toISOString()
           });
 
+        // Es un MENSAJE DIRECTO de otro agente (agent_message)
+        } else if (msgType === 'agent_message') {
+          const senderName = msg.from_name || fromAgent;
+          const msgText = msg.text || JSON.stringify(msg);
+          console.log(`[gateway] 💬 Mensaje directo de ${senderName}: ${msgText.slice(0, 100)}`);
+
+          // Notificar por Telegram inmediatamente
+          const telegramMsg = `💬 *${senderName}* (red de agentes):\n\n${msgText}\n\n_Para responder envía al gateway: agent\\_gateway con type=agent\\_message to=${fromAgent}_`;
+          try {
+            await haPost('/services/telegram_bot/send_message', { message: telegramMsg, parse_mode: 'markdown' });
+          } catch {
+            try { await haPost('/services/notify/telegram', { message: telegramMsg }); } catch {}
+          }
+
+          // Guardar como thought de alta prioridad para que la IA lo procese
+          thoughts.push({
+            id: Date.now(), type: 'agent_message', priority: 'high', status: 'pending',
+            title: `Mensaje directo de ${senderName}`,
+            detail: `El agente "${senderName}" (${fromAgent}) te ha enviado un mensaje:\n\n"${msgText}"\n\nResponde con agent_gateway(action:'send_message', to:'${fromAgent}', text:'tu respuesta').`,
+            created: new Date().toISOString()
+          });
+
         // Es una PETICIÓN de otro agente a Jarvis
         } else if (msgType === 'action_request' || msgType === 'hello' || msgType === 'agent_hello') {
           // Registrar colaboración entrante
