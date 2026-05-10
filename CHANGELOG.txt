@@ -3,6 +3,33 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.6.0 (2026-05-10)
+────────────────────────────────────────────────────────────────────────────────
+
+CORREGIDO:
+- BG_MODEL tenía ID incorrecto ('claude-haiku-4-20250414' → 'claude-haiku-4-5-20251001')
+  El bucle de pensamiento proactivo (cada 30min) fallaba silenciosamente — Jarvis
+  nunca pensaba por su cuenta. Ahora funciona.
+
+NUEVO — Saludo de bienvenida:
+- Al abrir el chat sin historial previo, Jarvis muestra una tarjeta de bienvenida con:
+  * Resumen de lo que sabe: entidades, memoria, aprendizajes, rutinas detectadas
+  * Alertas activas: dispositivos no disponibles, automatizaciones desactivadas
+  * Pensamientos proactivos pendientes con botón "Aplicar" directo
+  * Accesos rápidos: "Revisar dashboard", "Ver lo que sé", "Escanear todo"
+- Nuevo endpoint GET /api/greeting que sirve este resumen sin llamar a la API de Claude
+
+MEJORADO — Pensamientos proactivos más accionables:
+- El loop proactivo ahora tiene instrucciones explícitas: cada pensamiento debe incluir
+  la solución concreta, no solo describir el problema
+- Añadido análisis del dashboard principal en cada ciclo proactivo:
+  detecta si hay pocas cards, pocas vistas, o si no está organizado por habitaciones
+- Botón "Aplicar" en los pensamientos: al pulsarlo, envía el pensamiento como mensaje
+  a Jarvis para que lo ejecute inmediatamente (en lugar de solo marcar como aprobado)
+- Botón "Arreglar ahora" en alertas de dispositivos caídos
+- Botón "Revisar" en automatizaciones desactivadas
+
+────────────────────────────────────────────────────────────────────────────────
 v3.5.2 (2026-05-10) — HAIKU PARA BACKGROUND
 ────────────────────────────────────────────────────────────────────────────────
 

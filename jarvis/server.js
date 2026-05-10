@@ -14,7 +14,7 @@ const MODEL = process.env.MODEL || 'claude-sonnet-4-6';
 const HA_TOKEN = process.env.HA_TOKEN;
 const HA_URL = process.env.HA_URL || 'http://supervisor/core';
 const LANGUAGE = process.env.LANGUAGE || 'es';
-const BG_MODEL = 'claude-haiku-4-20250414';  // Modelo económico para tareas background
+const BG_MODEL = 'claude-haiku-4-5-20251001';  // Modelo económico para tareas background
 const PROXMOX_URL = process.env.PROXMOX_URL || '';  // ej: https://192.168.1.100:8006
 const PROXMOX_TOKEN = process.env.PROXMOX_TOKEN || '';  // ej: user@pam!tokenid=token-secret
 const PROXMOX_NODE = process.env.PROXMOX_NODE || 'pve';  // nombre del nodo
@@ -2791,6 +2791,50 @@ app.get('/api/logs', (req, res) => {
   res.json({ logs: internalLogs.slice(-lines) });
 });
 
+// Saludo de bienvenida — resumen rápido sin LLM
+app.get('/api/greeting', async (req, res) => {
+  try {
+    const now = new Date();
+    const hora = now.getHours();
+    const saludo = hora < 12 ? 'Buenos días' : hora < 20 ? 'Buenas tardes' : 'Buenas noches';
+
+    const thoughts = loadJSON(path.join(DATA_DIR, 'pending_thoughts.json'), []);
+    const pendingThoughts = thoughts.filter(t => t.status === 'pending');
+    const routines = loadJSON(path.join(DATA_DIR, 'detected_routines.json'), []);
+
+    let unavailable = [], lightsOn = [], switchesOn = [], totalEntities = 0, automationsOff = [];
+    try {
+      const states = await haGet('/states');
+      totalEntities = states.length;
+      unavailable = states.filter(e =>
+        e.state === 'unavailable' &&
+        !e.entity_id.startsWith('automation.') &&
+        !e.entity_id.startsWith('update.')
+      ).slice(0, 8).map(e => e.attributes?.friendly_name || e.entity_id);
+      lightsOn = states.filter(e => e.entity_id.startsWith('light.') && e.state === 'on').length;
+      switchesOn = states.filter(e => e.entity_id.startsWith('switch.') && e.state === 'on').length;
+      automationsOff = states.filter(e => e.entity_id.startsWith('automation.') && e.state === 'off')
+        .slice(0, 5).map(e => e.attributes?.friendly_name || e.entity_id);
+    } catch {}
+
+    res.json({
+      saludo,
+      memory: userMemory.length,
+      learnings: learnings.length,
+      totalEntities,
+      pendingThoughts: pendingThoughts.slice(0, 5),
+      unavailable,
+      lightsOn,
+      switchesOn,
+      automationsOff,
+      routines: routines.slice(0, 3),
+      houseContextReady: !!houseContext
+    });
+  } catch (err) {
+    res.json({ error: err.message, saludo: 'Hola', memory: 0, learnings: 0 });
+  }
+});
+
 // Pending thoughts — pensamientos proactivos sin resolver
 app.get('/api/pending_thoughts', (req, res) => {
   const thoughtsFile = path.join(DATA_DIR, 'pending_thoughts.json');
@@ -2930,6 +2974,20 @@ async function proactiveThinkingLoop() {
     const existingThoughts = loadJSON(thoughtsFile, []);
     const recentTitles = existingThoughts.slice(-10).map(t => t.title).join(', ');
 
+    // Análisis del dashboard principal
+    let dashboardSummary = '';
+    try {
+      const dashRes = await haGet('/lovelace/config');
+      if (dashRes && dashRes.views) {
+        const views = dashRes.views;
+        const totalCards = views.reduce((acc, v) => acc + (v.cards ? v.cards.length : 0), 0);
+        const viewNames = views.map(v => v.title || v.path || 'sin título').join(', ');
+        dashboardSummary = `Dashboard principal: ${views.length} vistas (${viewNames}), ${totalCards} cards en total.`;
+        if (totalCards < 5) dashboardSummary += ' AVISO: muy pocas cards — dashboard probablemente vacío o sin configurar.';
+        if (views.length === 1) dashboardSummary += ' Solo hay 1 vista — no está organizado por habitaciones.';
+      }
+    } catch { dashboardSummary = 'No se pudo leer el dashboard.'; }
+
     // Construir prompt de análisis COMPLETO
     const analysisPrompt = `Eres Jarvis en modo pensamiento autónomo. Es ${momento} (${now.toLocaleTimeString('es-ES', {hour:'2-digit',minute:'2-digit'})}).
 
@@ -2948,10 +3006,14 @@ ${userMemory.slice(-10).map(m => `- (${m.category}) ${m.note}`).join('\n') || '(
 ÚLTIMO HISTORIAL DE CHAT:
 ${recentChat || '(sin conversación reciente)'}
 
+ESTADO DEL DASHBOARD:
+${dashboardSummary}
+
 PENSAMIENTOS YA REGISTRADOS (NO repetir estos):
 ${recentTitles || '(ninguno)'}
 
 TU MISIÓN: Piensa como un ingeniero domótico experto que vigila la casa 24/7.
+ANALIZA TAMBIÉN: ¿El dashboard tiene sentido? ¿Está organizado? ¿Faltan vistas importantes? ¿Hay cards útiles que no tiene?
 Pregúntate:
 1. ¿Hay algo que no esté bien? (dispositivos caídos, luces encendidas sin sentido, errores)
 2. ¿Se podría crear una automatización útil basada en lo que veo?
@@ -2961,10 +3023,20 @@ Pregúntate:
 6. ¿Debería sugerir instalar alguna herramienta/integración que falta?
 7. ¿Hay algo que yo pueda hacer para que la casa funcione mejor?
 
+REGLAS CRÍTICAS:
+- Cada pensamiento que registres DEBE incluir en el campo "detail" la solución EXACTA y concreta.
+  NO solo describas el problema — dí QUÉ HAY QUE HACER y cómo.
+  Ejemplo MALO: "Hay 3 luces encendidas en la madrugada"
+  Ejemplo BUENO: "Hay 3 luces encendidas en la madrugada (salón, cocina, baño). Puedo apagarlas ahora con call_service light.turn_off o crear una automatización que las apague a las 2:00."
+- Si es algo que puedes ejecutar → incluye auto_execute_if_approved con descripción de la acción
+- Si implica crear una automatización → describe el trigger, condition y action exactos en el detail
+- Si detectas un dispositivo caído → indica si es reiniciable y cómo
+- SIEMPRE termina el detail con: "¿Quieres que lo aplique ahora?"
+
 RESPONDE con proactive_thought SI tienes algo valioso que proponer.
 Si realmente no hay nada útil que decir en este momento, responde solo "OK".
 NO repitas pensamientos que ya existen. Sé CREATIVO y ÚTIL.
-Prioridad: cosas accionables > observaciones genéricas.`;
+Prioridad: fixes concretos > sugerencias con pasos > observaciones genéricas.`;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',

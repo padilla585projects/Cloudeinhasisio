@@ -782,34 +782,141 @@
     }
   }
 
-  // Cargar pensamientos proactivos pendientes
+  // Saludo de bienvenida al cargar
+  async function loadGreeting() {
+    try {
+      const res = await fetch('api/greeting');
+      const d = await res.json();
+      if (d.error && !d.saludo) return;
+
+      const container = document.getElementById('messages');
+      const card = document.createElement('div');
+      card.className = 'message ai';
+      card.id = 'jarvis-greeting';
+
+      const dias = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+      const now = new Date();
+      const fechaStr = `${dias[now.getDay()]} ${now.toLocaleDateString('es-ES')}`;
+
+      let html = `<div style="background:linear-gradient(135deg,#0d1520,#1a2340);border:1px solid var(--accent);border-radius:var(--radius);padding:16px 18px;">`;
+      html += `<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">`;
+      html += `<div style="width:8px;height:8px;border-radius:50%;background:var(--success);box-shadow:0 0 6px var(--success);flex-shrink:0;"></div>`;
+      html += `<span style="font-size:15px;font-weight:600;color:var(--accent)">${d.saludo}, Adrián.</span>`;
+      html += `<span style="font-size:11px;color:var(--text3);margin-left:auto;">${fechaStr}</span>`;
+      html += `</div>`;
+
+      // Lo que sé
+      html += `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">`;
+      if (d.totalEntities) html += `<span style="font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:20px;padding:3px 10px;color:var(--text2);">🏠 ${d.totalEntities} entidades</span>`;
+      if (d.memory) html += `<span style="font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:20px;padding:3px 10px;color:var(--text2);">🧠 ${d.memory} en memoria</span>`;
+      if (d.learnings) html += `<span style="font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:20px;padding:3px 10px;color:var(--text2);">📚 ${d.learnings} aprendizajes</span>`;
+      if (d.lightsOn) html += `<span style="font-size:12px;background:var(--bg3);border:1px solid #eab308;border-radius:20px;padding:3px 10px;color:#eab308;">💡 ${d.lightsOn} luces encendidas</span>`;
+      if (d.routines && d.routines.length) html += `<span style="font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:20px;padding:3px 10px;color:var(--text2);">🔄 ${d.routines.length} rutinas detectadas</span>`;
+      html += `</div>`;
+
+      // Problemas detectados
+      if (d.unavailable && d.unavailable.length > 0) {
+        html += `<div style="background:#1a0d0d;border:1px solid #7f1d1d;border-radius:8px;padding:10px 12px;margin-bottom:10px;">`;
+        html += `<div style="color:#f87171;font-size:12px;font-weight:600;margin-bottom:6px;">⚠️ Dispositivos no disponibles</div>`;
+        html += `<div style="font-size:12px;color:var(--text2);">${d.unavailable.join(', ')}</div>`;
+        html += `<button onclick="sendDirectMessage('Jarvis, revisa los dispositivos no disponibles y dime cómo arreglarlos')" style="margin-top:8px;font-size:11px;padding:4px 12px;border-radius:6px;border:1px solid #f87171;color:#f87171;background:transparent;cursor:pointer;">Arreglar ahora</button>`;
+        html += `</div>`;
+      }
+
+      if (d.automationsOff && d.automationsOff.length > 0) {
+        html += `<div style="background:#1a1200;border:1px solid #78350f;border-radius:8px;padding:8px 12px;margin-bottom:10px;">`;
+        html += `<div style="color:#fbbf24;font-size:12px;font-weight:600;margin-bottom:4px;">🔕 Automatizaciones desactivadas: ${d.automationsOff.join(', ')}</div>`;
+        html += `<button onclick="sendDirectMessage('Jarvis, ¿por qué están desactivadas estas automatizaciones? ¿Debo activarlas? ${d.automationsOff.join(', ')}')" style="font-size:11px;padding:4px 12px;border-radius:6px;border:1px solid #fbbf24;color:#fbbf24;background:transparent;cursor:pointer;">Revisar</button>`;
+        html += `</div>`;
+      }
+
+      // Pensamientos pendientes
+      if (d.pendingThoughts && d.pendingThoughts.length > 0) {
+        html += `<div style="margin-bottom:10px;">`;
+        html += `<div style="font-size:12px;color:var(--accent2);font-weight:600;margin-bottom:6px;">💭 Tengo ${d.pendingThoughts.length} propuesta${d.pendingThoughts.length>1?'s':''} esperando tu aprobación</div>`;
+        for (const t of d.pendingThoughts) {
+          const emoji = { suggestion:'💡', alert:'⚠️', action_request:'🎯', optimization:'⚡', creation:'🏗️' };
+          const prioColor = { low:'#6b7280', medium:'#eab308', high:'#f97316', critical:'#ef4444' };
+          html += `<div style="margin:5px 0;padding:10px;background:var(--bg);border-radius:8px;border-left:3px solid ${prioColor[t.priority]||'#6b7280'}">`;
+          html += `<div style="font-size:13px;font-weight:500;">${emoji[t.type]||'💭'} ${t.title}</div>`;
+          html += `<div style="font-size:12px;color:var(--text2);margin-top:4px;white-space:pre-wrap;">${t.detail}</div>`;
+          html += `<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">`;
+          html += `<button onclick="applyThought(${t.id},'${t.title.replace(/'/g,"\\'")}','${t.detail.replace(/'/g,"\\'").replace(/\n/g,' ')}')" style="font-size:11px;padding:4px 12px;border-radius:6px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-weight:600;">⚡ Aplicar</button>`;
+          html += `<button onclick="resolveThought(${t.id},'reject')" style="font-size:11px;padding:4px 12px;border-radius:6px;border:1px solid var(--error);color:var(--error);background:transparent;cursor:pointer;">✗ Descartar</button>`;
+          html += `</div></div>`;
+        }
+        html += `</div>`;
+      }
+
+      // Accesos rápidos
+      html += `<div style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px;display:flex;flex-wrap:wrap;gap:6px;">`;
+      html += `<button onclick="sendDirectMessage('Jarvis, revisa mi dashboard y dime qué está mal y cómo mejorarlo')" style="font-size:11px;padding:5px 12px;border-radius:20px;border:1px solid var(--accent2);color:var(--accent2);background:transparent;cursor:pointer;">🖥️ Revisar dashboard</button>`;
+      html += `<button onclick="sendDirectMessage('Jarvis, ¿qué has aprendido sobre mi casa? ¿Qué rutinas has detectado?')" style="font-size:11px;padding:5px 12px;border-radius:20px;border:1px solid var(--border);color:var(--text2);background:transparent;cursor:pointer;">🧠 Ver lo que sé</button>`;
+      html += `<button onclick="sendDirectMessage('Jarvis, escanea la instalación y dime si hay algo que mejorar')" style="font-size:11px;padding:5px 12px;border-radius:20px;border:1px solid var(--border);color:var(--text2);background:transparent;cursor:pointer;">🔍 Escanear todo</button>`;
+      html += `</div>`;
+      html += `</div>`;
+
+      card.innerHTML = html;
+      container.appendChild(card);
+      requestAnimationFrame(() => { container.scrollTop = container.scrollHeight; });
+    } catch (e) {
+      console.log('No se pudo cargar saludo:', e);
+    }
+  }
+
+  // Enviar mensaje directamente desde botones de la UI
+  window.sendDirectMessage = function(text) {
+    document.getElementById('input').value = text;
+    sendMessage();
+  };
+
+  // Aplicar un pensamiento proactivo
+  window.applyThought = async function(id, title, detail) {
+    try {
+      await fetch(`api/pending_thoughts/${id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'approve' })
+      });
+      const greeting = document.getElementById('jarvis-greeting');
+      if (greeting) greeting.remove();
+    } catch {}
+    sendDirectMessage(`Jarvis, quiero que apliques esta propuesta: "${title}". Detalles: ${detail}`);
+  };
+
+  // Cargar pensamientos proactivos pendientes (standalone, sin historial)
   async function loadPendingThoughts() {
+    // El saludo ya muestra los pensamientos — esta función queda como backup
+    // si el saludo no se ha mostrado (hay historial previo)
     try {
       const res = await fetch('api/pending_thoughts');
       const data = await res.json();
-      if (data.thoughts && data.thoughts.length > 0) {
-        const container = document.getElementById('messages');
-        const banner = document.createElement('div');
-        banner.className = 'message ai';
-        banner.id = 'thoughts-banner';
-        let html = '<div style="background:var(--tool-bg);border:1px solid #4a3f6b;border-radius:var(--radius);padding:12px 16px;">';
-        html += '<div style="color:var(--accent2);font-weight:500;margin-bottom:8px;">💭 Pensamientos pendientes de Jarvis</div>';
-        for (const t of data.thoughts) {
-          const emoji = { suggestion: '💡', alert: '⚠️', action_request: '🎯', optimization: '⚡', creation: '🏗️' };
-          const prioColor = { low: '#6b7280', medium: '#eab308', high: '#f97316', critical: '#ef4444' };
-          html += `<div style="margin:6px 0;padding:8px;background:var(--bg);border-radius:8px;border-left:3px solid ${prioColor[t.priority] || '#6b7280'}">`;
-          html += `<span>${emoji[t.type] || '💭'}</span> <strong>${t.title}</strong>`;
-          html += `<div style="font-size:12px;color:var(--text2);margin-top:4px;">${t.detail}</div>`;
-          html += `<div style="margin-top:6px;display:flex;gap:8px;">`;
-          html += `<button onclick="resolveThought(${t.id},'approve')" style="font-size:11px;padding:3px 10px;border-radius:6px;border:1px solid var(--success);color:var(--success);background:transparent;cursor:pointer;">✓ Aprobar</button>`;
-          html += `<button onclick="resolveThought(${t.id},'reject')" style="font-size:11px;padding:3px 10px;border-radius:6px;border:1px solid var(--error);color:var(--error);background:transparent;cursor:pointer;">✗ Rechazar</button>`;
-          html += `</div></div>`;
-        }
-        html += '</div>';
-        banner.innerHTML = html;
-        container.appendChild(banner);
-        requestAnimationFrame(() => { container.scrollTop = container.scrollHeight; });
+      if (!data.thoughts || data.thoughts.length === 0) return;
+
+      // Solo mostrar si NO ya hay un greeting
+      if (document.getElementById('jarvis-greeting')) return;
+
+      const container = document.getElementById('messages');
+      const banner = document.createElement('div');
+      banner.className = 'message ai';
+      banner.id = 'thoughts-banner';
+      const prioColor = { low:'#6b7280', medium:'#eab308', high:'#f97316', critical:'#ef4444' };
+      const emoji = { suggestion:'💡', alert:'⚠️', action_request:'🎯', optimization:'⚡', creation:'🏗️' };
+      let html = '<div style="background:var(--tool-bg);border:1px solid #4a3f6b;border-radius:var(--radius);padding:12px 16px;">';
+      html += '<div style="color:var(--accent2);font-weight:500;margin-bottom:8px;">💭 Jarvis tiene propuestas para ti</div>';
+      for (const t of data.thoughts) {
+        html += `<div style="margin:6px 0;padding:8px;background:var(--bg);border-radius:8px;border-left:3px solid ${prioColor[t.priority]||'#6b7280'}">`;
+        html += `<div style="font-size:13px;font-weight:500;">${emoji[t.type]||'💭'} ${t.title}</div>`;
+        html += `<div style="font-size:12px;color:var(--text2);margin-top:4px;">${t.detail}</div>`;
+        html += `<div style="margin-top:8px;display:flex;gap:8px;">`;
+        html += `<button onclick="applyThought(${t.id},'${t.title.replace(/'/g,"\\'")}','${t.detail.replace(/'/g,"\\'").replace(/\n/g,' ')}')" style="font-size:11px;padding:4px 12px;border-radius:6px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-weight:600;">⚡ Aplicar</button>`;
+        html += `<button onclick="resolveThought(${t.id},'reject')" style="font-size:11px;padding:4px 12px;border-radius:6px;border:1px solid var(--error);color:var(--error);background:transparent;cursor:pointer;">✗ Descartar</button>`;
+        html += `</div></div>`;
       }
+      html += '</div>';
+      banner.innerHTML = html;
+      container.appendChild(banner);
+      requestAnimationFrame(() => { container.scrollTop = container.scrollHeight; });
     } catch (e) {
       console.log('No se pudieron cargar pensamientos:', e);
     }
@@ -822,7 +929,6 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action })
       });
-      // Recargar banner
       const banner = document.getElementById('thoughts-banner');
       if (banner) banner.remove();
       loadPendingThoughts();
@@ -830,9 +936,18 @@
   };
 
   // Inicialización
-  loadHistory();
-  loadPendingThoughts();
-  document.getElementById('input').focus();
+  async function init() {
+    await loadHistory();
+    // Si no hay historial previo, mostrar saludo completo
+    if (conversationHistory.length === 0) {
+      await loadGreeting();
+    } else {
+      // Si hay historial, solo mostrar pensamientos pendientes
+      await loadPendingThoughts();
+    }
+    document.getElementById('input').focus();
+  }
+  init();
 
   // ── Jarvis 3D Holographic Face (Three.js) ─────────────────────────────────
   let jarvisState = 'idle'; // idle, thinking, speaking
