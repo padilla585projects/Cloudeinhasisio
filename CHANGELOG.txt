@@ -3,6 +3,20 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.14.4 (2026-05-11) — Notificaciones y Reparaciones de HA
+────────────────────────────────────────────────────────────────────────────────
+
+Nuevas tools:
+  - get_notifications: Lee notificaciones persistentes de HA (campana del panel).
+    Puede descartar notificaciones individuales con dismiss.
+  - get_repairs: Lee las reparaciones sugeridas por HA (Configuración → Reparaciones).
+    Muestra issues, severidad, sugerencias, estado de salud y soporte del sistema.
+
+Jarvis ahora puede leer y gestionar los avisos del sistema que HA genera
+automáticamente: actualizaciones pendientes, problemas de integraciones,
+configuraciones obsoletas, etc.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.14.3 (2026-05-11) — Edge TTS: voz natural con acento español
 ────────────────────────────────────────────────────────────────────────────────
 

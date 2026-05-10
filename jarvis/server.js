@@ -89,7 +89,7 @@ function findAgentByKey(apiKey) {
   return null;
 }
 
-const JARVIS_VERSION = '3.14.3';
+const JARVIS_VERSION = '3.14.4';
 
 const NETWORK_NORMS = {
   version: '2.0',
@@ -658,6 +658,26 @@ const tools = [
         lines: { type: 'number', description: 'Últimas N líneas (default: 100)' },
         filter: { type: 'string', description: 'Filtrar por texto (ej: "ERROR", "zigbee", nombre de integración)' }
       }
+    }
+  },
+
+  // ─── Notificaciones y Reparaciones ───
+  {
+    name: 'get_notifications',
+    description: 'Lee las notificaciones persistentes de HA (avisos del sistema, integraciones, actualizaciones). Son las que aparecen en la campana del panel lateral.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        dismiss: { type: 'string', description: 'ID de notificación a descartar (opcional). Si se pasa, descarta esa notificación.' }
+      }
+    }
+  },
+  {
+    name: 'get_repairs',
+    description: 'Lee las reparaciones sugeridas por HA (issues del sistema de resolución). Son los avisos tipo "Reparar" que aparecen en Configuración → Reparaciones. Incluye problemas detectados, sugerencias y su estado.',
+    input_schema: {
+      type: 'object',
+      properties: {}
     }
   },
 
@@ -1808,6 +1828,80 @@ async function executeTool(name, input) {
           filter: input.filter || null,
           logs: lines.join('\n')
         };
+      }
+
+      // ─── Notificaciones y Reparaciones ───
+      case 'get_notifications': {
+        try {
+          // Si piden descartar una notificación
+          if (input.dismiss) {
+            await haPost('/services/persistent_notification/dismiss', {
+              notification_id: input.dismiss
+            });
+            return { dismissed: input.dismiss, success: true };
+          }
+
+          // Obtener todas las notificaciones persistentes
+          const allStates = await haGet('/states');
+          const notifications = allStates
+            .filter(s => s.entity_id.startsWith('persistent_notification.'))
+            .map(s => ({
+              id: s.entity_id.replace('persistent_notification.', ''),
+              title: s.attributes.title || '(sin título)',
+              message: s.attributes.message || s.state,
+              created: s.last_changed,
+              notification_id: s.attributes.notification_id || s.entity_id.replace('persistent_notification.', '')
+            }));
+
+          return {
+            count: notifications.length,
+            notifications,
+            tip: notifications.length > 0
+              ? 'Usa get_notifications con dismiss:"ID" para descartar una notificación'
+              : 'No hay notificaciones pendientes'
+          };
+        } catch (e) {
+          return { error: e.message };
+        }
+      }
+
+      case 'get_repairs': {
+        try {
+          // API del Supervisor: /resolution/info
+          const resolution = await supervisorGet('/resolution/info');
+          const data = resolution.data || resolution;
+
+          const issues = (data.issues || []).map(issue => ({
+            uuid: issue.uuid,
+            type: issue.type,
+            context: issue.context,
+            reference: issue.reference,
+            severity: issue.severity || 'warning',
+            suggestions: (issue.suggestions || []).map(s => ({
+              uuid: s.uuid,
+              type: s.type,
+              context: s.context,
+              reference: s.reference
+            }))
+          }));
+
+          const unhealthy = data.unhealthy || [];
+          const unsupported = data.unsupported || [];
+
+          return {
+            issues_count: issues.length,
+            issues,
+            unhealthy_reasons: unhealthy,
+            unsupported_reasons: unsupported,
+            system_healthy: unhealthy.length === 0,
+            system_supported: unsupported.length === 0,
+            tip: issues.length > 0
+              ? 'Revisa cada issue y sugiere al usuario cómo resolver. Algunos se arreglan con call_service o reload_config.'
+              : 'No hay reparaciones pendientes — el sistema está limpio ✓'
+          };
+        } catch (e) {
+          return { error: e.message };
+        }
       }
 
       // ─── Voz / TTS ───
@@ -3346,8 +3440,12 @@ Tienes acceso a TODOS los logs del sistema:
 - get_system_logs(host) → logs del sistema operativo
 - get_system_logs(addon, slug) → logs de cualquier add-on
 - get_error_log() → home-assistant.log (errores de integraciones)
+- get_notifications() → notificaciones persistentes de HA (campana del panel)
+- get_repairs() → reparaciones sugeridas por HA (Configuración → Reparaciones)
 ÚSALOS para: diagnosticar problemas, ver errores recientes, entender qué pasa.
 Cuando algo falla → revisa los logs AUTOMÁTICAMENTE. No le digas al usuario "revisa los logs".
+Si el usuario pregunta por notificaciones o reparaciones → usa get_notifications y get_repairs.
+Puedes descartar notificaciones con get_notifications(dismiss:"ID").
 
 ═══ TELEGRAM ═══
 El usuario tiene un bot de Telegram configurado en HA. Puedes:
