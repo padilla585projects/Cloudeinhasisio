@@ -803,29 +803,159 @@ Tienes acceso TOTAL:
 /share/ → Compartido (rw) | /data/ → Mis datos (memoria, learnings)
 `;
 
+  // Contexto temporal — Jarvis sabe qué hora es y qué día
+  const now = new Date();
+  const dias = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+  const hora = now.getHours();
+  let momento = 'madrugada';
+  if (hora >= 7 && hora < 12) momento = 'mañana';
+  else if (hora >= 12 && hora < 15) momento = 'mediodía';
+  else if (hora >= 15 && hora < 20) momento = 'tarde';
+  else if (hora >= 20 && hora < 24) momento = 'noche';
+
+  prompt += `\n═══ CONTEXTO ACTUAL ═══\n`;
+  prompt += `Fecha: ${dias[now.getDay()]} ${now.toLocaleDateString('es-ES')} | Hora: ${now.toLocaleTimeString('es-ES', {hour:'2-digit',minute:'2-digit'})} (${momento})\n`;
+  prompt += `Interacciones en esta sesión: ${conversationHistory.length} mensajes\n`;
+  prompt += `Memoria: ${userMemory.length} notas | Learnings: ${learnings.length}\n\n`;
+
+  // Estado en tiempo real (se actualiza en cada request)
+  if (liveContext) {
+    prompt += `═══ ESTADO EN TIEMPO REAL ═══\n${liveContext}\n`;
+  }
+
   // Contexto de la casa
   if (houseContext) {
-    prompt += `\n═══ INSTALACIÓN ACTUAL ═══\n${houseContext}\n`;
+    prompt += `═══ INSTALACIÓN ═══\n${houseContext}\n`;
   }
 
   // Memoria del usuario
   if (userMemory.length > 0) {
-    prompt += `\n═══ MEMORIA DEL USUARIO (${userMemory.length} notas) ═══\n`;
+    prompt += `═══ MEMORIA DEL USUARIO ═══\n`;
     for (let i = 0; i < userMemory.length; i++) {
       prompt += `[${i}] (${userMemory[i].category}) ${userMemory[i].note}\n`;
     }
+    prompt += '\n';
   }
 
-  // Learnings recientes (últimos 20)
+  // Learnings — separados por tipo para que Jarvis los use mejor
   if (learnings.length > 0) {
-    const recent = learnings.slice(-20);
-    prompt += `\n═══ APRENDIZAJES RECIENTES (${learnings.length} total, mostrando últimos ${recent.length}) ═══\n`;
-    for (const l of recent) {
-      prompt += `[${l.type}] ${l.context}: ${l.lesson}${l.solution ? ' → ' + l.solution : ''}\n`;
+    const errors = learnings.filter(l => l.type === 'error').slice(-10);
+    const successes = learnings.filter(l => l.type === 'success').slice(-10);
+    const patterns = learnings.filter(l => l.type === 'pattern').slice(-10);
+    const optimizations = learnings.filter(l => l.type === 'optimization').slice(-5);
+
+    if (errors.length > 0) {
+      prompt += `═══ ERRORES CONOCIDOS (no repetir) ═══\n`;
+      for (const l of errors) prompt += `- ${l.context}: ${l.lesson}${l.solution ? ' → FIX: ' + l.solution : ''}\n`;
+      prompt += '\n';
+    }
+    if (successes.length > 0) {
+      prompt += `═══ LO QUE FUNCIONA ═══\n`;
+      for (const l of successes) prompt += `- ${l.context}: ${l.lesson}\n`;
+      prompt += '\n';
+    }
+    if (patterns.length > 0) {
+      prompt += `═══ PATRONES DETECTADOS ═══\n`;
+      for (const l of patterns) prompt += `- ${l.lesson}\n`;
+      prompt += '\n';
+    }
+    if (optimizations.length > 0) {
+      prompt += `═══ MEJORAS PENDIENTES ═══\n`;
+      for (const l of optimizations) prompt += `- ${l.lesson}\n`;
+      prompt += '\n';
     }
   }
 
+  // Instrucciones de razonamiento proactivo
+  prompt += `═══ RAZONAMIENTO PROACTIVO ═══
+Después de CADA interacción, piensa internamente:
+1. ¿He aprendido algo nuevo? → learn()
+2. ¿El usuario ha revelado una preferencia? → save_memory()
+3. ¿Hay algo que pueda mejorar en su instalación? → sugiérelo brevemente
+4. ¿Es de ${momento}? → adapta tu comportamiento (no sugiereas encender luces de día, no hagas ruido de noche)
+5. ¿He visto un patrón que podría automatizarse? → propón la automatización
+6. ¿Algo de lo que he hecho antes falló y ahora sé cómo arreglarlo? → arréglalo
+
+NO preguntes si quiere que hagas estas cosas. HAZLAS. Eres Jarvis.
+`;
+
   return prompt;
+}
+
+// ── Contexto en tiempo real (se inyecta en cada request) ─────────────────────
+
+let liveContext = '';
+
+async function updateLiveContext() {
+  try {
+    const states = await haGet('/states');
+    let ctx = '';
+
+    // Presencia: quién está en casa
+    const persons = states.filter(e => e.entity_id.startsWith('person.'));
+    if (persons.length > 0) {
+      ctx += 'PRESENCIA: ';
+      ctx += persons.map(p => `${p.attributes?.friendly_name || p.entity_id} → ${p.state}`).join(' | ');
+      ctx += '\n';
+    }
+
+    // Luces encendidas
+    const lightsOn = states.filter(e => e.entity_id.startsWith('light.') && e.state === 'on');
+    if (lightsOn.length > 0) {
+      ctx += `LUCES ENCENDIDAS (${lightsOn.length}): ${lightsOn.map(l => l.attributes?.friendly_name || l.entity_id).join(', ')}\n`;
+    } else {
+      ctx += 'LUCES: todas apagadas\n';
+    }
+
+    // Clima
+    const climates = states.filter(e => e.entity_id.startsWith('climate.'));
+    if (climates.length > 0) {
+      ctx += 'CLIMA: ' + climates.map(c =>
+        `${c.attributes?.friendly_name || c.entity_id}: ${c.state} ${c.attributes?.current_temperature ? c.attributes.current_temperature + '°C' : ''}`
+      ).join(' | ') + '\n';
+    }
+
+    // Sensores de temperatura
+    const tempSensors = states.filter(e =>
+      e.entity_id.startsWith('sensor.') &&
+      (e.attributes?.device_class === 'temperature' || e.attributes?.unit_of_measurement === '°C') &&
+      e.state !== 'unavailable' && e.state !== 'unknown'
+    );
+    if (tempSensors.length > 0) {
+      ctx += 'TEMPERATURAS: ' + tempSensors.slice(0, 10).map(s =>
+        `${s.attributes?.friendly_name || s.entity_id}: ${s.state}°C`
+      ).join(' | ') + '\n';
+    }
+
+    // Media players activos
+    const mediaOn = states.filter(e => e.entity_id.startsWith('media_player.') && e.state === 'playing');
+    if (mediaOn.length > 0) {
+      ctx += 'REPRODUCIENDO: ' + mediaOn.map(m =>
+        `${m.attributes?.friendly_name}: ${m.attributes?.media_title || m.state}`
+      ).join(' | ') + '\n';
+    }
+
+    // Alertas: dispositivos no disponibles
+    const unavailable = states.filter(e =>
+      e.state === 'unavailable' &&
+      !e.entity_id.startsWith('automation.') &&
+      !e.entity_id.startsWith('update.')
+    );
+    if (unavailable.length > 0 && unavailable.length < 20) {
+      ctx += `⚠️ NO DISPONIBLES (${unavailable.length}): ${unavailable.slice(0, 10).map(e => e.attributes?.friendly_name || e.entity_id).join(', ')}\n`;
+    }
+
+    // Switches encendidos
+    const switchesOn = states.filter(e => e.entity_id.startsWith('switch.') && e.state === 'on');
+    if (switchesOn.length > 0) {
+      ctx += `SWITCHES ON (${switchesOn.length}): ${switchesOn.map(s => s.attributes?.friendly_name || s.entity_id).join(', ')}\n`;
+    }
+
+    liveContext = ctx;
+    console.log(`[live] Contexto actualizado: ${persons.length} personas, ${lightsOn.length} luces on, ${unavailable.length} no disponibles`);
+  } catch (err) {
+    console.log(`[live] Error: ${err.message}`);
+  }
 }
 
 // ── Endpoints ────────────────────────────────────────────────────────────────
@@ -855,6 +985,9 @@ app.post('/api/chat', async (req, res) => {
   const sendEvent = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
 
   try {
+    // Actualizar contexto en tiempo real antes de cada request
+    await updateLiveContext();
+
     const lastMsg = messages[messages.length - 1];
     if (lastMsg && lastMsg.role === 'user') {
       conversationHistory.push(lastMsg);
@@ -948,7 +1081,7 @@ app.get('/api/health', (req, res) => {
 
 const PORT = 3000;
 app.listen(PORT, '0.0.0.0', async () => {
-  console.log(`Jarvis AI Agent v2.0.1 corriendo en puerto ${PORT}`);
+  console.log(`Jarvis AI Agent v2.3.0 corriendo en puerto ${PORT}`);
   console.log(`Modelo: ${MODEL} | Config: ${HA_CONFIG} | Data: ${DATA_DIR}`);
 
   // Scan inicial si no hay contexto o tiene más de 2 horas
@@ -962,4 +1095,8 @@ app.listen(PORT, '0.0.0.0', async () => {
   if (needsScan) {
     await scanInstallation();
   }
+
+  // Contexto en tiempo real — actualizar al arrancar y cada 60s
+  await updateLiveContext();
+  setInterval(updateLiveContext, 60_000);
 });

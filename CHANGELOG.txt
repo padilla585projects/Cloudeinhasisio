@@ -1,6 +1,38 @@
 ================================================================================
-CHANGELOG - Claude AI Chat Add-on para Home Assistant
+CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+v2.3.0 (2026-05-10) — CONTEXTO EN TIEMPO REAL + INTELIGENCIA SITUACIONAL
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — ESTADO EN TIEMPO REAL:
+- updateLiveContext() se ejecuta antes de cada request al chat
+- Se actualiza periódicamente cada 60 segundos en background
+- Jarvis sabe EN TODO MOMENTO: quién está en casa, qué luces están
+  encendidas, estado del clima, temperaturas, media reproduciéndose,
+  dispositivos no disponibles, switches activos
+- Inyección directa en el system prompt → Jarvis ya no necesita llamar
+  tools para saber el estado básico de la casa
+- Reducción de latencia: menos tool calls = respuestas más rápidas
+- Base para futuro modo proactivo (alertas automáticas, sugerencias)
+
+────────────────────────────────────────────────────────────────────────────────
+v2.2.0 (2026-05-10) — PERSONALIDAD JARVIS + SCAN INSTALACIÓN
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — IDENTIDAD JARVIS:
+- System prompt completamente reescrito: autonomía, personalidad, eficiencia
+- Razonamiento proactivo: aprende, memoriza y sugiere sin preguntar
+- Contexto temporal: sabe qué hora es y adapta comportamiento
+- Learnings separados por tipo en el prompt (errores, éxitos, patrones)
+
+NUEVO — SCAN DE INSTALACIÓN:
+- scan_installation: escanea toda la instalación (entidades, integraciones,
+  add-ons, archivos config, info sistema)
+- Mapa de instalación persistente en /data/installation_map.json
+- Auto-scan al arrancar si no hay contexto o tiene más de 2h
+- Resumen textual inyectado en el system prompt
 
 ────────────────────────────────────────────────────────────────────────────────
 v2.0.0 (2026-05-10) — AGENTE IA COMPLETO
