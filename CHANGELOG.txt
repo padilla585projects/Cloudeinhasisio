@@ -3,6 +3,23 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.10.5 (2026-05-10) — JARVIS AVISA SOLO CUANDO ENCUENTRA AGENTES
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — bootAgentScan():
+- 30s después de arrancar, Jarvis escanea la red local automáticamente
+- Si encuentra agentes IA (Ollama, LM Studio, etc.) te lo dice en el chat
+- Si no encuentra nada, también te lo dice (sin spamear)
+- Los resultados se procesan como pensamiento proactivo prioritario
+
+NUEVO — Detección de cambios en la red del gateway:
+- Cuando un agente nuevo entra o sale de la red del gateway, Jarvis te avisa
+- Compara el set de agentes conocidos entre sync y sync
+
+ARREGLO — Log de gateway "sin secret":
+- Ya no spamea el log cada 60s — aparece solo una vez al arranque
+
+────────────────────────────────────────────────────────────────────────────────
 v3.10.4 (2026-05-10) — LOGGING DE AGENTES Y GATEWAY
 ────────────────────────────────────────────────────────────────────────────────
 

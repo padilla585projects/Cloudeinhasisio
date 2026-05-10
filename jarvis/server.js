@@ -67,6 +67,8 @@ const GATEWAY_URL = 'https://agentgateway-whmktpinla-ey.a.run.app';
 const GATEWAY_ID = 'ha_agent';
 const GATEWAY_FILE = path.join(DATA_DIR, 'gateway.json');
 let gatewayState = loadJSON(GATEWAY_FILE, { secret: null, knownAgents: {}, pendingMessages: [] });
+let gatewayNoSecretLogged = false;
+let lastKnownAgentSet = new Set(Object.keys(gatewayState.knownAgents || {}));
 
 try {
   if (fs.existsSync(HOUSE_CONTEXT_FILE)) {
@@ -3756,7 +3758,7 @@ app.post('/api/chat', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '3.10.4',
+    version: '3.10.5',
     model: MODEL,
     memories: userMemory.length,
     learnings: learnings.length,
@@ -3843,7 +3845,7 @@ app.post('/api/pending_thoughts/:id', (req, res) => {
 
 const PORT = 3000;
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Jarvis AI Agent v3.10.4 corriendo en puerto ${PORT}`);
+  console.log(`Jarvis AI Agent v3.10.5 corriendo en puerto ${PORT}`);
   console.log(`Modelo: ${MODEL} | Config: ${HA_CONFIG} | Data: ${DATA_DIR}`);
   console.log(`API Key: ${ANTHROPIC_API_KEY ? 'configurada (' + ANTHROPIC_API_KEY.slice(0, 10) + '...)' : '⚠️ NO CONFIGURADA'}`);
   console.log(`HA Token: ${HA_TOKEN ? 'presente' : '⚠️ NO DISPONIBLE'}`);
@@ -3928,6 +3930,9 @@ app.listen(PORT, '0.0.0.0', () => {
   // Gateway sync — cada 60 segundos
   setInterval(gatewaySyncLoop, 60_000);
   setTimeout(gatewaySyncLoop, 15_000); // Primera sync a los 15s
+
+  // Escaneo de agentes IA locales al arranque
+  setTimeout(bootAgentScan, 30_000); // 30s tras el arranque
 });
 
 // ── Pensamiento proactivo en background ─────────────────────────────────────
@@ -4527,7 +4532,10 @@ Responde SOLO con un JSON array de strings (las reglas). Máx 20 reglas. Solo la
 
 async function gatewaySyncLoop() {
   if (!gatewayState.secret) {
-    console.log('[gateway] Sin secret — no registrado. Usa agent_gateway→register para unirte a la red.');
+    if (!gatewayNoSecretLogged) {
+      console.log('[gateway] Sin secret — no registrado en la red de agentes IA.');
+      gatewayNoSecretLogged = true;
+    }
     return;
   }
   try {
@@ -4557,6 +4565,23 @@ async function gatewaySyncLoop() {
     if (data.shared_context) gatewayState.sharedContext = data.shared_context;
     saveJSON(GATEWAY_FILE, gatewayState);
 
+    // Detectar agentes nuevos y notificar proactivamente
+    const currentAgentSet = new Set(Object.keys(gatewayState.knownAgents || {}));
+    const newAgents = [...currentAgentSet].filter(a => !lastKnownAgentSet.has(a));
+    const lostAgents = [...lastKnownAgentSet].filter(a => !currentAgentSet.has(a));
+    lastKnownAgentSet = currentAgentSet;
+    if (newAgents.length > 0 || lostAgents.length > 0) {
+      const thoughtsFile = path.join(DATA_DIR, 'pending_thoughts.json');
+      let thoughts = loadJSON(thoughtsFile, []);
+      const lines = [];
+      if (newAgents.length > 0) lines.push(`Nuevos agentes IA detectados en la red del gateway: ${newAgents.join(', ')}.`);
+      if (lostAgents.length > 0) lines.push(`Agentes que han desaparecido de la red: ${lostAgents.join(', ')}.`);
+      lines.push(`Red actual: ${[...currentAgentSet].join(', ') || '(vacía)'}. Informa al usuario brevemente.`);
+      thoughts.push({ id: Date.now(), type: 'gateway_agents_changed', priority: 'medium', status: 'pending', title: 'Cambio en la red de agentes IA', detail: lines.join(' '), created: new Date().toISOString() });
+      if (thoughts.length > 50) thoughts = thoughts.slice(-50);
+      saveJSON(thoughtsFile, thoughts);
+    }
+
     // Si hay mensajes pendientes, crear pensamiento proactivo
     if (data.pending_messages && data.pending_messages.length > 0) {
       console.log(`[gateway] ${data.pending_messages.length} mensajes de otros agentes recibidos`);
@@ -4576,6 +4601,67 @@ async function gatewaySyncLoop() {
     }
   } catch (e) {
     console.log(`[gateway] No disponible: ${e.message}`);
+  }
+}
+
+// ── Escaneo de agentes IA al arranque ────────────────────────────────────────
+
+async function bootAgentScan() {
+  const AGENT_SIGS = [
+    { name: 'Ollama', port: 11434, path: '/api/tags', type: 'ollama' },
+    { name: 'LM Studio', port: 1234, path: '/v1/models', type: 'openai_compatible' },
+    { name: 'LocalAI', port: 8080, path: '/v1/models', type: 'openai_compatible' },
+    { name: 'Text Gen WebUI', port: 5000, path: '/v1/models', type: 'openai_compatible' },
+    { name: 'AnythingLLM', port: 3001, path: '/api/ping', type: 'custom' },
+    { name: 'Open WebUI', port: 8080, path: '/api/version', type: 'custom' },
+    { name: 'Jarvis', port: 3000, path: '/api/health', type: 'jarvis' },
+  ];
+  try {
+    console.log('[boot-scan] Buscando agentes IA en la red local...');
+    const arpHosts = await new Promise(r => {
+      exec('arp -n 2>/dev/null || ip neigh show 2>/dev/null', (err, out) => {
+        const ips = (out || '').trim().split('\n').map(l => l.split(/\s+/)[0]).filter(ip => /^\d+\.\d+\.\d+\.\d+$/.test(ip));
+        r([...new Set(ips)]);
+      });
+    });
+    console.log(`[boot-scan] ${arpHosts.length} hosts en la red: ${arpHosts.join(', ') || '(ninguno)'}`);
+    const found = [];
+    for (const h of arpHosts) {
+      for (const sig of AGENT_SIGS) {
+        try {
+          const res = await fetch(`http://${h}:${sig.port}${sig.path}`, { timeout: 2000 });
+          if (res.ok) {
+            const info = await res.json().catch(() => ({}));
+            found.push({ name: sig.name, host: h, port: sig.port, type: sig.type, url: `http://${h}:${sig.port}`, info });
+            console.log(`[boot-scan] ✓ ${sig.name} en ${h}:${sig.port}`);
+          }
+        } catch { /* no disponible */ }
+      }
+    }
+    console.log(`[boot-scan] Resultado: ${found.length} agente(s) IA encontrado(s) en la red local`);
+
+    const thoughtsFile = path.join(DATA_DIR, 'pending_thoughts.json');
+    let thoughts = loadJSON(thoughtsFile, []);
+    if (found.length > 0) {
+      const lista = found.map(a => `${a.name} en ${a.url}`).join(', ');
+      thoughts.push({
+        id: Date.now(), type: 'boot_agents_found', priority: 'high', status: 'pending',
+        title: `${found.length} agente(s) IA detectado(s) en la red`,
+        detail: `He escaneado la red al arrancar y he encontrado ${found.length} agente(s) IA: ${lista}. Díselo al usuario de forma concisa y ofrécele interactuar con ellos si lo desea.`,
+        created: new Date().toISOString()
+      });
+    } else {
+      thoughts.push({
+        id: Date.now(), type: 'boot_agents_none', priority: 'low', status: 'pending',
+        title: 'Sin agentes IA en la red local',
+        detail: `He escaneado la red al arrancar (${arpHosts.length} hosts) y no he encontrado ningún agente IA local (Ollama, LM Studio, etc.). Díselo al usuario en una línea si pregunta.`,
+        created: new Date().toISOString()
+      });
+    }
+    if (thoughts.length > 50) thoughts = thoughts.slice(-50);
+    saveJSON(thoughtsFile, thoughts);
+  } catch (e) {
+    console.log(`[boot-scan] Error: ${e.message}`);
   }
 }
 
