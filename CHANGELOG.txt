@@ -3,6 +3,27 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.10.2 (2026-05-10) — AUTOREPARACIÓN: Jarvis detecta sus errores y se repara solo
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — bootSelfCheck() + autoRepair():
+- Al arrancar, Jarvis lee sus propios logs via /addons/jarvis_ai_agent/logs
+- Si detecta SyntaxError, TypeError, reinicios en bucle u otros errores:
+  1. Espera 30s para que el sistema se estabilice
+  2. Llama a Claude (Haiku) con el log + su propio código fuente
+  3. Claude analiza el error y devuelve un patch mínimo (errorLine → fixedLine)
+  4. Si confianza es high/medium y el fragmento existe en el código: aplica el fix
+  5. Escribe el server.js corregido y se reinicia solo con la API del supervisor
+  6. Si la confianza es baja: crea un pensamiento crítico para que el usuario lo revise
+- Aprende de cada reparación: registra causa + solución en learnings.json
+
+NUEVO — Sección AUTOREPARACIÓN en el system prompt:
+- Jarvis sabe explícitamente cómo repararse: get_system_logs → read_file →
+  localizar error → write_file con fix → ha_supervisor restart_addon → verificar
+- No pide permiso. En una emergencia de boot, actúa y luego informa.
+- Conoce los errores de sintaxis más comunes en Node.js
+
+────────────────────────────────────────────────────────────────────────────────
 v3.10.1 (2026-05-10) — BUGFIX: sintaxis server.js + quitar bola flotante
 ────────────────────────────────────────────────────────────────────────────────
 

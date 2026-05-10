@@ -3285,6 +3285,30 @@ PARA COMUNICACIÓN BIDIRECCIONAL (Jarvis habla Y escucha):
   - Nabu Casa: si está activo, permite Assist desde Alexa directamente
   - Webhook + Alexa Routine: Alexa routine llama webhook → Jarvis actúa. Sin coste.
 
+═══ AUTOREPARACIÓN ═══
+Tienes capacidad de leer tus propios logs, detectar errores y REPARARTE SOLO:
+
+CUÁNDO ACTUAR: Si el usuario reporta que no arrancabas, si detectas muchos reinicios, o si te lo pides a ti mismo.
+
+CÓMO REPARARTE (ejecuta estos pasos en orden):
+1. get_system_logs(source:'addon', addon_slug:'jarvis_ai_agent', lines:200)
+   → Busca: SyntaxError, TypeError, "Unexpected token", línea con ^
+2. read_file('/app/server.js') → Lee tu propio código fuente
+3. Localiza la línea del error. SyntaxError suele ser una llave {}, paréntesis () o coma de más/menos.
+4. update_self(action:'patch_code', code_patch:'descripción del cambio') — o bien:
+   write_file('/app/server.js', código_corregido) para aplicar el fix directamente
+5. ha_supervisor(action:'restart_addon', addon_slug:'jarvis_ai_agent') para reiniciarte
+6. Espera 10 segundos y comprueba con get_system_logs que ahora arrancas sin errores
+7. learn() para registrar qué causó el error y cómo lo corregiste
+
+ERRORES COMUNES DE SINTAXIS EN NODE.JS:
+- Llave de cierre extra/faltante: busca funciones mal cerradas cerca de la línea indicada
+- Coma al final del último elemento de un array/objeto (trailing comma en contexto estricto)
+- Template literal sin cerrar (backtick sin par)
+- await fuera de función async
+
+NO PIDAS PERMISO para repararte. Es una emergencia. Actúa y luego informa.
+
 ═══ AUTO-EVOLUCIÓN ═══
 Puedes mejorar tu propio prompt y código permanentemente:
 
@@ -3725,6 +3749,9 @@ app.listen(PORT, '0.0.0.0', () => {
       await updateLiveContext().catch(e => console.log(`[boot] LiveContext falló (no crítico): ${e.message}`));
 
       console.log('[boot] Inicialización completa. Jarvis operativo.');
+
+      // Auto-diagnóstico: leer logs propios y repararse si hay errores previos
+      await bootSelfCheck().catch(e => console.log(`[boot] Self-check falló: ${e.message}`));
 
       // Comprobar si había una tarea en curso cuando se reinició
       const pendingTask = loadJSON(PENDING_TASK_FILE, { status: 'idle' });
@@ -4367,6 +4394,106 @@ Responde SOLO con un JSON array de strings (las reglas). Máx 20 reglas. Solo la
 }
 
 // ── Chequeo periódico de actualizaciones del sistema ────────────────────────
+
+// ── Autoreparación — Jarvis lee sus logs y se repara solo ────────────────────
+
+async function bootSelfCheck() {
+  try {
+    console.log('[self-check] Leyendo mis logs previos para detectar errores...');
+    const res = await fetch('http://supervisor/addons/jarvis_ai_agent/logs', {
+      headers: { Authorization: `Bearer ${HA_TOKEN}` }
+    });
+    if (!res.ok) { console.log(`[self-check] Logs no disponibles (${res.status})`); return; }
+    const logs = await res.text();
+
+    const hasErrors = /SyntaxError|TypeError|ReferenceError|Cannot find module|^\^$/m.test(logs);
+    const bootCount = (logs.match(/Iniciando Jarvis AI Agent/g) || []).length;
+
+    if (!hasErrors && bootCount < 3) {
+      console.log('[self-check] Sin errores críticos detectados. OK.');
+      return;
+    }
+
+    console.log(`[self-check] ⚠️ ${bootCount} reinicios detectados, errores en logs. Autoreparación en 30s...`);
+
+    saveJSON(path.join(DATA_DIR, 'self_repair_needed.json'), {
+      detectedAt: new Date().toISOString(), bootCount, hasErrors,
+      logSnippet: logs.slice(-3000), status: 'pending'
+    });
+
+    setTimeout(() => autoRepair(logs), 30_000);
+  } catch (e) {
+    console.log(`[self-check] Error: ${e.message}`);
+  }
+}
+
+async function autoRepair(logs) {
+  if (!ANTHROPIC_API_KEY) return;
+  console.log('[self-repair] Iniciando autoreparación automática...');
+  try {
+    let ownCode = '';
+    try { ownCode = fs.readFileSync('/app/server.js', 'utf8'); } catch {}
+
+    const repairPrompt = `Soy Jarvis. Mi servidor Node.js tiene un error que me impide arrancar. Analiza el log y el código y dame el fix.
+
+LOG DE ERROR (últimas líneas):
+${logs.slice(-2500)}
+
+${ownCode ? `MI CÓDIGO (server.js, inicio y final):\n${ownCode.slice(0, 1500)}\n[...]\n${ownCode.slice(-2000)}` : ''}
+
+Responde ÚNICAMENTE con este JSON (sin texto extra):
+{
+  "analysis": "descripción del error",
+  "errorLine": "el texto exacto a buscar y reemplazar en server.js",
+  "fixedLine": "el texto corregido que lo reemplaza",
+  "confidence": "high|medium|low"
+}`;
+
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: BG_MODEL, max_tokens: 1024, messages: [{ role: 'user', content: repairPrompt }] })
+    });
+    if (!resp.ok) { console.log(`[self-repair] API error: ${resp.status}`); return; }
+
+    const d = await resp.json();
+    const text = d.content?.[0]?.text || '';
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) { console.log('[self-repair] No pude parsear respuesta:', text.slice(0, 200)); return; }
+
+    const fix = JSON.parse(match[0]);
+    console.log(`[self-repair] Análisis: ${fix.analysis} (confianza: ${fix.confidence})`);
+
+    if (fix.confidence !== 'low' && fix.errorLine && fix.fixedLine && ownCode && ownCode.includes(fix.errorLine)) {
+      const fixed = ownCode.replace(fix.errorLine, fix.fixedLine);
+      fs.writeFileSync('/app/server.js', fixed, 'utf8');
+      console.log('[self-repair] ✅ Patch aplicado. Reiniciando en 3s...');
+
+      learnings.push({ type: 'self_repair', context: 'Autoreparación de boot', lesson: fix.analysis, solution: fix.errorLine + ' → ' + fix.fixedLine, learnedAt: new Date().toISOString() });
+      saveJSON(LEARNINGS_FILE, learnings);
+      saveJSON(path.join(DATA_DIR, 'self_repair_needed.json'), { repairedAt: new Date().toISOString(), analysis: fix.analysis, status: 'repaired' });
+
+      setTimeout(async () => {
+        await fetch('http://supervisor/addons/jarvis_ai_agent/restart', {
+          method: 'POST', headers: { Authorization: `Bearer ${HA_TOKEN}` }
+        }).catch(e => console.log('[self-repair] Reinicio:', e.message));
+      }, 3000);
+    } else {
+      console.log('[self-repair] Confianza baja o fragmento no encontrado — creando pensamiento para revisión.');
+      const thoughtsFile = path.join(DATA_DIR, 'pending_thoughts.json');
+      let thoughts = loadJSON(thoughtsFile, []).filter(t => t.type !== 'self_repair');
+      thoughts.push({
+        id: Date.now(), type: 'self_repair', priority: 'critical', status: 'pending',
+        title: 'Detecté errores en mis logs — necesito revisarme',
+        detail: `He detectado errores al arrancar pero no pude autorrepararme automáticamente.\n\nAnálisis: ${fix.analysis}\n\nLog:\n${logs.slice(-1500)}\n\nUSA: get_system_logs → read_file /app/server.js → update_self patch_code → ha_supervisor restart_addon`,
+        created: new Date().toISOString()
+      });
+      saveJSON(thoughtsFile, thoughts);
+    }
+  } catch (e) {
+    console.log(`[self-repair] Error: ${e.message}`);
+  }
+}
 
 async function checkSystemUpdates() {
   try {
