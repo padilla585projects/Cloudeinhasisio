@@ -3,6 +3,29 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v2.4.0 (2026-05-10) — GESTIÓN DE DASHBOARDS + CONOCIMIENTO ECOSISTEMA HA
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — DASHBOARDS / LOVELACE:
+- get_dashboards: Lista todos los paneles/dashboards configurados
+- get_dashboard_config: Lee la configuración completa (vistas, cards, layout)
+- update_dashboard: Modifica dashboards con backup automático previo
+- get_installed_frontend: Detecta cards custom, HACS frontend, temas instalados
+- search_hacs_resources: Busca cards/integraciones disponibles en la comunidad
+
+NUEVO — CONOCIMIENTO DE HERRAMIENTAS HA:
+- System prompt incluye catálogo de cards nativas y populares (Mushroom, button-card,
+  mini-graph-card, apexcharts, etc.)
+- Buenas prácticas de diseño de dashboards inyectadas
+- Protocolo: analizar → detectar cards disponibles → sugerir → aplicar
+- Soporte para imágenes en /config/www/
+- Jarvis sabe qué herramientas existen y para qué sirven
+
+MEJORA — BACKUPS:
+- Antes de modificar un dashboard se guarda backup en /data/backups/
+- Historial de cambios de dashboards
+
+────────────────────────────────────────────────────────────────────────────────
 v2.3.0 (2026-05-10) — CONTEXTO EN TIEMPO REAL + INTELIGENCIA SITUACIONAL
 ────────────────────────────────────────────────────────────────────────────────
 

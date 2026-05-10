@@ -1,6 +1,6 @@
 name: "Jarvis AI Agent"
 description: "Jarvis — Tu agente IA privado para Home Assistant. Controla tu casa, crea automatizaciones, edita configuración, busca en internet y aprende con cada uso."
-version: "2.3.1"
+version: "2.4.0"
 slug: "jarvis_ai_agent"
 init: false
 arch:

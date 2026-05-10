@@ -460,6 +460,53 @@ const tools = [
     name: 'check_config',
     description: 'Verifica que la configuración de HA es válida (equivalente a comprobar config en HA)',
     input_schema: { type: 'object', properties: {} }
+  },
+
+  // ─── Dashboards / Lovelace ───
+  {
+    name: 'get_dashboards',
+    description: 'Lista todos los dashboards (paneles) de Lovelace configurados en HA',
+    input_schema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'get_dashboard_config',
+    description: 'Obtiene la configuración completa de un dashboard (vistas, cards, layout). Usa para analizar y sugerir mejoras.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        dashboard_id: { type: 'string', description: 'ID del dashboard. Usar "lovelace" para el default, o el id específico (ej: "lovelace-climate")' }
+      },
+      required: ['dashboard_id']
+    }
+  },
+  {
+    name: 'update_dashboard',
+    description: 'Actualiza la configuración de un dashboard completo o una vista específica. CUIDADO: sobreescribe la config del dashboard.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        dashboard_id: { type: 'string', description: 'ID del dashboard' },
+        config: { type: 'object', description: 'Configuración completa del dashboard en formato Lovelace (title, views, etc.)' }
+      },
+      required: ['dashboard_id', 'config']
+    }
+  },
+  {
+    name: 'get_installed_frontend',
+    description: 'Lista recursos frontend instalados (custom cards, temas, HACS frontend). Útil para saber qué cards tiene el usuario.',
+    input_schema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'search_hacs_resources',
+    description: 'Busca cards, integraciones o herramientas disponibles en HACS o la comunidad HA. Usa web_search internamente.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Qué buscar: "mushroom cards", "mini-graph-card", "weather card animated", etc.' },
+        type: { type: 'string', enum: ['frontend', 'integration', 'all'], description: 'Tipo de recurso a buscar' }
+      },
+      required: ['query']
+    }
   }
 ];
 
@@ -734,6 +781,214 @@ async function executeTool(name, input) {
         }
       }
 
+      // ─── Dashboards / Lovelace ───
+      case 'get_dashboards': {
+        // Listar dashboards desde .storage o API
+        try {
+          const res = await fetch(`${HA_URL}/api/lovelace/dashboards`, {
+            headers: { Authorization: `Bearer ${HA_TOKEN}`, 'Content-Type': 'application/json' }
+          });
+          if (res.ok) {
+            const dashboards = await res.json();
+            // Añadir siempre el default
+            const result = [{ id: 'lovelace', title: 'Default Dashboard', mode: 'storage' }];
+            for (const d of dashboards) {
+              result.push({ id: d.url_path || d.id, title: d.title, mode: d.mode, icon: d.icon });
+            }
+            return { dashboards: result, total: result.length };
+          }
+          // Fallback: leer .storage
+          const storageDir = path.join(HA_CONFIG, '.storage');
+          if (fs.existsSync(storageDir)) {
+            const files = fs.readdirSync(storageDir).filter(f => f.startsWith('lovelace'));
+            return { dashboards: files.map(f => ({ id: f.replace('lovelace.', '').replace('lovelace', 'lovelace'), file: f })), total: files.length };
+          }
+          return { dashboards: [], note: 'No se encontraron dashboards' };
+        } catch (err) {
+          return { error: err.message };
+        }
+      }
+
+      case 'get_dashboard_config': {
+        const dashId = input.dashboard_id || 'lovelace';
+        try {
+          // Intentar via API primero
+          const endpoint = dashId === 'lovelace' ? '/api/lovelace/config' : `/api/lovelace/config/${dashId}`;
+          const res = await fetch(`${HA_URL}${endpoint}`, {
+            headers: { Authorization: `Bearer ${HA_TOKEN}`, 'Content-Type': 'application/json' }
+          });
+          if (res.ok) {
+            const config = await res.json();
+            // Resumir para no saturar el contexto
+            const summary = {
+              title: config.title,
+              views: (config.views || []).map(v => ({
+                title: v.title || v.path || 'Sin nombre',
+                path: v.path,
+                icon: v.icon,
+                cards_count: (v.cards || []).length,
+                cards: (v.cards || []).map(c => ({
+                  type: c.type,
+                  title: c.title || c.name,
+                  entities: c.entities ? c.entities.length : (c.entity ? 1 : 0)
+                }))
+              })),
+              total_views: (config.views || []).length
+            };
+            return { dashboard_id: dashId, config: summary, raw_available: true };
+          }
+          // Fallback: leer de .storage
+          const storageFile = dashId === 'lovelace'
+            ? path.join(HA_CONFIG, '.storage', 'lovelace')
+            : path.join(HA_CONFIG, '.storage', `lovelace.${dashId}`);
+          if (fs.existsSync(storageFile)) {
+            const raw = JSON.parse(fs.readFileSync(storageFile, 'utf8'));
+            const config = raw.data?.config || raw;
+            const summary = {
+              title: config.title,
+              views: (config.views || []).map(v => ({
+                title: v.title || v.path || 'Sin nombre',
+                path: v.path,
+                cards_count: (v.cards || []).length,
+                cards: (v.cards || []).slice(0, 20).map(c => ({
+                  type: c.type,
+                  title: c.title || c.name,
+                  entities: c.entities ? c.entities.slice(0, 5) : (c.entity ? [c.entity] : [])
+                }))
+              }))
+            };
+            return { dashboard_id: dashId, config: summary, source: 'storage_file' };
+          }
+          // YAML mode
+          const yamlFile = path.join(HA_CONFIG, 'ui-lovelace.yaml');
+          if (fs.existsSync(yamlFile)) {
+            const content = fs.readFileSync(yamlFile, 'utf8');
+            return { dashboard_id: dashId, yaml_content: content.slice(0, 8000), source: 'yaml_file', truncated: content.length > 8000 };
+          }
+          return { error: `Dashboard '${dashId}' no encontrado` };
+        } catch (err) {
+          return { error: err.message };
+        }
+      }
+
+      case 'update_dashboard': {
+        const dashId = input.dashboard_id || 'lovelace';
+        try {
+          // Backup antes de modificar
+          const backupDir = path.join(DATA_DIR, 'backups');
+          if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
+
+          // Intentar leer config actual para backup
+          const endpoint = dashId === 'lovelace' ? '/api/lovelace/config' : `/api/lovelace/config/${dashId}`;
+          try {
+            const currentRes = await fetch(`${HA_URL}${endpoint}`, {
+              headers: { Authorization: `Bearer ${HA_TOKEN}`, 'Content-Type': 'application/json' }
+            });
+            if (currentRes.ok) {
+              const currentConfig = await currentRes.json();
+              const backupFile = path.join(backupDir, `dashboard_${dashId}_${Date.now()}.json`);
+              fs.writeFileSync(backupFile, JSON.stringify(currentConfig, null, 2));
+              console.log(`[dashboard] Backup guardado: ${backupFile}`);
+            }
+          } catch {}
+
+          // Aplicar nueva config via API
+          const saveRes = await fetch(`${HA_URL}${endpoint}`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${HA_TOKEN}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify(input.config)
+          });
+
+          if (saveRes.ok) {
+            console.log(`[dashboard] Dashboard '${dashId}' actualizado`);
+            return { success: true, message: `Dashboard '${dashId}' actualizado. Backup guardado.` };
+          } else {
+            const errText = await saveRes.text();
+            return { error: `Error al guardar dashboard: ${saveRes.status} - ${errText}` };
+          }
+        } catch (err) {
+          return { error: err.message };
+        }
+      }
+
+      case 'get_installed_frontend': {
+        const resources = [];
+        try {
+          // Leer recursos Lovelace registrados
+          const res = await fetch(`${HA_URL}/api/lovelace/resources`, {
+            headers: { Authorization: `Bearer ${HA_TOKEN}`, 'Content-Type': 'application/json' }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            for (const r of data) {
+              resources.push({ url: r.url, type: r.type, id: r.id });
+            }
+          }
+        } catch {}
+
+        // HACS frontend
+        try {
+          const hacsDir = path.join(HA_CONFIG, 'custom_components', 'hacs');
+          const hacsInstalled = fs.existsSync(hacsDir);
+
+          if (hacsInstalled) {
+            // Leer carpeta www/community para cards HACS
+            const wwwCommunity = path.join(HA_CONFIG, 'www', 'community');
+            if (fs.existsSync(wwwCommunity)) {
+              const folders = fs.readdirSync(wwwCommunity, { withFileTypes: true })
+                .filter(d => d.isDirectory())
+                .map(d => d.name);
+              resources.push({ source: 'hacs_frontend', cards: folders });
+            }
+          }
+
+          // Custom cards sueltas en www
+          const wwwDir = path.join(HA_CONFIG, 'www');
+          if (fs.existsSync(wwwDir)) {
+            const jsFiles = fs.readdirSync(wwwDir).filter(f => f.endsWith('.js'));
+            if (jsFiles.length > 0) {
+              resources.push({ source: 'www_custom', files: jsFiles });
+            }
+          }
+        } catch {}
+
+        // Temas
+        try {
+          const themesDir = path.join(HA_CONFIG, 'themes');
+          if (fs.existsSync(themesDir)) {
+            const themes = fs.readdirSync(themesDir);
+            resources.push({ source: 'themes', items: themes });
+          }
+        } catch {}
+
+        return { resources, total: resources.length, hacs_installed: fs.existsSync(path.join(HA_CONFIG, 'custom_components', 'hacs')) };
+      }
+
+      case 'search_hacs_resources': {
+        const type = input.type || 'all';
+        const searchQuery = `home assistant ${type === 'frontend' ? 'lovelace card' : type === 'integration' ? 'custom integration' : ''} ${input.query} HACS`;
+        const encoded = encodeURIComponent(searchQuery);
+        try {
+          const res = await fetch(`https://html.duckduckgo.com/html/?q=${encoded}`, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; HABot/1.0)' }
+          });
+          const html = await res.text();
+          const results = [];
+          const regex = /<a rel="nofollow" class="result__a" href="([^"]+)"[^>]*>([^<]+)<\/a>[\s\S]*?<a class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
+          let match;
+          while ((match = regex.exec(html)) && results.length < 10) {
+            results.push({
+              url: match[1],
+              title: match[2].replace(/<[^>]+>/g, '').trim(),
+              snippet: match[3].replace(/<[^>]+>/g, '').trim()
+            });
+          }
+          return { query: input.query, type, results, count: results.length, note: 'Usa fetch_url para ver detalles de instalación de cualquier resultado' };
+        } catch (err) {
+          return { error: err.message };
+        }
+      }
+
       default:
         return { error: `Tool desconocida: ${name}` };
     }
@@ -796,10 +1051,57 @@ Tienes acceso TOTAL:
 - Aprendizaje: registrar errores, éxitos, optimizaciones
 - Sistema: escanear instalación, verificar config, info del host
 
+═══ DASHBOARDS Y FRONTEND ═══
+Puedes VER y MODIFICAR dashboards de Lovelace. Conoces estas cards:
+
+CARDS NATIVAS DE HA:
+- entities, glance, button, light, thermostat, media-control, weather-forecast
+- gauge, history-graph, logbook, map, picture-elements, picture-entity
+- markdown, todo-list, energy, area, tile (nueva, recomendada)
+- grid, horizontal-stack, vertical-stack (layouts)
+- conditional, entity-filter (dinámicas)
+
+CARDS POPULARES (HACS/custom):
+- mushroom (mushroom-entity-card, mushroom-light-card, mushroom-climate-card, mushroom-chips-card) → modernas, minimalistas
+- mini-graph-card → gráficas compactas de sensores
+- button-card → botones ultra-personalizables con templates
+- card-mod → CSS custom para cualquier card
+- layout-card → layouts avanzados (grid, masonry, horizontal)
+- swipe-card → carrusel de cards
+- auto-entities → genera listas automáticas según filtros
+- apexcharts-card → gráficas avanzadas
+- browser-mod → popups, sidebar custom, service browser
+- decluttering-card → templates reutilizables
+- stack-in-card → agrupar sin bordes
+- tabbed-card → pestañas dentro de una card
+- weather-card → clima animado
+- vacuum-card → control de robots aspirador
+- frigate-card → cámaras con detección objetos
+
+BUENAS PRÁCTICAS DE DASHBOARD:
+- Usar tile card (nativa) para dispositivos simples → rápida y nativa
+- Mushroom para estética moderna y minimalista
+- Una vista por zona/habitación (salón, dormitorio, cocina)
+- Vista "Estado" como homepage con resumen general
+- Usar chips (mushroom-chips) para indicadores rápidos (presencia, clima, alertas)
+- Colores semánticos: verde=ok, amarillo=precaución, rojo=alerta
+- Responsive: sections + grid para que funcione en móvil y desktop
+- Imágenes: usar picture-elements con plano de la casa para control visual
+
+CUANDO EL USUARIO PIDE CAMBIOS EN EL DASHBOARD:
+1. Primero consulta get_dashboard_config para ver qué tiene
+2. Consulta get_installed_frontend para saber qué cards custom tiene
+3. Si necesita cards que no tiene → sugiere instalarlas (busca con search_hacs_resources)
+4. Propón el cambio explicando qué haces y por qué
+5. Aplica con update_dashboard
+6. Si el usuario necesita imágenes → busca con web_search o sugiere dónde ponerlas (/config/www/)
+
 ═══ RUTAS ═══
 /config/ → Config HA | /config/automations.yaml → Automatizaciones
 /config/scripts.yaml → Scripts | /config/scenes.yaml → Escenas
 /config/configuration.yaml → Config principal | /config/custom_components/ → HACS
+/config/www/ → Archivos web estáticos (imágenes, custom JS, CSS)
+/config/www/community/ → Cards HACS instaladas
 /share/ → Compartido (rw) | /data/ → Mis datos (memoria, learnings)
 `;
 

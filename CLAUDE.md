@@ -132,5 +132,12 @@ Si los archivos están en la raíz, HA no detecta actualizaciones. NUNCA mover a
 18. `delete_memory` — Elimina nota
 19. `learn` — Registra aprendizaje (error/success/pattern/optimization)
 
+### Dashboards
+21. `get_dashboards` — Lista todos los dashboards Lovelace
+22. `get_dashboard_config` — Lee config completa de un dashboard
+23. `update_dashboard` — Modifica un dashboard (con backup auto)
+24. `get_installed_frontend` — Detecta cards custom/HACS/temas
+25. `search_hacs_resources` — Busca herramientas en la comunidad HA
+
 ### Sistema
 20. `scan_installation` — Escanea toda la instalación de HA
