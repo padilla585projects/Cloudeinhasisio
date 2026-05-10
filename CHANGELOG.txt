@@ -3,6 +3,37 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.14.0 (2026-05-10) — REWRITE: Jarvis es el gateway de la red de agentes
+────────────────────────────────────────────────────────────────────────────────
+
+REWRITE COMPLETO — Red de agentes IA:
+  - Jarvis ya NO depende de ningún gateway externo (Cloud Run de Numa eliminado).
+  - Jarvis ES el gateway: expone 3 endpoints HTTP para que otros agentes se conecten.
+  - POST /api/agents/register — registro con API key (jvs_<hex>) automática.
+  - POST /api/agents/message — recibe mensajes con auth Bearer token.
+  - GET /api/agents/status — estado de la red para el frontend.
+
+ELIMINADO — Todo el sistema viejo:
+  - gatewayQuickCheck (polling cada 3s), gatewaySyncLoop (sync cada 60s).
+  - bootGatewayRegister, gatewaySendPresentation.
+  - NETWORK_NORMS, JARVIS_IDENTITY, gatewayState, GATEWAY_URL/ID/FILE.
+  - Collaborations, processedMsgIds, join_requests, routing_rules.
+  - Endpoints /api/network, /api/network/approve, /api/network/reject, /api/collaborations.
+
+SIMPLIFICADO — Tool agent_network (antes agent_gateway con 17 acciones):
+  - 4 acciones: list_agents, send_message, set_permission, remove_agent.
+  - Permisos simplificados: read, write, blocked.
+  - Envío directo via callback_url del agente (sin intermediarios).
+
+MANTENIDO — processAgentMessage:
+  - Jarvis sigue procesando mensajes entrantes autónomamente con Claude Haiku.
+  - Notificaciones SSE + Telegram al recibir mensajes.
+
+UI — Panel de red actualizado:
+  - Muestra agentes registrados, estado online/offline, permisos.
+  - Mensajes recientes en el panel.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.13.7 (2026-05-10) — Icono del panel cambiado
 ────────────────────────────────────────────────────────────────────────────────
 
