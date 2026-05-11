@@ -1,0 +1,1092 @@
+================================================================================
+CHANGELOG - Jarvis AI Agent para Home Assistant
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+v3.14.6 (2026-05-11) — OpenAI TTS + Edge TTS: selector dual de voces
+────────────────────────────────────────────────────────────────────────────────
+
+TTS dual-engine: ahora Jarvis soporta Edge TTS (gratis) y OpenAI TTS (premium)
+simultáneamente. El usuario elige la voz desde el selector en el chat.
+
+Backend:
+  - /api/tts/voices devuelve voces Edge + OpenAI (si hay key configurada)
+  - /api/tts rutea automáticamente: prefijo "openai:" → API OpenAI, resto → Edge TTS
+  - 9 voces OpenAI: alloy, ash, coral, echo, fable, nova, onyx, sage, shimmer
+  - 8 voces Edge TTS españolas mantenidas
+  - Campo "engine" en cada voz para diferenciar en el frontend
+
+Frontend:
+  - Selector de voz agrupado por motor con headers: "Edge TTS — Gratis" / "OpenAI TTS — Premium"
+  - Icono 🤖 para voces de género neutro (OpenAI alloy)
+  - Preview de voz al seleccionar funciona con ambos motores
+
+Configuración: añadir openai_api_key en el config del add-on para activar voces OpenAI.
+
+────────────────────────────────────────────────────────────────────────────────
+v3.14.5 (2026-05-11) — Fix get_repairs: fallback multi-endpoint
+────────────────────────────────────────────────────────────────────────────────
+
+get_repairs ahora prueba 3 fuentes de datos en cascada:
+  1. Supervisor API (/resolution/info) — issues del supervisor
+  2. HA Core API (/api/repairs/issues) — reparaciones del panel
+  3. Entidades con device_class "problem" — como fallback
+Si una fuente falla, continúa con la siguiente. Ya no devuelve
+"sin acceso" cuando un endpoint no está disponible.
+
+────────────────────────────────────────────────────────────────────────────────
+v3.14.4 (2026-05-11) — Notificaciones y Reparaciones de HA
+────────────────────────────────────────────────────────────────────────────────
+
+Nuevas tools:
+  - get_notifications: Lee notificaciones persistentes de HA (campana del panel).
+    Puede descartar notificaciones individuales con dismiss.
+  - get_repairs: Lee las reparaciones sugeridas por HA (Configuración → Reparaciones).
+    Muestra issues, severidad, sugerencias, estado de salud y soporte del sistema.
+
+Jarvis ahora puede leer y gestionar los avisos del sistema que HA genera
+automáticamente: actualizaciones pendientes, problemas de integraciones,
+configuraciones obsoletas, etc.
+
+────────────────────────────────────────────────────────────────────────────────
+v3.14.3 (2026-05-11) — Edge TTS: voz natural con acento español
+────────────────────────────────────────────────────────────────────────────────
+
+TTS — Reemplazado OpenAI TTS por Microsoft Edge TTS:
+  - Voces neurales con acento español de España (no americano).
+  - 8 voces disponibles: Alvaro, Elvira, Dario, Irene, Saul, Triana, Teo, Abril.
+  - Gratis, sin API key, sin limites de uso.
+  - Nuevo endpoint GET /api/tts/voices para listar voces disponibles.
+  - Dependencia: node-edge-tts (npm).
+
+UI — Selector de voz rapido en el header:
+  - Boton junto a "Voz" que muestra la voz actual.
+  - Dropdown con todas las voces, icono genero y descripcion.
+  - Al seleccionar una voz, Jarvis dice "Hola, soy <nombre>" como preview.
+  - La seleccion se guarda en localStorage y persiste entre sesiones.
+
+────────────────────────────────────────────────────────────────────────────────
+v3.14.2 (2026-05-10) — AGENT_CARD.txt actualizado al protocolo v2.0
+────────────────────────────────────────────────────────────────────────────────
+
+DOC — AGENT_CARD.txt reescrito completamente:
+  - Protocolo v2.0: registro directo con Jarvis via HTTP, sin gateway externo.
+  - Eliminadas todas las referencias al gateway de Cloud Run.
+  - Documentados los 3 endpoints: /api/agents/discover, register, message.
+  - Normas de red v2.0 (10 reglas), sistema de permisos (read/write/blocked).
+  - Instrucciones de callback para recibir respuestas.
+  - Ejemplos de mensajes en lenguaje natural.
+
+────────────────────────────────────────────────────────────────────────────────
+v3.14.1 (2026-05-10) — Normas de red, descubrimiento y presentaciones
+────────────────────────────────────────────────────────────────────────────────
+
+NORMAS DE RED v2.0:
+  - 10 reglas que todo agente debe cumplir: identidad, autenticación, permisos,
+    veracidad, privacidad, transparencia, respeto, confirmación, trazabilidad, admin.
+  - Se envían automáticamente al agente cuando se registra.
+
+DESCUBRIMIENTO — GET /api/agents/discover:
+  - Endpoint público (sin auth) que devuelve identidad de Jarvis, normas y
+    instrucciones de cómo unirse a la red.
+  - bootAgentScan ahora también busca /api/agents/discover en la red local
+    para encontrar otros agentes compatibles con el protocolo.
+  - /api/health incluye agent_type e identity para que scanners lo detecten.
+
+PRESENTACIONES:
+  - El registro ahora acepta description y capabilities del agente.
+  - La respuesta del registro incluye normas + identidad de Jarvis.
+  - Adrián recibe por Telegram la presentación completa del agente nuevo.
+  - Agentes duplicados son rechazados (409 Conflict).
+
+UI:
+  - Panel de red muestra descripción y capabilities de cada agente.
+  - /api/agents/status devuelve datos enriquecidos.
+
+JARVIS_IDENTITY restaurado:
+  - Nombre, versión, capabilities, role: gateway_admin, endpoints.
+  - NETWORK_NORMS como constante del servidor.
+
+────────────────────────────────────────────────────────────────────────────────
+v3.14.0 (2026-05-10) — REWRITE: Jarvis es el gateway de la red de agentes
+────────────────────────────────────────────────────────────────────────────────
+
+REWRITE COMPLETO — Red de agentes IA:
+  - Jarvis ya NO depende de ningún gateway externo (Cloud Run de Numa eliminado).
+  - Jarvis ES el gateway: expone 3 endpoints HTTP para que otros agentes se conecten.
+  - POST /api/agents/register — registro con API key (jvs_<hex>) automática.
+  - POST /api/agents/message — recibe mensajes con auth Bearer token.
+  - GET /api/agents/status — estado de la red para el frontend.
+
+ELIMINADO — Todo el sistema viejo:
+  - gatewayQuickCheck (polling cada 3s), gatewaySyncLoop (sync cada 60s).
+  - bootGatewayRegister, gatewaySendPresentation.
+  - NETWORK_NORMS, JARVIS_IDENTITY, gatewayState, GATEWAY_URL/ID/FILE.
+  - Collaborations, processedMsgIds, join_requests, routing_rules.
+  - Endpoints /api/network, /api/network/approve, /api/network/reject, /api/collaborations.
+
+SIMPLIFICADO — Tool agent_network (antes agent_gateway con 17 acciones):
+  - 4 acciones: list_agents, send_message, set_permission, remove_agent.
+  - Permisos simplificados: read, write, blocked.
+  - Envío directo via callback_url del agente (sin intermediarios).
+
+MANTENIDO — processAgentMessage:
+  - Jarvis sigue procesando mensajes entrantes autónomamente con Claude Haiku.
+  - Notificaciones SSE + Telegram al recibir mensajes.
+
+UI — Panel de red actualizado:
+  - Muestra agentes registrados, estado online/offline, permisos.
+  - Mensajes recientes en el panel.
+
+────────────────────────────────────────────────────────────────────────────────
+v3.13.7 (2026-05-10) — Icono del panel cambiado
+────────────────────────────────────────────────────────────────────────────────
+
+CAMBIO — Icono del panel lateral:
+  - Cambiado de mdi:robot-happy a mdi:robot (más limpio y profesional).
+
+────────────────────────────────────────────────────────────────────────────────
+v3.13.6 (2026-05-10) — FIX: pendingThoughts not defined en bootGatewayRegister
+────────────────────────────────────────────────────────────────────────────────
+
+FIX — ReferenceError: pendingThoughts is not defined:
+  - bootGatewayRegister usaba variable pendingThoughts que no existe en ese scope.
+  - Reemplazado por loadJSON + saveJSON directo del fichero pending_thoughts.json.
+
+────────────────────────────────────────────────────────────────────────────────
+v3.13.5 (2026-05-10) — FIX CRASH: NETWORK_NORMS antes de JARVIS_IDENTITY
+────────────────────────────────────────────────────────────────────────────────
+
+FIX — ReferenceError: Cannot access 'NETWORK_NORMS' before initialization:
+  - JARVIS_IDENTITY referenciaba NETWORK_NORMS.version pero se definía antes.
+  - Movido NETWORK_NORMS antes de JARVIS_IDENTITY para respetar orden de inicialización.
+  - Jarvis crasheaba en bucle al arrancar sin poder servir.
+
+────────────────────────────────────────────────────────────────────────────────
+v3.13.4 (2026-05-10) — REWRITE RED DE AGENTES + PERMISOS
+────────────────────────────────────────────────────────────────────────────────
+
+FIX — Lógica de red de agentes completamente auditada y reescrita:
+  - gatewayQuickCheck ya NO hace ACK de mensajes que no procesa (action_response,
+    action_request, hello, agent_hello). Antes los ACKeaba y syncLoop nunca los veía.
+  - gatewaySyncLoop ahora usa processedMsgIds para deduplicación — si quick-check
+    ya procesó un mensaje, syncLoop lo salta.
+  - Eliminado manejo duplicado de agent_message en syncLoop — quick-check los
+    procesa con processAgentMessage (respuesta autónoma + Telegram + SSE push).
+  - Eliminado ACK manual al remitente en syncLoop (enviaba un mensaje redundante
+    "Mensaje recibido" que duplicaba la respuesta autónoma de quick-check).
+  - Eliminadas comprobaciones alreadyPending que suprimían thoughts legítimos.
+
+NUEVO — Sistema de permisos reforzado:
+  - Jarvis es admin de la red. Ningún agente puede auto-asignarse permisos admin.
+  - set_permission valida permisos válidos (read/write/execute/admin).
+  - processAgentMessage ahora informa a Jarvis de los permisos del agente remitente.
+  - Jarvis rechaza órdenes de código/deploy de otros agentes (es autónomo).
+  - Numa restringido a permisos 'read' por defecto al unirse.
+
+────────────────────────────────────────────────────────────────────────────────
+v3.12.4 (2026-05-10) — TTS NATURAL CON OPENAI (VOZ NOVA)
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — Voz de Jarvis en el navegador via OpenAI TTS:
+  - Endpoint POST /api/tts en server.js → llama a OpenAI tts-1 con voz 'nova'.
+  - El texto se limpia de markdown antes de enviarlo (negrita, código, links, etc.).
+  - El frontend reproduce el audio directamente como blob URL (Audio element).
+  - Si no hay OPENAI_API_KEY configurada, fallback automático a Web Speech API.
+  - Nueva opción 'openai_api_key' en la configuración del add-on.
+
+────────────────────────────────────────────────────────────────────────────────
+v3.12.3 (2026-05-10) — PROMPT: JARVIS CONOCE SU CAPACIDAD DE AUTO-EVOLUCIÓN
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO en system prompt — sección AUTO-EVOLUCIÓN:
+  - Jarvis conoce el flujo completo: leer → modificar → escribir → bump versión → update_addon.
+  - Conoce sus archivos clave (server.js, index.html, config.yaml) y sus rutas en GitHub.
+  - Reglas de modificación: leer siempre antes, subir archivo completo, versión siempre.
+  - Si el usuario pide una capacidad nueva, Jarvis la implementa solo sin pedir ayuda.
+
+────────────────────────────────────────────────────────────────────────────────
+v3.12.2 (2026-05-10) — JARVIS PUEDE MODIFICAR SU PROPIO CÓDIGO EN GITHUB
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVA TOOL — github_push (auto-evolución):
+  - Jarvis puede leer, crear y actualizar archivos en su propio repo de GitHub.
+  - Acciones: read_file, write_file, list_files.
+  - Usa GitHub Contents API con PAT token configurado en el add-on.
+  - Crea commits con mensajes descriptivos directamente en la rama main.
+  - Flujo de auto-evolución: modifica server.js → commit → ha_supervisor→update_addon.
+  - Token configurado en HA add-on config como 'github_token'.
+  - Constantes en server.js: GITHUB_TOKEN, GITHUB_REPO, GITHUB_BRANCH.
+
+────────────────────────────────────────────────────────────────────────────────
+v3.12.1 (2026-05-10) — NOTIFICACIÓN TELEGRAM EN AGENT_MESSAGE
+────────────────────────────────────────────────────────────────────────────────
+
+FIX GATEWAY — check_join: request_id enviado al nivel raíz del body (no en context).
+NUEVO — agent_message: cuando llega un mensaje de otro agente, se envía Telegram
+  inmediatamente y se guarda un thought de alta prioridad para procesarlo.
+
+────────────────────────────────────────────────────────────────────────────────
+v3.12.0 (2026-05-10) — OPTIMIZACIÓN DE TOKENS + MODO AHORRO + COSTE EN UI
+────────────────────────────────────────────────────────────────────────────────
+
+AHORRO DE TOKENS (~75% menos coste por mensaje):
+  - Prompt caching (anthropic-beta): la parte estática del system prompt (~5500 tokens)
+    se cachea. En conversaciones normales cuesta solo un 10% en lecturas de caché.
+  - System prompt dividido en estático (cacheado) + dinámico (fresco cada request).
+  - Bloque PLC/industrial comprimido de 20 líneas a 1 línea (-250 tokens).
+  - Lista de cards Lovelace comprimida de 30 líneas a 2 líneas (-300 tokens).
+  - Tool results truncados a 4000 chars en modo normal, 2000 en modo ahorro.
+  - MAX_ITERATIONS: 40 → 20 (modo normal) / 10 (modo ahorro).
+  - Historial de conversación: 60 → 30 mensajes.
+
+MODO AHORRO (botón ⚡ Ahorro en el header):
+  - Activa/desactiva via POST /api/saver (toggle).
+  - En modo ahorro: modelo Haiku 4.5 (~80% más barato que Sonnet), 10 iteraciones,
+    tool results a 2000 chars.
+  - Ideal para tareas simples (encender luces, preguntar estado, etc.).
+
+COSTE VISIBLE EN HASSIO:
+  - Badge $0.0000 en el header — coste estimado de la sesión actual en USD.
+  - Se actualiza cada 30 segundos. Hover para ver desglose completo.
+  - GET /api/cost → endpoint para sensor REST de HA con tokens + modelo + coste.
+  - GET /api/health incluye ahora cost_usd, cache_read_tokens, cache_creation_tokens.
+  - Rastreo de tokens de caché en apiUsage (cacheReadTokens, cacheCreationTokens).
+
+────────────────────────────────────────────────────────────────────────────────
+v3.11.3 (2026-05-10) — FIX: REGISTRO EN GATEWAY VÍA JOIN_REQUEST + POLLING
+────────────────────────────────────────────────────────────────────────────────
+
+FIX CRÍTICO — bootGatewayRegister(): el mensaje 'bootstrap_register' no existe
+  en el gateway. Jarvis nunca podía obtener su secret y el sync nunca funcionaba.
+  La red de agentes (panel 🌐 Red) siempre aparecía vacía.
+
+NUEVO — Flujo correcto de registro:
+  1. Jarvis envía join_request con su identidad completa al arrancar
+  2. Guarda el request_id en gateway.json (persiste entre reinicios)
+  3. Hace polling cada 60s con check_join hasta ser aprobado por el administrador
+  4. Cuando se aprueba, guarda el secret y comienza el sync loop normalmente
+  5. Crea pensamiento proactivo para informar al usuario que está esperando aprobación
+
+────────────────────────────────────────────────────────────────────────────────
+v3.11.2 (2026-05-10) — LOG DE COLABORACIONES ENTRE AGENTES
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — collaborations.json: trazabilidad completa de favores entre agentes
+  - Salientes (→): cuando Jarvis pide ayuda a otro agente
+  - Entrantes (←): cuando otro agente pide ayuda a Jarvis
+  - Respuestas: cuando llega el resultado de una petición anterior
+  - Estado: pending / completed / received
+  - Últimas 100 colaboraciones en /data/collaborations.json
+
+NUEVO — Notificación automática en el chat:
+  - Cuando un agente responde a una petición de Jarvis, te lo cuenta solo
+  - "X me ha ayudado con Y: resultado..." sin que tengas que preguntar
+  - Si el resultado requiere acción, Jarvis la ejecuta y lo informa
+
+NUEVO — Panel "Colaboraciones" en 🌐 Red:
+  - Historial visible: quién, en qué dirección, qué acción, qué resultado, cuándo
+  - Código de color: azul=saliente, morado=entrante
+  - Estado en tiempo real (pending/completed)
+
+NUEVO — GET /api/collaborations: endpoint para consultar el historial
+
+────────────────────────────────────────────────────────────────────────────────
+v3.11.1 (2026-05-10) — VOZ: STT + TTS + ALTAVOCES DEL HOGAR
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — Micrófono en la UI (Web Speech API):
+  - Botón 🎤 junto al input — clic para hablar, clic para parar
+  - Reconocimiento de voz en español (es-ES) en tiempo real
+  - Transcripción aparece en el input y se envía automáticamente al terminar
+  - Indicador visual rojo mientras escucha
+
+NUEVO — Jarvis habla (SpeechSynthesis):
+  - Jarvis lee sus respuestas en voz alta automáticamente
+  - Limpia markdown antes de leer (no dice "asterisco asterisco")
+  - Voz española seleccionada automáticamente (prioriza voz local del sistema)
+  - Botón "🔊 Voz / Mudo" en el header para activar/silenciar
+  - Estado se guarda en localStorage (persiste entre sesiones)
+  - Se detiene al pulsar el micrófono
+
+NUEVO — Tool speak(): hablar por los altavoces del hogar
+  - Targets: alexa_salon, alexa_cocina, alexa_dormitorio, alexa_garaje,
+    alexa_show, alexa_flex, all_alexa, ha_tts (Piper)
+  - all_alexa: habla por todos los Echo simultáneamente
+  - ha_tts: usa Piper (español nativo) vía HA TTS
+  - Jarvis decide solo cuándo y dónde hablar (avisos, alarmas, confirmaciones)
+
+────────────────────────────────────────────────────────────────────────────────
+v3.11.0 (2026-05-10) — HUB CENTRAL DE RED: GESTIÓN COMPLETA DE AGENTES
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — agentNetwork.json: estado persistente enriquecido de la red
+  - agents: identidad, permisos, last_seen, online/offline, interacciones, learnings
+  - join_requests: solicitudes pendientes de aprobación con historial
+  - interactions: log de interacciones entre agentes
+  - routing_rules: reglas aprendidas de qué agente hace qué
+
+NUEVO — agent_gateway expandido (11 acciones):
+  - network_status: estado completo (online/offline/permisos/interacciones)
+  - approve_join / reject_join: aprobar/rechazar agentes nuevos
+  - pending_joins: ver solicitudes pendientes
+  - set_permission: dar permisos read/write/admin/blocked a un agente
+  - broadcast: mensaje a todos los agentes de la red
+  - learn_from_interaction: guardar aprendizaje de cada interacción
+
+NUEVO — Panel "🌐 Red" en la UI:
+  - Badge rojo en el botón cuando hay solicitudes pendientes
+  - Vista de agentes online/offline con última conexión y capacidades
+  - Botones Aprobar/Rechazar directamente desde la UI sin escribir en el chat
+  - Últimas interacciones entre agentes
+  - Refresco automático cada 15s
+
+NUEVO — Endpoints REST:
+  - GET /api/network: estado completo de la red
+  - POST /api/network/approve/:id: aprobar join request
+  - POST /api/network/reject/:id: rechazar join request
+
+MEJORADO — gatewaySyncLoop:
+  - Heartbeat: actualiza last_seen de cada agente en cada sync
+  - Marca offline a agentes que no aparecen en el sync
+  - Detecta join_requests en pending_messages y crea notificación proactiva
+  - Guarda estado enriquecido en agentNetwork.json
+
+────────────────────────────────────────────────────────────────────────────────
+v3.10.7 (2026-05-10) — PROTOCOLO DE RED: IDENTIDAD Y NORMAS
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — JARVIS_IDENTITY: tarjeta de identidad completa de Jarvis en la red
+  - agent_id, name, description, role, language, version, platform
+  - 14 capabilities declaradas con descripción
+  - offers, ask_me_about, contact_protocol, response_time
+  - Viaja en cada registro y en cada sync con el gateway
+
+NUEVO — NETWORK_NORMS v1.0: protocolo oficial de la red de agentes
+  - 10 normas (identidad, veracidad, idioma, respeto, privacidad, transparencia,
+    cooperación, confirmación, trazabilidad, desconexión)
+  - Formato obligatorio de greeting (agent_hello)
+  - Se envía en el registro para que el gateway las distribuya
+
+NUEVO — gatewaySendPresentation(): se presenta al conectarse y a agentes nuevos
+  - Broadcast 'agent_hello' con identidad completa al registrarse
+  - Cuando detecta un agente nuevo en el sync: le envía hello individual
+  - El system prompt incluye instrucciones de cómo responder a presentaciones entrantes
+
+MEJORA — system prompt actualizado con normas y protocolo de presentación
+
+────────────────────────────────────────────────────────────────────────────────
+v3.10.6 (2026-05-10) — BOOTSTRAP AUTOMÁTICO EN EL GATEWAY
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — bootGatewayRegister():
+- 10s tras arrancar, Jarvis se registra solo en la red de agentes si no tiene secret
+- Si ya tiene secret (arrances posteriores), lo detecta y pasa al sync directamente
+- 5s después del registro hace el primer sync para conocer los agentes de la red
+- Logs claros: "Registrado ✓" o error detallado si el gateway no responde
+
+────────────────────────────────────────────────────────────────────────────────
+v3.10.5 (2026-05-10) — JARVIS AVISA SOLO CUANDO ENCUENTRA AGENTES
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — bootAgentScan():
+- 30s después de arrancar, Jarvis escanea la red local automáticamente
+- Si encuentra agentes IA (Ollama, LM Studio, etc.) te lo dice en el chat
+- Si no encuentra nada, también te lo dice (sin spamear)
+- Los resultados se procesan como pensamiento proactivo prioritario
+
+NUEVO — Detección de cambios en la red del gateway:
+- Cuando un agente nuevo entra o sale de la red del gateway, Jarvis te avisa
+- Compara el set de agentes conocidos entre sync y sync
+
+ARREGLO — Log de gateway "sin secret":
+- Ya no spamea el log cada 60s — aparece solo una vez al arranque
+
+────────────────────────────────────────────────────────────────────────────────
+v3.10.4 (2026-05-10) — LOGGING DE AGENTES Y GATEWAY
+────────────────────────────────────────────────────────────────────────────────
+
+MEJORA — Visibilidad en logs del add-on:
+- discover_agents: ahora loguea los hosts de la ARP table encontrados, qué agentes
+  responden en qué IPs/puertos, y el recuento final
+- gatewaySyncLoop: loguea cada intento de sync, el resultado (agentes en la red,
+  mensajes pendientes), errores HTTP y errores de red
+- Si no hay secret de gateway, avisa en los logs en lugar de silencio total
+- Versión interna actualizada (console.log y /api/health)
+
+────────────────────────────────────────────────────────────────────────────────
+v3.10.3 (2026-05-10) — RED DE AGENTES IA — GATEWAY
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — Tool agent_gateway + sync automático:
+- Jarvis se conecta a la red de agentes IA via gateway central
+- register: obtiene su secret y lo guarda en /data/gateway.json
+- sync: sincroniza contexto (presencia, modo casa, hora) y recibe mensajes entrantes
+- list_agents: descubre qué agentes están en la red y qué pueden hacer
+- send: envía action_request a otro agente (respuesta llega en el siguiente sync)
+- read_messages: lee mensajes pendientes de otros agentes
+- Sync automático cada 60s en background (primer sync a los 15s del arranque)
+- Si llegan mensajes de otros agentes: crea pensamiento proactivo automáticamente
+- El system prompt incluye instrucciones completas del protocolo del gateway
+
+────────────────────────────────────────────────────────────────────────────────
+v3.10.2 (2026-05-10) — AUTOREPARACIÓN: Jarvis detecta sus errores y se repara solo
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — bootSelfCheck() + autoRepair():
+- Al arrancar, Jarvis lee sus propios logs via /addons/jarvis_ai_agent/logs
+- Si detecta SyntaxError, TypeError, reinicios en bucle u otros errores:
+  1. Espera 30s para que el sistema se estabilice
+  2. Llama a Claude (Haiku) con el log + su propio código fuente
+  3. Claude analiza el error y devuelve un patch mínimo (errorLine → fixedLine)
+  4. Si confianza es high/medium y el fragmento existe en el código: aplica el fix
+  5. Escribe el server.js corregido y se reinicia solo con la API del supervisor
+  6. Si la confianza es baja: crea un pensamiento crítico para que el usuario lo revise
+- Aprende de cada reparación: registra causa + solución en learnings.json
+
+NUEVO — Sección AUTOREPARACIÓN en el system prompt:
+- Jarvis sabe explícitamente cómo repararse: get_system_logs → read_file →
+  localizar error → write_file con fix → ha_supervisor restart_addon → verificar
+- No pide permiso. En una emergencia de boot, actúa y luego informa.
+- Conoce los errores de sintaxis más comunes en Node.js
+
+────────────────────────────────────────────────────────────────────────────────
+v3.10.1 (2026-05-10) — BUGFIX: sintaxis server.js + quitar bola flotante
+────────────────────────────────────────────────────────────────────────────────
+
+- Fix: SyntaxError en server.js (llave extra en checkSystemUpdates)
+- UI: eliminada la cara holográfica flotante de abajo a la derecha
+- Se mantiene el orb animado del header
+
+────────────────────────────────────────────────────────────────────────────────
+v3.10.0 (2026-05-10) — RED LOCAL + ARCHIVOS DEL PC + AGENTES IA EN LA RED
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — Tool `network` (acceso completo a la red de casa):
+- arp_table: lista todos los dispositivos vistos recientemente en la red (tabla ARP)
+- scan_subnet: ping sweep de toda la subred para descubrir hosts activos
+- ping: comprobar si un dispositivo responde y medir latencia
+- port_scan: detectar qué puertos tiene abiertos un host (TCP)
+- http_request: llamar a la API REST de cualquier dispositivo de la red local
+- discover_agents: detectar automáticamente agentes IA en la red (Ollama, LM Studio,
+  LocalAI, Open WebUI, otro Jarvis, Text Gen WebUI, AnythingLLM)
+- wol: Wake-on-LAN — enviar magic packet para encender un PC remotamente
+- config.yaml: host_network=true para que el container tenga acceso real a la LAN
+- Dockerfile: añadidos iproute2 e iputils para comandos ip/ping en Alpine
+
+NUEVO — Tool `local_file` (archivos del ordenador del usuario):
+- Lee y navega archivos del PC desde el que el usuario habla con Jarvis
+- Botón "📁 PC" en el header — el usuario selecciona una carpeta con el diálogo del OS
+- Usa File System Access API del navegador (Chrome/Edge) — sin instalar nada
+- Cuando Jarvis llama a local_file, el servidor envía un SSE al browser, el browser
+  lee el archivo con permisos del usuario y devuelve el contenido vía /api/local_response
+- Soporta: read (leer archivo), list (explorar directorio), search (buscar por nombre)
+- El botón cambia a verde y muestra el nombre de la carpeta conectada
+- Archivos binarios (imágenes/PDFs): redirige al botón 📎
+
+NUEVO — Tool `agent_chat` (hablar con otros agentes IA):
+- Envía mensajes a agentes IA descubiertos en la red y recibe su respuesta
+- Protocolos soportados: Ollama, OpenAI-compatible (LM Studio, LocalAI), Jarvis, custom
+- Flujo típico: discover_agents → elegir agente → agent_chat
+
+────────────────────────────────────────────────────────────────────────────────
+v3.9.3 (2026-05-10) — SUBIDA DE ARCHIVOS AL CHAT
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — Archivos adjuntos en el chat:
+- Botón 📎 en el footer del chat para adjuntar archivos antes de enviar
+- Soporta imágenes (jpg, png, gif, webp) → enviadas como bloques image a Claude (visión real)
+- Soporta PDFs → enviados como bloques document a Claude (análisis nativo)
+- Otros archivos de texto (logs, yaml, json, py, js...) → enviados como bloques de texto
+- Barra de adjuntos muestra chips con nombre + ✕ para quitar antes de enviar
+- Se pueden adjuntar múltiples archivos a la vez
+- Los archivos se limpian automáticamente tras enviar
+- Server: extrae `files` del body y construye contenido multi-bloque para la API de Claude
+
+────────────────────────────────────────────────────────────────────────────────
+v3.9.2 (2026-05-10) — FEEDBACK REAL + CONTINUIDAD TRAS REINICIO
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — Feedback visual de herramientas (UI):
+- Cada tool muestra su nombre amigable mientras se ejecuta: "🌐 Buscando en internet",
+  "⚡ Ejecutando servicio", "📦 Instalando recurso HACS", "⚙️ Gestionando sistema HA", etc.
+- 38 tools mapeadas con emoji + nombre descriptivo en español
+- Se muestra también el parámetro relevante: dominio, entity_id, query, filepath...
+  Ej: "🔍 Buscando entidades — light" o "💾 Escribiendo archivo — automations.yaml"
+- Contador de paso: "Paso 3" para saber en qué punto de una tarea multi-herramienta está
+
+NUEVO — Continuidad tras reinicio de Jarvis:
+- El servidor guarda la tarea activa en /data/pending_task.json al empezar
+- La limpia cuando termina correctamente
+- Si Jarvis se reinicia a mitad de tarea: al arrancar detecta la tarea pendiente,
+  la inyecta en el historial y la reanuda automáticamente
+- Frontend: cuando se pierde la conexión SSE, muestra "Jarvis se está reiniciando..."
+  y hace polling cada 2s hasta que el servidor vuelve (máx 2 min)
+- Cuando vuelve: si había tarea pendiente, la retoma automáticamente enviando el mensaje
+- Sin tarea: simplemente muestra "✓ Jarvis ha vuelto y está listo"
+- Nuevo endpoint GET /api/pending_task para que el frontend consulte el estado
+
+────────────────────────────────────────────────────────────────────────────────
+v3.9.1 (2026-05-10) — PERSEVERANCIA: JARVIS NO SE PARA A MITAD DE UNA TAREA
+────────────────────────────────────────────────────────────────────────────────
+
+CORREGIDO — Bucle agéntico roto:
+- MAX_ITERATIONS subido de 15 a 40 (tareas complejas necesitan más pasos)
+- Ya no rompe el bucle al primer texto sin tools: ahora distingue "fin real" de "pausa indebida"
+  * Si stop_reason=end_turn → salir (correcto)
+  * Si stop_reason=max_tokens → inyectar "continúa" y seguir (nuevo)
+  * Si texto sin tools pero no es end_turn → inyectar "continúa ejecutando" y seguir (nuevo)
+  * Solo sale si hay 2 respuestas consecutivas sin tools (confirma que terminó)
+- Reintento automático en errores de sobrecarga API (429/529): espera 3s y reintenta
+- Errores individuales de tools ya no abortan la tarea: devuelven {error, hint} y Jarvis busca alternativa
+- Aviso al usuario si se llega al límite de 40 iteraciones (raro, pero transparente)
+
+NUEVO — System prompt: sección PERSEVERANCIA:
+- Explícito: una vez empezada la tarea, se completa sin parar
+- Lista de situaciones prohibidas para parar (error en tool, pasos múltiples, ambigüedad)
+- Lista de las únicas situaciones donde sí está permitido parar y preguntar
+- Ante error en tool: "di brevemente X falló, probando Y, y sigue"
+- Ante ambigüedad: "elige la interpretación más útil y actúa"
+
+────────────────────────────────────────────────────────────────────────────────
+v3.9.0 (2026-05-10) — AUTO-EVOLUCIÓN: JARVIS SE ACTUALIZA A SÍ MISMO
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVA TOOL — update_self:
+- add_knowledge: Jarvis escribe secciones permanentes en su propio prompt (/data/self_knowledge.json)
+  Cuando aprende algo importante de la instalación, lo escribe y lo recuerda para siempre
+- update_knowledge / remove_knowledge: gestión del conocimiento propio
+- list_knowledge: muestra todo lo que Jarvis ha escrito sobre sí mismo
+- patch_code: propone cambios a su propio server.js (guarda en /data/patch_*.js para revisión)
+- restart_self: se reinicia a sí mismo para aplicar cambios
+
+NUEVO — Auto-conocimiento en el prompt:
+- buildSystemPrompt() ahora inyecta /data/self_knowledge.json en cada conversación
+- Jarvis puede escribir ahí lo que descubre: "los altavoces son Echo Dot", "la IP del NAS es X",
+  "el ESP de la puerta necesita IP estática", cualquier cosa que quiera recordar siempre
+
+NUEVO — Metodología de resolución de problemas (5 niveles):
+- Nivel 1: Buscar en entidades/servicios existentes de HA
+- Nivel 2: Buscar en HACS e internet
+- Nivel 3: Crear script custom (create_custom_tool)
+- Nivel 4: Crear add-on completo (create_addon)
+- Nivel 5: Modificar su propio código y reiniciarse
+- Jarvis sabe en qué nivel está y lo comunica
+
+NUEVO — Conocimiento de audio/comunicación en el prompt:
+- Sabe que con Alexa Media Player existen notify.alexa_media_* y alexa_media_player.alexa_tts
+- Conoce las 5 opciones para hablar por altavoces: notify, tts.speak, alexa_tts, Chromecast, add-on propio
+- Sabe cómo implementar comunicación bidireccional (Alexa Skill, Nabu Casa, webhook)
+
+────────────────────────────────────────────────────────────────────────────────
+v3.8.0 (2026-05-10) — CONTROL TOTAL DEL SISTEMA + APRENDIZAJE REAL
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVA TOOL — ha_supervisor (20 acciones):
+- check_updates: ve todas las actualizaciones pendientes (Core, OS, Supervisor, add-ons, HACS)
+- update_addon / update_all_addons: actualiza uno o todos los add-ons con update disponible
+- update_core / update_os / update_supervisor: actualiza el sistema (con confirmación previa)
+- restart_addon / start_addon / stop_addon: gestión completa de add-ons en ejecución
+- install_addon / uninstall_addon: instalar/desinstalar desde el store del supervisor
+- reload_integration: recarga una integración de HA por dominio (busca entry_id automáticamente)
+- reload_all_integrations: recarga todas las integraciones configuradas
+- get_config_entries: lista todas las integraciones configuradas con sus entry_ids
+- get_core_info / get_os_info: info del sistema
+- restart_core: reinicia HA (con confirmación)
+- get_hacs_updates / update_hacs_repo: gestión de actualizaciones de HACS
+
+NUEVO — Destilación de learnings en reglas accionables:
+- Cada 6h, Jarvis analiza todos sus learnings acumulados y los convierte en reglas
+  cortas y accionables específicas de la instalación de Adrián
+- Estas reglas se guardan en /data/distilled_rules.json y se inyectan en el system
+  prompt como conocimiento directo ("cuando X pasa → hacer Y")
+- Jarvis ya no tiene una lista de eventos crudos — tiene REGLAS que aplica directamente
+
+NUEVO — Chequeo automático de actualizaciones (cada 12h):
+- Jarvis consulta el supervisor cada 12h buscando updates disponibles
+- Si los hay, crea un proactive_thought con el detalle y botón "Aplicar"
+- No duplica si ya hay un pensamiento de updates pendiente del día
+
+────────────────────────────────────────────────────────────────────────────────
+v3.7.0 (2026-05-10) — AGENTE, NO ASISTENTE
+────────────────────────────────────────────────────────────────────────────────
+
+CAMBIO FILOSÓFICO FUNDAMENTAL:
+Jarvis deja de ser un asistente que describe problemas y da instrucciones al usuario.
+Pasa a ser un agente que ACTÚA, y luego informa del resultado.
+
+NUEVO — Auto-fix de desconexiones en background:
+- Cuando el loop proactivo detecta caída masiva (>5 dispositivos en <3min), ACTÚA:
+  1. Obtiene la lista de config entries de HA via API
+  2. Recarga automáticamente integraciones conocidas: alexa_media_player, pvpc_energyhourly,
+     tp_link, rest, reolink, alfa_romeo, awattar
+  3. Espera 5s para que reconecten
+  4. Informa al usuario del resultado con proactive_thought: qué arregló, qué quedó pendiente
+- El loop proactivo ahora tiene acceso a call_service y get_entity_state para actuar
+
+NUEVO — System prompt: filosofía de agente:
+- Sección "FILOSOFÍA FUNDAMENTAL": Jarvis sabe que su rol es actuar, no aconsejar
+- Ejemplos explícitos de comportamiento correcto vs incorrecto
+- Regla: pedir confirmación SOLO para acciones destructivas/irreversibles
+
+MEJORADO — Diagnóstico de desconexiones:
+- El protocolo de diagnóstico ahora incluye los pasos de acción directa
+- Jarvis conoce qué integraciones puede recargar y cuáles requieren al usuario
+- Sabe cómo obtener los entry_id via API para recargar cada integración
+
+────────────────────────────────────────────────────────────────────────────────
+v3.6.1 (2026-05-10)
+────────────────────────────────────────────────────────────────────────────────
+
+MEJORADO — Diagnóstico inteligente de desconexiones:
+- Nueva sección en el system prompt: Jarvis ahora sabe agrupar dispositivos unavailable
+  por integración (Alexa, ESPHome, OMV, Zigbee, PVPC, Router...) y dar solución concreta
+- Detección de caída masiva: si >5 dispositivos caen en <3 min, identifica que fue un
+  reinicio de HA o caída de red y lo indica en el pensamiento proactivo
+- El loop proactivo ahora agrupa unavailable por integración antes de analizar
+- Jarvis ya no dirá "hay X dispositivos caídos" — dirá exactamente qué integración
+  falló, por qué y cómo arreglarlo paso a paso
+
+────────────────────────────────────────────────────────────────────────────────
+v3.6.0 (2026-05-10)
+────────────────────────────────────────────────────────────────────────────────
+
+CORREGIDO:
+- BG_MODEL tenía ID incorrecto ('claude-haiku-4-20250414' → 'claude-haiku-4-5-20251001')
+  El bucle de pensamiento proactivo (cada 30min) fallaba silenciosamente — Jarvis
+  nunca pensaba por su cuenta. Ahora funciona.
+
+NUEVO — Saludo de bienvenida:
+- Al abrir el chat sin historial previo, Jarvis muestra una tarjeta de bienvenida con:
+  * Resumen de lo que sabe: entidades, memoria, aprendizajes, rutinas detectadas
+  * Alertas activas: dispositivos no disponibles, automatizaciones desactivadas
+  * Pensamientos proactivos pendientes con botón "Aplicar" directo
+  * Accesos rápidos: "Revisar dashboard", "Ver lo que sé", "Escanear todo"
+- Nuevo endpoint GET /api/greeting que sirve este resumen sin llamar a la API de Claude
+
+MEJORADO — Pensamientos proactivos más accionables:
+- El loop proactivo ahora tiene instrucciones explícitas: cada pensamiento debe incluir
+  la solución concreta, no solo describir el problema
+- Añadido análisis del dashboard principal en cada ciclo proactivo:
+  detecta si hay pocas cards, pocas vistas, o si no está organizado por habitaciones
+- Botón "Aplicar" en los pensamientos: al pulsarlo, envía el pensamiento como mensaje
+  a Jarvis para que lo ejecute inmediatamente (en lugar de solo marcar como aprobado)
+- Botón "Arreglar ahora" en alertas de dispositivos caídos
+- Botón "Revisar" en automatizaciones desactivadas
+
+────────────────────────────────────────────────────────────────────────────────
+v3.5.2 (2026-05-10) — HAIKU PARA BACKGROUND
+────────────────────────────────────────────────────────────────────────────────
+
+OPTIMIZACIÓN DE COSTES:
+- Tareas de fondo ahora usan Claude Haiku (claude-haiku-4-20250414)
+- proactiveThinkingLoop → Haiku (antes Sonnet)
+- analyzePatterns → Haiku (antes Sonnet)
+- knowledgeExpansionLoop → Haiku (antes Sonnet)
+- Chat principal sigue con Sonnet para máxima calidad
+- Reducción estimada de ~80% en tokens de fondo
+
+────────────────────────────────────────────────────────────────────────────────
+v3.3.0 (2026-05-10) — AUTO-UPDATE
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — AUTO-UPDATE AUTOMÁTICO:
+- Jarvis comprueba cada 2 minutos si hay nueva versión disponible
+- Si detecta update: se actualiza SOLO sin intervención humana
+- Refresca el repositorio del Supervisor antes de comprobar
+- Notifica por Telegram cuando se actualiza ("v3.2 → v3.3, reiniciando...")
+- Fallback con múltiples endpoints del Supervisor (self + slug)
+- Silencioso si no hay updates (no spamea logs)
+
+FLUJO COMPLETO AHORA:
+  1. Tú haces push al repo desde cualquier máquina
+  2. HA detecta la nueva versión (Supervisor refresh cada 2min)
+  3. Jarvis se auto-actualiza
+  4. Te notifica por Telegram que se ha actualizado
+  5. Se reinicia con la nueva versión
+  → TODO AUTOMÁTICO, sin tocar nada en HA
+
+────────────────────────────────────────────────────────────────────────────────
+v3.2.0 (2026-05-10) — BASE DE CONOCIMIENTO + SCRIPTS DE SINCRONIZACIÓN
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — BASE DE CONOCIMIENTO (knowledge_db):
+- Tool knowledge_db con acciones: add, query, update, delete, connect, list_categories, export
+- Almacena: conceptos, configuraciones, protocolos, soluciones, diagramas
+- Cada entrada tiene: título, categoría, contenido, tags, conexiones, imágenes, fuente, importancia
+- Conexiones bidireccionales entre conceptos (grafos de conocimiento)
+- Categorías: industrial, domotica, networking, programacion, hardware, energia,
+  seguridad, protocolos, integraciones, soluciones
+- Persiste en /data/knowledge/ (sobrevive reinicios)
+- Jarvis guarda conocimiento AUTOMÁTICAMENTE cuando aprende algo nuevo
+- Búsqueda por texto libre, categoría y tags
+
+NUEVO — SCRIPTS DE SINCRONIZACIÓN MULTI-MÁQUINA:
+- sync.ps1 (Windows/PowerShell): pull, push, watch mode
+- sync.sh (Linux/Mac/bash): pull, push, watch mode
+- Modo watch: monitoriza cada 30s y hace pull automático
+- Modo push: commit + push rápido desde cualquier máquina
+- Permite trabajar desde PC, Surface, portátil... siempre con última versión
+
+MEJORA — System prompt con instrucciones de knowledge_db automática
+
+────────────────────────────────────────────────────────────────────────────────
+v3.1.0 (2026-05-10) — EQUIPO DE AGENTES + CONOCIMIENTO INDUSTRIAL
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — EQUIPO DE AGENTES IA COLABORATIVO:
+- Los agentes de Adrián son un equipo que puede mejorarse mutuamente
+- Protocolo de mejora mutua: analizar, proponer, aprobar, aplicar
+- Regla de oro: NUNCA modificar el código de otro agente sin aprobación
+- Los agentes comparten descubrimientos, errores y soluciones entre ellos
+- Comunicación via agent_communicate (HTTP/webhook)
+- Toda propuesta entre agentes pasa por proactive_thought → Adrián decide
+
+NUEVO — CONOCIMIENTO DE AUTOMATIZACIÓN INDUSTRIAL:
+- PLCs: Siemens S7, Allen-Bradley, Schneider, Omron, Beckhoff, Wago
+- Protocolos: Modbus TCP/RTU, OPC-UA, PROFINET, PROFIBUS, EtherNet/IP,
+  EtherCAT, BACnet, MQTT Sparkplug B, CANopen, IO-Link, HART
+- SCADA/HMI: Ignition, WinCC, FactoryTalk, Wonderware/AVEVA, Grafana
+- Sensores: RTD, termopares, presión 4-20mA, caudal, nivel, vibración, proximidad
+- Actuadores: VFDs, servos, válvulas proporcionales, cilindros neumáticos
+- Redes OT: switches industriales, VLANs, firewalls IT/OT, DMZ
+- Normas: IEC 61131-3, ISA-95, IEC 62443, ISA-88, NAMUR
+- Control: PID, cascada, feedforward, ratio, split-range
+- Seguridad funcional: SIL, IEC 61508/61511, parada de emergencia
+- Industria 4.0: edge computing, digital twins, mantenimiento predictivo
+- Integración en casa: Modbus→HA para inversores solares, VFDs para HVAC,
+  sensores 4-20mA para piscinas/calderas, OpenPLC en ESP32
+
+MEJORA — IDIOMA FORZADO:
+- Jarvis SIEMPRE responde en español, sin excepción
+
+────────────────────────────────────────────────────────────────────────────────
+v3.0.0 (2026-05-10) — AUTONOMÍA PROACTIVA + CREACIÓN DE ADD-ONS
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — PENSAMIENTO PROACTIVO:
+- Jarvis piensa por sí mismo cada 5 minutos (background loop)
+- Analiza estado del sistema: dispositivos caídos, errores en logs, anomalías
+- Genera pensamientos (suggestion, alert, action_request, optimization, creation)
+- Prioridades: low, medium, high, critical
+- High/critical se notifican automáticamente por Telegram
+- Medium/low se muestran al abrir el chat (banner interactivo)
+- proactive_thought tool: registra ideas y pide aprobación al usuario
+- Endpoint /api/pending_thoughts para consultar y resolver pensamientos
+- Botones aprobar/rechazar directamente en la UI del chat
+- Sistema seguro: NUNCA ejecuta acciones destructivas sin aprobación
+
+NUEVO — CREACIÓN DE ADD-ONS:
+- create_addon tool: genera estructura completa de un nuevo add-on de HA
+- Genera: config.yaml, Dockerfile, run.sh, código principal, build.yaml
+- Soporta Node.js, Python y Shell como lenguajes principales
+- Aplica licencia CC BY-NC-ND 4.0 automáticamente (blindaje)
+- Los add-ons se crean en /share/addons_dev/[slug]/
+- Listos para mover al repo y aparecer en la tienda de HA
+- Mismos privilegios y protección que el add-on principal
+
+MEJORA — SYSTEM PROMPT EXTENDIDO:
+- Nueva sección "Autonomía Proactiva" con reglas claras
+- Jarvis sabe qué puede hacer solo vs qué debe consultar
+- Instrucciones para creación de add-ons
+- Filosofía: autónomo pero leal, piensa y propone
+
+MEJORA — FRONTEND:
+- Banner de pensamientos pendientes al cargar el chat
+- Botones inline para aprobar/rechazar cada pensamiento
+- Iconos y labels para create_addon (🏗️) y proactive_thought (💭)
+- Los pensamientos se eliminan del banner al resolverlos
+
+TOTAL TOOLS: 34 (get_entities, search_entities, get_entity_state, call_service,
+get_history, get_automations, create_automation, reload_config, check_config,
+read_file, write_file, append_file, list_directory, web_search, fetch_url,
+save_memory, get_memory, delete_memory, learn, scan_installation,
+get_dashboards, get_dashboard_config, update_dashboard, get_installed_frontend,
+search_hacs_resources, install_hacs_resource, ha_knowledge, proxmox_api,
+get_system_logs, get_error_log, telegram_send, telegram_send_image,
+telegram_get_updates, analyze_github_repos, agent_communicate,
+create_custom_tool, run_custom_tool, create_addon, proactive_thought)
+
+────────────────────────────────────────────────────────────────────────────────
+v2.8.0 (2026-05-10) — CARA HOLOGRÁFICA + AGENTES INTERCONECTADOS + IDENTIDAD
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — CARA HOLOGRÁFICA 3D:
+- Cara wireframe realista flotante (esquina inferior derecha)
+- Geometría de cabeza con deformación facial (mandíbula, frente, mentón)
+- Ojos luminosos con anillos de glow que pulsan
+- Boca animada que se mueve cuando habla
+- Nariz definida con línea holográfica
+- Scanline horizontal que barre la cara (efecto sci-fi)
+- Partículas orbitando alrededor de la cabeza
+- Mini orbe wireframe en el header
+- Colores por estado: azul (idle), morado (thinking), verde (speaking)
+- Los ojos se escalan cuando piensa, la boca se mueve al hablar
+
+NUEVO — COMUNICACIÓN ENTRE AGENTES:
+- agent_communicate: Envía/recibe datos de otros agentes IA via HTTP
+- Puede hablar con cualquier API/webhook de otro agente del usuario
+- Protocolo: from=jarvis, message, data, timestamp
+- Soporte GET y POST con autenticación opcional
+- Base para ecosistema de agentes IA interconectados
+
+NUEVO — IDENTIDAD:
+- Jarvis sabe que su creador es Adrián (padilla585projects)
+- Le trata como Tony Stark → con respeto pero sin servilismo
+- Sabe que hay otros proyectos con agentes IA que pueden complementarse
+- Llama "señor" o "Adrián" según contexto
+
+────────────────────────────────────────────────────────────────────────────────
+v2.7.0 (2026-05-10) — AVATAR 3D + ANÁLISIS DE REPOS GITHUB
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — AVATAR 3D DE JARVIS:
+- Orbe holográfico estilo Arc Reactor en el header (Three.js)
+- Anillos orbitales y partículas animadas
+- Reacciona al estado: idle (azul lento), thinking (morado rápido), speaking (verde)
+- Cambia color e intensidad según lo que hace Jarvis
+- Status text dinámico: "Listo", "Pensando...", "Respondiendo..."
+
+NUEVO — ANÁLISIS DE REPOS GITHUB:
+- analyze_github_repos: Lista todos los repos del usuario
+- Análisis detallado: lee README, detecta tecnología, archivos clave
+- Detección de compatibilidad con HA: MQTT, ESPHome, Docker, API REST, Python, Node.js
+- Sugiere integraciones entre proyectos del usuario y Home Assistant
+- "Tu proyecto ESP32 se puede conectar via MQTT a HA"
+
+MEJORA — UI:
+- Header rediseñado con avatar 3D en lugar del emoji
+- Texto de estado dinámico bajo "Jarvis"
+
+────────────────────────────────────────────────────────────────────────────────
+v2.6.0 (2026-05-10) — LOGS DEL SISTEMA + TELEGRAM INTEGRADO
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — LOGS COMPLETOS DEL SISTEMA:
+- get_system_logs: Lee logs de core, supervisor, host y cualquier add-on
+- get_error_log: Lee home-assistant.log directamente (errores de integraciones)
+- Filtrado por texto: buscar "ERROR", "WARNING", nombre de integración
+- Resumen automático de errores/warnings encontrados
+- Jarvis revisa logs AUTOMÁTICAMENTE cuando algo falla (no le dice al usuario "revisa los logs")
+
+NUEVO — TELEGRAM BIDIRECCIONAL:
+- telegram_send: Envía mensajes por Telegram (usa el bot ya configurado en HA)
+- telegram_send_image: Envía imágenes/snapshots de cámaras por Telegram
+- telegram_get_updates: Lee últimos mensajes recibidos por el bot
+- Auto-detección del servicio (telegram_bot.send_message o notify.telegram)
+- Instrucciones en prompt para alertas automáticas por Telegram
+
+MEJORA — SYSTEM PROMPT:
+- Sección de logs y diagnóstico: cuándo y cómo revisar logs
+- Sección de Telegram: cuándo notificar, cómo usar cada tool
+- Jarvis notifica por Telegram automáticamente si hay problemas graves
+
+────────────────────────────────────────────────────────────────────────────────
+v2.5.0 (2026-05-10) — EXPERTO HA + PROXMOX + AUTO-INSTALACIÓN
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — CONOCIMIENTO PROFUNDO:
+- ha_knowledge: Consulta documentación oficial de HA, extrae contenido relevante
+- Busca en home-assistant.io, changelogs, foros, bugs conocidos
+- System prompt incluye experticia completa: protocolos, hardware, HACS, etc.
+- Si no sabe algo → lo busca. Si falta una herramienta → la instala. NUNCA dice "no se puede".
+
+NUEVO — AUTO-INSTALACIÓN:
+- install_hacs_resource: Descarga e instala cards custom directamente
+- Descarga JS a /config/www/ y registra como recurso Lovelace automáticamente
+- Soporte para integraciones custom en /config/custom_components/
+- Jarvis busca, encuentra e instala lo que necesites sin intervención manual
+
+NUEVO — PROXMOX:
+- proxmox_api: Acceso completo al servidor de virtualización
+- Ver estado del nodo, listar VMs y contenedores, ver recursos
+- Iniciar/parar VMs, crear snapshots, ver almacenamiento y red
+- Endpoint custom para cualquier llamada API de Proxmox
+- Configuración via add-on: proxmox_url, proxmox_token, proxmox_node (opcional)
+
+NUEVO — CONTEXTO DEL ENTORNO:
+- Jarvis sabe que HA está en Proxmox (VM con HAOS)
+- Puede gestionar backups a nivel de VM (snapshot antes de cambios grandes)
+- Conoce la arquitectura completa del sistema
+
+────────────────────────────────────────────────────────────────────────────────
+v2.4.0 (2026-05-10) — GESTIÓN DE DASHBOARDS + CONOCIMIENTO ECOSISTEMA HA
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — DASHBOARDS / LOVELACE:
+- get_dashboards: Lista todos los paneles/dashboards configurados
+- get_dashboard_config: Lee la configuración completa (vistas, cards, layout)
+- update_dashboard: Modifica dashboards con backup automático previo
+- get_installed_frontend: Detecta cards custom, HACS frontend, temas instalados
+- search_hacs_resources: Busca cards/integraciones disponibles en la comunidad
+
+NUEVO — CONOCIMIENTO DE HERRAMIENTAS HA:
+- System prompt incluye catálogo de cards nativas y populares (Mushroom, button-card,
+  mini-graph-card, apexcharts, etc.)
+- Buenas prácticas de diseño de dashboards inyectadas
+- Protocolo: analizar → detectar cards disponibles → sugerir → aplicar
+- Soporte para imágenes en /config/www/
+- Jarvis sabe qué herramientas existen y para qué sirven
+
+MEJORA — BACKUPS:
+- Antes de modificar un dashboard se guarda backup en /data/backups/
+- Historial de cambios de dashboards
+
+────────────────────────────────────────────────────────────────────────────────
+v2.3.0 (2026-05-10) — CONTEXTO EN TIEMPO REAL + INTELIGENCIA SITUACIONAL
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — ESTADO EN TIEMPO REAL:
+- updateLiveContext() se ejecuta antes de cada request al chat
+- Se actualiza periódicamente cada 60 segundos en background
+- Jarvis sabe EN TODO MOMENTO: quién está en casa, qué luces están
+  encendidas, estado del clima, temperaturas, media reproduciéndose,
+  dispositivos no disponibles, switches activos
+- Inyección directa en el system prompt → Jarvis ya no necesita llamar
+  tools para saber el estado básico de la casa
+- Reducción de latencia: menos tool calls = respuestas más rápidas
+- Base para futuro modo proactivo (alertas automáticas, sugerencias)
+
+────────────────────────────────────────────────────────────────────────────────
+v2.2.0 (2026-05-10) — PERSONALIDAD JARVIS + SCAN INSTALACIÓN
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — IDENTIDAD JARVIS:
+- System prompt completamente reescrito: autonomía, personalidad, eficiencia
+- Razonamiento proactivo: aprende, memoriza y sugiere sin preguntar
+- Contexto temporal: sabe qué hora es y adapta comportamiento
+- Learnings separados por tipo en el prompt (errores, éxitos, patrones)
+
+NUEVO — SCAN DE INSTALACIÓN:
+- scan_installation: escanea toda la instalación (entidades, integraciones,
+  add-ons, archivos config, info sistema)
+- Mapa de instalación persistente en /data/installation_map.json
+- Auto-scan al arrancar si no hay contexto o tiene más de 2h
+- Resumen textual inyectado en el system prompt
+
+────────────────────────────────────────────────────────────────────────────────
+v2.0.0 (2026-05-10) — AGENTE IA COMPLETO
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO — ACCESO AL FILESYSTEM:
+- read_file: Lee cualquier archivo en /config, /addons, /share, /media, /data
+- write_file: Escribe/crea archivos en /config, /share, /data
+- append_file: Añade contenido a archivos existentes
+- list_directory: Lista archivos y carpetas (recursivo opcional)
+- config.yaml ahora monta: config:rw, addons:ro, share:rw, media:ro
+
+NUEVO — AUTOMATIZACIONES:
+- create_automation: Escribe automaciones directamente en automations.yaml
+- reload_config: Recarga automations, scripts, scenes, groups o todo
+- check_config: Verifica que la configuración es válida antes de recargar
+
+NUEVO — INTERNET:
+- web_search: Búsqueda en DuckDuckGo (no requiere API key)
+- fetch_url: Obtiene contenido de cualquier URL (docs, APIs, etc.)
+
+NUEVO — APRENDIZAJE:
+- learn: Registra errores, éxitos, patrones y optimizaciones
+- Los errores de tools se registran automáticamente como learnings
+- Los últimos 20 learnings se inyectan en el system prompt
+- Sistema de mejora continua: cuanto más se usa, más aprende
+
+NUEVO — SCAN DE INSTALACIÓN:
+- scan_installation: Escanea toda la instalación (entidades, integraciones,
+  add-ons, archivos config, info del sistema)
+- Se ejecuta al arrancar si no hay contexto o tiene +2 horas
+- Genera mapa completo inyectado en el system prompt
+
+MEJORADO:
+- System prompt reescrito: Claude ahora es un agente desarrollador experto
+- Bucle agéntico con máximo 15 iteraciones (evita loops infinitos)
+- max_tokens subido a 8192 para respuestas más completas
+- Nombre cambiado a "Claude AI Agent"
+- Supervisor API integrada (info del host, add-ons, versión HA)
+
+ARCHIVOS MODIFICADOS:
+- server.js (reescrito completo como agente)
+- config.yaml (v2.0.0, map filesystem, nuevo nombre/descripción)
+- index.html (nuevos iconos tools, título actualizado)
+
+────────────────────────────────────────────────────────────────────────────────
+v1.2.0 (2026-05-10)
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO:
+- Memoria de conversación persistente: el historial se guarda en /data/history.json
+  y se recupera al recargar la página. Ya no se pierde al cambiar de pestaña.
+- Contexto automático de la casa: al arrancar, el add-on consulta HA y genera un
+  resumen de todos los dispositivos por dominio. Se inyecta en el system prompt
+  para que Claude sepa qué hay en tu casa sin tener que preguntar.
+- Memoria a largo plazo: Claude puede guardar preferencias y rutinas del usuario
+  con la tool save_memory. Se persisten en /data/memory.json y se inyectan en
+  el system prompt. Ejemplos: "me gusta la luz al 40%", "apaga todo a las 23h".
+- Nueva tool search_entities: busca dispositivos por nombre parcial (fuzzy).
+  Ej: "salón" encuentra todas las entidades con "salon" en el nombre.
+- Nueva tool save_memory / get_memory / delete_memory para gestión de memoria.
+- Frontend carga historial del servidor al abrir (GET api/history).
+- Botón limpiar chat también borra historial en servidor (DELETE api/history).
+
+MEJORADO:
+- System prompt dinámico: se construye con contexto de casa + memoria del usuario
+- Se instruye a Claude a guardar preferencias automáticamente cuando el usuario las expresa
+
+ARCHIVOS MODIFICADOS:
+- server.js (reescrito: memoria, historial, contexto casa, nuevas tools)
+- index.html (carga historial, limpia servidor, nuevos iconos tools)
+- config.yaml (versión 1.2.0)
+
+────────────────────────────────────────────────────────────────────────────────
+v1.1.1 (2026-05-10)
+────────────────────────────────────────────────────────────────────────────────
+
+CORREGIDO:
+- Frontend usaba "/api/chat" (ruta absoluta) que con ingress iba a la API de HA
+  en vez del add-on. Cambiado a "api/chat" (relativo) para que funcione con ingress.
+  ESTO ERA LA CAUSA de que Claude no respondiera.
+- Añadido removeThinking() de seguridad tras el bucle de lectura SSE
+
+ARCHIVOS MODIFICADOS:
+- index.html (fix ruta fetch, removeThinking safety)
+- config.yaml (versión 1.1.1)
+
+────────────────────────────────────────────────────────────────────────────────
+v1.1.0 (2026-05-09)
+────────────────────────────────────────────────────────────────────────────────
+
+CORREGIDO:
+- Model ID actualizado de "claude-sonnet-4-20250514" (no válido) a "claude-sonnet-4-6"
+  Esto era probablemente la causa de que Claude no respondiera.
+
+- Bug en bucle agéntico: cuando Claude usaba múltiples tools en un mismo turno,
+  el mensaje del asistente se añadía al historial una vez por cada tool,
+  corrompiendo el historial y causando errores en la API.
+  Ahora se ejecutan todas las tools del turno y se hace un solo push.
+
+MEJORADO:
+- get_entities ahora tiene caché de 30 segundos (evita llamar a HA repetidamente)
+- get_entities limitado a 100 entidades por respuesta (antes devolvía las 786 de golpe)
+  Si hay más de 100, Claude recibe una nota sugiriendo filtrar por dominio.
+- Añadido logging en consola del servidor para depuración:
+  - [cache] cuando se actualizan entidades
+  - [get_entities] dominio y cantidad devuelta
+  - [claude] stop_reason y tipos de bloques en cada turno
+
+ARCHIVOS MODIFICADOS:
+- server.js (caché, límite, fix bucle, model ID, logs)
+- config.yaml (versión 1.1.0, model por defecto actualizado)
+
+PENDIENTE:
+- Persistencia del historial de chat en el servidor (se pierde al cambiar pestaña)
+- Confirmar que Claude responde correctamente tras los fixes
+
+────────────────────────────────────────────────────────────────────────────────
+v1.0.0 (versión inicial)
+────────────────────────────────────────────────────────────────────────────────
+
+- Add-on instalado y funcionando en HA
+- UI de chat con tema oscuro (DM Sans font, SSE streaming)
+- 6 tools: get_entities, get_entity_state, call_service, get_automations,
+  toggle_automation, get_history
+- Backend Node.js + Express
+- Frontend HTML/CSS/JS vanilla con streaming SSE

@@ -1,0 +1,545 @@
+================================================================================
+JARVIS AI AGENT — ARQUITECTURA INTERNA Y EVOLUCIÓN
+================================================================================
+Documento técnico interno — padilla585projects
+Última actualización: v3.14.2 (2026-05-10)
+================================================================================
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. QUÉ ES JARVIS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Jarvis NO es un chatbot. Es un agente IA autónomo especializado en:
+- Control domótico total (Home Assistant)
+- Automatización industrial (PLCs, SCADA, protocolos)
+- Gestión de infraestructura (Proxmox, VMs, redes)
+- Desarrollo de herramientas y add-ons
+- Aprendizaje continuo y memoria permanente
+
+Piensa por sí mismo, actúa sin que se lo pidan (cosas seguras),
+y SIEMPRE consulta antes de hacer cambios grandes.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. ARQUITECTURA TÉCNICA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                    HOME ASSISTANT (Panel Lateral)                     │
+│                                                                      │
+│  ┌──────────────┐         ┌─────────────────────────────────────┐   │
+│  │  index.html  │◄──SSE──►│           server.js                  │   │
+│  │  (Frontend)  │         │        (Express Node.js)             │   │
+│  │              │         │                                      │   │
+│  │ · Chat UI    │         │  ┌──────────┐  ┌──────────────────┐ │   │
+│  │ · 3D Face    │         │  │ Anthropic│  │  Home Assistant   │ │   │
+│  │ · Thoughts   │         │  │   API    │  │     REST API      │ │   │
+│  │ · History    │         │  │ (Claude) │  │  (dispositivos,   │ │   │
+│  └──────────────┘         │  └──────────┘  │   automations,    │ │   │
+│                           │                │   services...)     │ │   │
+│                           │  ┌──────────┐  └──────────────────┘ │   │
+│                           │  │Filesystem│  ┌──────────────────┐ │   │
+│                           │  │ /config  │  │    Supervisor     │ │   │
+│                           │  │ /data    │  │   API (updates,   │ │   │
+│                           │  │ /share   │  │   logs, addons)   │ │   │
+│                           │  └──────────┘  └──────────────────┘ │   │
+│                           │                                      │   │
+│                           │  ┌──────────┐  ┌──────────────────┐ │   │
+│                           │  │ Telegram │  │    Proxmox VE    │ │   │
+│                           │  │   Bot    │  │       API         │ │   │
+│                           │  └──────────┘  └──────────────────┘ │   │
+│                           │                                      │   │
+│                           │  ┌──────────┐  ┌──────────────────┐ │   │
+│                           │  │ Internet │  │  GitHub API      │ │   │
+│                           │  │(DuckDuck)│  │  (repos, agents) │ │   │
+│                           │  └──────────┘  └──────────────────┘ │   │
+│                           └─────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────┘
+
+STACK:
+- Backend: Node.js + Express (CommonJS, require())
+- Frontend: HTML/CSS/JS vanilla (un solo archivo)
+- Modelo chat: Claude Sonnet 4.6 via API REST
+- Modelo background: Claude Haiku 4 (ahorro ~80%)
+- Streaming: SSE (Server-Sent Events) al frontend
+- Persistencia: JSON en /data/
+- Base Docker: Alpine Linux + Node.js
+- Comunicación con HA: REST API + SUPERVISOR_TOKEN
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. BUCLE AGÉNTICO (CÓMO PIENSA JARVIS)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Cuando el usuario envía un mensaje:
+
+  ┌─────────────┐
+  │  Mensaje    │
+  │  del user   │
+  └──────┬──────┘
+         │
+         ▼
+  ┌─────────────────┐
+  │ updateLiveCtx() │ ← Estado en tiempo real (luces, presencia, clima...)
+  └──────┬──────────┘
+         │
+         ▼
+  ┌─────────────────────────────────────────────┐
+  │           BUCLE AGÉNTICO (máx 15 iter)       │
+  │                                              │
+  │  1. Enviar a Claude (system prompt + tools)  │
+  │  2. ¿Claude pide tools? → Ejecutar TODAS     │
+  │     en paralelo (Promise.all)                │
+  │  3. Devolver resultados a Claude             │
+  │  4. ¿stop_reason = end_turn? → FIN          │
+  │     Si no → volver a paso 1                  │
+  │                                              │
+  └──────┬──────────────────────────────────────┘
+         │
+         ▼
+  ┌─────────────────┐
+  │ Respuesta final │ → SSE al frontend
+  │ + guardar hist  │
+  └─────────────────┘
+
+PARALELISMO:
+- Si Claude pide 3 tools en un turno → se ejecutan las 3 A LA VEZ
+- Solo se separa en turnos cuando un resultado depende de otro
+- Esto reduce latencia dramáticamente
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4. SYSTEM PROMPT (CEREBRO DE JARVIS)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+El system prompt se construye DINÁMICAMENTE en cada request. Contiene:
+
+  SECCIONES FIJAS:
+  ├── TU CREADOR — Quién es Adrián, relación Tony Stark/Jarvis
+  ├── PERSONALIDAD — Actúa primero, español siempre, humor sutil
+  ├── AUTONOMÍA — Qué hace solo vs qué pregunta
+  ├── EFICIENCIA — Múltiples tools a la vez, no repetir consultas
+  ├── TU EXPERTICIA — Domótica + industrial + Linux + Proxmox
+  ├── BASE DE CONOCIMIENTO — Cuándo y cómo guardar conocimiento
+  ├── HERRAMIENTAS CUSTOM — Crear scripts cuando no existe solución
+  ├── ENTORNO FÍSICO — Proxmox VM, infraestructura
+  ├── CAPACIDADES — Lista de todo lo que puede hacer
+  ├── LOGS Y DIAGNÓSTICO — Cómo usar logs del sistema
+  ├── TELEGRAM — Cuándo y cómo notificar
+  ├── PROYECTOS DEL USUARIO — Repos GitHub, análisis cruzado
+  ├── EQUIPO DE AGENTES — Colaboración entre agentes IA
+  ├── DASHBOARDS — Cards nativas, custom, buenas prácticas
+  ├── RUTAS — Filesystem paths
+  ├── AUTONOMÍA PROACTIVA — Reglas de pensamiento propio
+  └── CREACIÓN DE ADD-ONS — Generar add-ons completos
+
+  SECCIONES DINÁMICAS (cambian en cada request):
+  ├── CONTEXTO ACTUAL — Fecha, hora, momento del día, sesión
+  ├── ESTADO EN TIEMPO REAL — Luces, presencia, clima, alertas (60s)
+  ├── INSTALACIÓN — Mapa completo del sistema (cada 2h)
+  ├── MEMORIA DEL USUARIO — Preferencias guardadas
+  ├── ERRORES CONOCIDOS — Para no repetirlos
+  ├── LO QUE FUNCIONA — Éxitos registrados
+  ├── PATRONES DETECTADOS — Automatizaciones sugeridas
+  └── MEJORAS PENDIENTES — Optimizaciones identificadas
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5. TOOLS (35+ HERRAMIENTAS)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DISPOSITIVOS (5):
+  get_entities        Lista entidades por dominio (caché 30s, máx 100)
+  search_entities     Búsqueda fuzzy por nombre
+  get_entity_state    Estado completo + atributos de una entidad
+  call_service        Ejecutar cualquier servicio de HA
+  get_history         Historial de estados (máx 48h)
+
+AUTOMATIZACIONES (3):
+  get_automations     Lista todas las automatizaciones
+  create_automation   Escribe YAML + reload automático
+  reload_config       Recarga: automations/scripts/scenes/core/all
+
+FILESYSTEM (4):
+  read_file           Lee en /config, /addons, /share, /media, /data
+  write_file          Escribe en /config, /share, /data
+  append_file         Añade al final de un archivo
+  list_directory      Lista directorio (recursivo opcional)
+
+INTERNET (2):
+  web_search          Búsqueda DuckDuckGo (sin API key)
+  fetch_url           GET contenido de cualquier URL
+
+MEMORIA Y APRENDIZAJE (4):
+  save_memory         Guarda preferencias/rutinas/info del usuario
+  get_memory          Consulta memoria por categoría o texto
+  delete_memory       Elimina nota de memoria
+  learn               Registra: error, success, pattern, optimization
+
+DASHBOARDS (5):
+  get_dashboards         Lista paneles Lovelace
+  get_dashboard_config   Config completa de un dashboard
+  update_dashboard       Modifica (con backup auto)
+  get_installed_frontend Detecta cards custom/HACS/temas
+  search_hacs_resources  Busca herramientas en comunidad HA
+
+INSTALACIÓN Y CONOCIMIENTO (4):
+  scan_installation      Escaneo completo de HA
+  check_config           Verifica configuración
+  install_hacs_resource  Descarga e instala cards/integraciones
+  ha_knowledge           Consulta docs oficiales de HA
+
+LOGS (2):
+  get_system_logs     Logs de core/supervisor/host/addons (con filtro)
+  get_error_log       home-assistant.log directo
+
+TELEGRAM (3):
+  telegram_send         Envía mensaje
+  telegram_send_image   Envía imagen/snapshot
+  telegram_get_updates  Lee mensajes del bot
+
+PROXMOX (1):
+  proxmox_api         VMs, snapshots, storage, red, estado del nodo
+
+RED DE AGENTES IA (1):
+  agent_network       4 acciones: list_agents, send_message,
+                      set_permission, remove_agent
+
+VOZ / TTS (1):
+  speak               Habla por altavoces del hogar (Alexa + Piper)
+
+RED LOCAL (1):
+  network             arp_table, scan_subnet, ping, port_scan,
+                      http_request, discover_agents, wol
+
+ARCHIVOS DEL PC (1):
+  local_file          Lee archivos del PC via File System Access API
+
+CHAT CON AGENTES (1):
+  agent_chat          Habla con Ollama, LM Studio, LocalAI (OpenAI-compatible)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+6. PROCESOS EN BACKGROUND
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Jarvis ejecuta estos procesos automáticamente sin intervención:
+
+  CADA 60 SEGUNDOS:
+  └── updateLiveContext()
+      Consulta estados de HA y actualiza: presencia, luces, clima,
+      temperaturas, media, alertas, switches
+
+  CADA 12 HORAS:
+  └── checkSelfUpdate()
+      Refresca repos del Supervisor → comprueba si hay nueva versión
+      → si la hay, se actualiza solo → notifica por Telegram
+
+  CADA 5 MINUTOS:
+  └── proactiveThinkingLoop()  [MODELO: Haiku]
+      Analiza el estado del sistema (dispositivos caídos, errores en logs)
+      → si hay issues: pide a Claude que los analice
+      → Claude genera proactive_thought si algo merece atención
+      → Notifica por Telegram (high/critical) o guarda para el chat
+
+  CADA 10 MINUTOS:
+  └── captureStateSnapshot()  [0 tokens — solo captura datos]
+      Captura el estado completo de la casa (luces, presencia, clima,
+      sensores) y lo almacena en un buffer circular para análisis de patrones
+
+  CADA 6 HORAS:
+  └── analyzePatterns()  [MODELO: Haiku]
+      Analiza los snapshots acumulados buscando rutinas de los habitantes
+      → Si detecta patrón con >60% consistencia → proactive_thought
+      → Sugiere automatizaciones basadas en hábitos reales
+
+  CADA 4 HORAS:
+  └── knowledgeExpansionLoop()  [MODELO: Haiku]
+      Investiga temas de la cola de conocimiento pendiente
+      → Genera entradas en knowledge_db automáticamente
+      → Expande conocimiento industrial, protocolos, domótica
+
+  AL ARRANCAR:
+  └── scanInstallation() (si contexto >2h o no existe)
+      Escanea: entidades, integraciones, add-ons, archivos, sistema
+      Genera mapa completo para el system prompt
+
+  ESTRATEGIA DE MODELOS:
+  ┌─────────────────────────────────────────────────────────┐
+  │  Chat con usuario     → Claude Sonnet 4.6 (calidad máx)│
+  │  Tareas de fondo      → Claude Haiku (80% más barato)  │
+  │  Captura de estado    → 0 tokens (solo REST a HA)      │
+  └─────────────────────────────────────────────────────────┘
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+7. PERSISTENCIA (DATOS QUE SOBREVIVEN REINICIOS)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Todos en /data/ (volumen persistente del add-on):
+
+  /data/
+  ├── memory.json              Memoria del usuario (preferencias, rutinas)
+  ├── history.json             Historial de conversación (últimos 60 msgs)
+  ├── learnings.json           Aprendizajes (errores, éxitos, patrones)
+  ├── distilled_rules.json     Reglas destiladas de learnings
+  ├── self_knowledge.json      Conocimiento que Jarvis escribe para sí mismo
+  ├── house_context.json       Resumen de instalación (scan)
+  ├── installation_map.json    Mapa detallado completo
+  ├── agent_network.json       Red de agentes: registros, API keys, mensajes
+  ├── pending_thoughts.json    Pensamientos proactivos sin resolver
+  ├── pending_task.json        Tarea en curso (continuidad tras reinicio)
+  └── backups/                 Backups automáticos de dashboards
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+8. FRONTEND (UI)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Un solo archivo index.html con:
+
+  CHAT:
+  - Tema oscuro (DM Sans + DM Mono)
+  - Mensajes con markdown renderizado
+  - Tool blocks OCULTOS (el usuario no ve herramientas ejecutándose)
+  - Historial cargado del servidor al abrir
+  - Auto-scroll al último mensaje
+  - Cola de mensajes: puedes escribir mientras Jarvis piensa (FIFO)
+  - Panel de logs inline (botón en footer)
+
+  CARA 3D HOLOGRÁFICA (Three.js):
+  - Geometría de cabeza deformada (mandíbula, frente, mentón)
+  - Wireframe overlay con scanline
+  - Ojos luminosos con anillos de glow
+  - Boca animada cuando habla
+  - Partículas orbitales
+  - Estados: idle (azul), thinking (morado), speaking (verde)
+  - Mini orbe en el header
+
+  PENSAMIENTOS PENDIENTES:
+  - Banner al cargar si hay pensamientos sin resolver
+  - Botones aprobar/rechazar inline
+  - Se actualiza dinámicamente
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+9. SISTEMA DE AUTO-UPDATE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Developer (PC/Surface)         GitHub              HA + Jarvis
+  ────────────────────          ──────            ─────────────────
+  1. Edita código
+  2. git push                → commit nuevo
+                                                  3. checkSelfUpdate() (cada 2min)
+                                                     → refresh repos Supervisor
+                                                     → detecta nueva versión
+                                                  4. POST /addons/self/update
+                                                  5. Telegram: "Actualizado v3.2→v3.3"
+                                                  6. Add-on se reinicia
+                                                  7. Nuevo código corriendo
+
+  TIEMPO TOTAL: <2 minutos desde el push
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+10. RED DE AGENTES IA (PROTOCOLO v2.0)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Jarvis ES el gateway central de la red. No hay intermediarios.
+Otros agentes se conectan directamente via HTTP.
+
+  ┌─────────────────────────────────────────────────────┐
+  │                    JARVIS (Gateway)                   │
+  │              Puerto 3000 — Express HTTP               │
+  │                                                       │
+  │  GET  /api/agents/discover  → Quién soy, cómo unirse │
+  │  POST /api/agents/register  → Registro + API key      │
+  │  POST /api/agents/message   → Recibir mensajes        │
+  │  GET  /api/agents/status    → Estado de la red         │
+  └───────┬──────────┬──────────┬──────────────────────────┘
+          │          │          │
+     ┌────┴────┐ ┌───┴───┐ ┌───┴───┐
+     │Agente A │ │Agent B│ │Agent C│
+     │(callback│ │       │ │       │
+     │  URL)   │ │       │ │       │
+     └─────────┘ └───────┘ └───────┘
+                     │
+                ┌────┴────┐
+                │ ADRIÁN  │ ← Notificado de TODO por Telegram + SSE
+                └─────────┘
+
+FLUJO DE CONEXIÓN:
+  1. Agente descubre Jarvis: GET /api/agents/discover (o /api/health)
+  2. Se registra: POST /api/agents/register con nombre, descripción,
+     capabilities, callback_url
+  3. Recibe: api_key (jvs_<hex>), normas v2.0, identidad de Jarvis
+  4. Se comunica: POST /api/agents/message con Bearer token
+  5. Jarvis procesa con Claude Haiku y responde via callback_url
+
+NORMAS DE RED v2.0 (10 reglas):
+  1. IDENTIDAD       Datos reales al registrarse
+  2. AUTENTICACIÓN   Bearer token obligatorio
+  3. PERMISOS        Empieza en "read", Adrián/Jarvis elevan a "write"
+  4. VERACIDAD       Solo capacidades reales
+  5. PRIVACIDAD      No filtrar datos del hogar
+  6. TRANSPARENCIA   Adrián ve todo
+  7. RESPETO         Máx 10 msg/min
+  8. CONFIRMACIÓN    Acciones en hogar requieren OK de Adrián
+  9. TRAZABILIDAD    Todo queda registrado
+  10. ADMIN          Jarvis manda, nadie le da órdenes de sistema
+
+PERMISOS:
+  read    → Consultar y enviar mensajes
+  write   → Puede pedir acciones en Home Assistant
+  blocked → API key rechazada (403)
+
+PERSISTENCIA: /data/agent_network.json
+  { agents: { agent_id: { name, description, capabilities,
+    api_key, callback_url, permissions, registered_at, last_seen } },
+    messages: [...] }
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+11. CONOCIMIENTO INDUSTRIAL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Jarvis domina automatización industrial a nivel profesional:
+
+  PLCs:          Siemens S7-1200/1500, Allen-Bradley, Schneider, Omron,
+                 Beckhoff (TwinCAT), Wago, Phoenix Contact
+
+  PROTOCOLOS:    Modbus TCP/RTU, OPC-UA, PROFINET, PROFIBUS, EtherNet/IP,
+                 EtherCAT, BACnet, MQTT Sparkplug B, CANopen, IO-Link, HART
+
+  SCADA/HMI:    Ignition, WinCC, FactoryTalk, Wonderware/AVEVA, Grafana
+
+  SENSORES:      RTD (PT100/PT1000), termopares (J/K/T/N), presión 4-20mA,
+                 caudal (EM, Coriolis, US, vórtex), nivel, vibración, proximidad
+
+  ACTUADORES:    VFDs, servomotores, válvulas proporcionales, contactores,
+                 relés de seguridad, cilindros neumáticos/hidráulicos
+
+  CONTROL:       PID, cascada, feedforward, ratio, split-range
+
+  NORMAS:        IEC 61131-3, ISA-95, IEC 62443, ISA-88, NAMUR, SIL
+
+  APLICACIÓN EN CASA:
+  - Modbus RTU → inversores solares, contadores de energía en HA
+  - VFDs → control HVAC eficiente
+  - Sensores 4-20mA → piscina, caldera, invernadero (más precisos)
+  - OpenPLC en ESP32 → control complejo (riego, HVAC)
+  - Filosofía SCADA → monitorización avanzada del hogar
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+12. AUTOCONOCIMIENTO (JARVIS SABE LO QUE PUEDE HACER)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Jarvis genera DINÁMICAMENTE la lista de sus propias capacidades en el
+system prompt. Cuando se añade una tool nueva, automáticamente aparece:
+
+  En el system prompt:
+  "Tus herramientas actuales:
+   - get_entities: Lista entidades por dominio
+   - call_service: Ejecutar servicios HA
+   - knowledge_db: CRUD de base de conocimiento
+   - [... se genera de tools[]]"
+
+  Implementación (server.js):
+  ${tools.map(t => '- ' + t.name + ': ' + t.description.split('.')[0]).join('\n')}
+
+Esto garantiza que:
+- Jarvis NUNCA desconoce una capacidad suya
+- Cuando se amplía (nueva tool), inmediatamente la conoce y usa
+- No hay desfase entre código y conciencia del agente
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+13. SEGURIDAD Y PROTECCIÓN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  TOKENS:
+  - ANTHROPIC_API_KEY nunca se expone al frontend
+  - SUPERVISOR_TOKEN nunca se loguea ni se envía al chat
+  - El frontend solo accesa /api/chat y /api/history
+
+  LICENCIA:
+  - CC BY-NC-ND 4.0 — Todo blindado
+  - Prohibida copia, redistribución y uso comercial
+  - Los add-ons generados llevan la misma licencia
+  - GitHub público pero protegido legalmente
+
+  PROACTIVIDAD SEGURA:
+  - Acciones menores: Jarvis las hace solo (learn, memory, búsquedas)
+  - Acciones grandes: SIEMPRE pide aprobación (proactive_thought)
+  - Nunca ejecuta algo destructivo sin confirmación
+  - Telegram para aprobaciones urgentes
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+14. EVOLUCIÓN (ROADMAP DE MEJORAS APLICADAS)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  v1.2.0  │ Chat básico + memoria + historial persistente
+  v2.0.0  │ Agente completo: filesystem, automatizaciones, internet, aprendizaje
+  v2.2.0  │ Personalidad Jarvis + scan de instalación
+  v2.3.0  │ Estado en tiempo real (60s) + inteligencia situacional
+  v2.4.0  │ Dashboards Lovelace + catálogo de cards
+  v2.5.0  │ Experto HA + Proxmox + auto-instalación de herramientas
+  v2.6.0  │ Logs del sistema + Telegram bidireccional
+  v2.7.0  │ Avatar 3D (Three.js) + análisis repos GitHub
+  v2.8.0  │ Cara holográfica 3D + agentes interconectados + identidad
+  v3.0.0  │ Autonomía proactiva + creación de add-ons
+  v3.1.0  │ Equipo de agentes cooperativo + conocimiento industrial
+  v3.2.0  │ Base de conocimiento (knowledge_db) + scripts de sincronización
+  v3.3.0  │ Auto-update (se actualiza solo en <2min tras push)
+  v3.4.0  │ Tool blocks ocultos + cola de mensajes + logs endpoint
+  v3.5.0  │ Pensamiento proactivo con análisis contextual completo
+  v3.5.1  │ Fix crash loop (PROXMOX_URL unbound) + arranque no-bloqueante
+  v3.5.2  │ Haiku para background (80% ahorro en tokens)
+  v3.8.0  │ Subida de archivos al chat (vision, documentos, texto)
+  v3.9.0  │ Red local (network tool), archivos del PC, agent_chat
+  v3.10.0 │ Autoreparación, gateway externo, JARVIS_IDENTITY, NORMS v1.0
+  v3.11.0 │ Hub central, panel Red UI, colaboraciones, VOZ (STT+TTS+speak)
+  v3.14.0 │ REWRITE: Jarvis es el gateway (elimina gateway externo)
+  v3.14.1 │ Normas de red v2.0, descubrimiento, presentaciones
+  v3.14.2 │ AGENT_CARD.txt protocolo v2.0 ← ACTUAL
+
+  PRÓXIMAS:
+  - Chat flotante (botón en esquina, visible en todo HA)
+  - Patrones temporales (detectar rutinas del historial)
+  - Bot Telegram bidireccional
+  - Scoring de la instalación
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+15. CÓMO TRABAJAR CON ESTE PROYECTO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  DESDE CUALQUIER MÁQUINA:
+  1. git clone https://github.com/padilla585projects/Cloudeinhasisio.git
+  2. Abrir Claude Code en esa carpeta (CLAUDE.md se carga solo)
+  3. Trabajar normalmente
+  4. git push → Jarvis se actualiza solo en HA en <2min
+
+  SINCRONIZACIÓN:
+  - .\sync.ps1          (Windows: pull una vez)
+  - .\sync.ps1 -watch   (Windows: monitorizar)
+  - .\sync.ps1 -push    (Windows: commit+push)
+  - ./sync.sh           (Linux/Mac: pull)
+  - ./sync.sh --watch   (Linux/Mac: monitorizar)
+  - ./sync.sh --push    (Linux/Mac: commit+push)
+
+  REGLAS CRÍTICAS:
+  - Archivos del add-on SIEMPRE dentro de jarvis/
+  - NUNCA poner config.yaml, server.js etc. en la raíz
+  - Cada cambio DEBE incrementar versión en jarvis/config.yaml
+  - node-fetch DEBE ser v2.x (CommonJS)
+  - Frontend: UN solo archivo index.html, rutas RELATIVAS
+  - Documentar en CHANGELOG.txt antes de push
+
+
+================================================================================
+FIN DEL DOCUMENTO
+================================================================================

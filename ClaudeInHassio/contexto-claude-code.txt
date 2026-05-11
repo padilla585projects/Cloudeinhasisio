@@ -1,0 +1,115 @@
+## CONTEXTO DEL PROYECTO: Claude AI Chat Add-on para Home Assistant
+
+### ¿Qué estamos haciendo?
+Estamos construyendo un add-on para Home Assistant que añade un chat con Claude IA en el panel lateral de HA. El usuario puede hablar con Claude en lenguaje natural para controlar sus dispositivos domóticos.
+
+---
+
+### DATOS DEL ENTORNO
+
+- **Home Assistant** accesible via Nabu Casa: https://3pijakbxlbqvfl1pqrsziqawn8bopph6.ui.nabu.casa
+- **GitHub repo del add-on**: https://github.com/padilla585projects/Cloudeinhasisio
+- **Carpeta del add-on en el repo**: `claude-ha-chat/`
+- **HA tiene 786 entidades**: luces (34), switches (111), sensores (287), automatizaciones (45), climate (3), cámaras (3), media_player (13), etc.
+
+---
+
+### ARQUITECTURA DEL ADD-ON
+
+```
+HA Panel Lateral → index.html (UI chat) → server.js (Express Node.js)
+                                               ↓                    ↓
+                                     API Anthropic Claude    API REST de HA
+                                     (claude-sonnet-4)       (SUPERVISOR_TOKEN)
+```
+
+**Tecnologías:**
+- Backend: Node.js + Express
+- Frontend: HTML/CSS/JS vanilla (un solo archivo index.html)
+- API: Anthropic claude-sonnet-4-20250514
+- Comunicación frontend↔backend: SSE (Server-Sent Events) para streaming
+
+---
+
+### ESTRUCTURA DE ARCHIVOS EN EL REPO (claude-ha-chat/)
+
+```
+claude-ha-chat/
+├── config.yaml       # Definición del add-on HA (slug: claude_ha_chat, puerto 3000, ingress)
+├── Dockerfile        # Alpine + Node.js, WORKDIR /app, copia archivos raíz
+├── run.sh            # Lee config con bashio, exporta variables, lanza node /app/server.js
+├── repository.yaml   # Metadata del repositorio de add-ons
+├── package.json      # Dependencias: express, node-fetch, cors
+├── server.js         # Servidor Express con lógica de Claude + tools de HA
+└── index.html        # UI del chat (Dark theme, DM Sans font, SSE streaming)
+```
+
+---
+
+### VARIABLES DE ENTORNO (definidas en run.sh)
+
+```bash
+ANTHROPIC_API_KEY   # Key de Anthropic (introducida por usuario en config del add-on)
+MODEL               # claude-sonnet-4-20250514
+LANGUAGE            # es
+HA_TOKEN            # ${SUPERVISOR_TOKEN} - token interno de HA
+HA_URL              # http://supervisor/core
+```
+
+---
+
+### TOOLS QUE CLAUDE PUEDE USAR (definidas en server.js)
+
+1. `get_entities` - Lista entidades de HA, filtrables por dominio
+2. `get_entity_state` - Estado y atributos de una entidad específica
+3. `call_service` - Ejecuta servicios de HA (encender luces, etc.)
+4. `get_automations` - Lista automatizaciones
+5. `toggle_automation` - Activa/desactiva una automatización
+6. `get_history` - Historial de estados de una entidad
+
+---
+
+### ESTADO ACTUAL
+
+✅ Add-on instalado y arrancando en HA
+✅ UI del chat se ve correctamente
+✅ El chat empieza a procesar mensajes (se ve "pensando...")
+❌ **PROBLEMA 1**: Cuando el usuario cambia de pestaña en HA, el chat se reinicia y pierde el contexto
+❌ **PROBLEMA 2**: La primera respuesta tarda mucho (posiblemente porque consulta las 786 entidades de golpe)
+❓ **PENDIENTE**: Confirmar si Claude llega a responder o se queda colgado indefinidamente
+
+---
+
+### PROBLEMAS A RESOLVER
+
+**Problema principal - Reinicio al cambiar pestaña:**
+El historial de conversación se guarda solo en el frontend (array `conversationHistory` en JS).
+Cuando el ingress de HA recarga la página al volver a la pestaña, se pierde todo.
+**Solución propuesta**: Guardar el historial en el servidor (en memoria o archivo JSON) identificado por sesión.
+
+**Problema de rendimiento:**
+Con 786 entidades, si Claude llama a `get_entities` sin filtro devuelve demasiados datos.
+**Solución propuesta**: 
+- Limitar `get_entities` a 100 entidades máximo por llamada
+- Añadir paginación o filtro obligatorio por dominio
+- Cachear el listado de entidades en el servidor (TTL 30 segundos)
+
+---
+
+### PRÓXIMAS MEJORAS PLANIFICADAS
+
+1. Persistencia del historial de chat en el servidor
+2. Caché de entidades para reducir llamadas a HA
+3. Límite de entidades por respuesta
+4. Indicador de versión del add-on (actualizar version en config.yaml con cada cambio)
+5. Manejo de errores más robusto en el frontend
+
+---
+
+### NOTAS IMPORTANTES
+
+- El add-on usa **ingress** de HA (no puerto directo), por eso la UI se sirve dentro del panel de HA
+- El `SUPERVISOR_TOKEN` da acceso completo a la API de HA sin necesidad de token externo
+- Node-fetch se usa en versión 2.x (CommonJS) porque server.js usa `require()`
+- El Dockerfile usa `ghcr.io/home-assistant/amd64-base:latest` como imagen base
+- Cada vez que se modifica el add-on hay que incrementar la versión en `config.yaml` para que HA detecte la actualización

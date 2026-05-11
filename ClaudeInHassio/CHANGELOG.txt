@@ -1,0 +1,44 @@
+================================================================================
+CHANGELOG - Claude AI Chat Add-on para Home Assistant
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+v1.1.0 (2026-05-09)
+────────────────────────────────────────────────────────────────────────────────
+
+CORREGIDO:
+- Model ID actualizado de "claude-sonnet-4-20250514" (no válido) a "claude-sonnet-4-6"
+  Esto era probablemente la causa de que Claude no respondiera.
+
+- Bug en bucle agéntico: cuando Claude usaba múltiples tools en un mismo turno,
+  el mensaje del asistente se añadía al historial una vez por cada tool,
+  corrompiendo el historial y causando errores en la API.
+  Ahora se ejecutan todas las tools del turno y se hace un solo push.
+
+MEJORADO:
+- get_entities ahora tiene caché de 30 segundos (evita llamar a HA repetidamente)
+- get_entities limitado a 100 entidades por respuesta (antes devolvía las 786 de golpe)
+  Si hay más de 100, Claude recibe una nota sugiriendo filtrar por dominio.
+- Añadido logging en consola del servidor para depuración:
+  - [cache] cuando se actualizan entidades
+  - [get_entities] dominio y cantidad devuelta
+  - [claude] stop_reason y tipos de bloques en cada turno
+
+ARCHIVOS MODIFICADOS:
+- server.js (caché, límite, fix bucle, model ID, logs)
+- config.yaml (versión 1.1.0, model por defecto actualizado)
+
+PENDIENTE:
+- Persistencia del historial de chat en el servidor (se pierde al cambiar pestaña)
+- Confirmar que Claude responde correctamente tras los fixes
+
+────────────────────────────────────────────────────────────────────────────────
+v1.0.0 (versión inicial)
+────────────────────────────────────────────────────────────────────────────────
+
+- Add-on instalado y funcionando en HA
+- UI de chat con tema oscuro (DM Sans font, SSE streaming)
+- 6 tools: get_entities, get_entity_state, call_service, get_automations,
+  toggle_automation, get_history
+- Backend Node.js + Express
+- Frontend HTML/CSS/JS vanilla con streaming SSE

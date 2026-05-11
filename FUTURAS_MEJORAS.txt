@@ -1,0 +1,179 @@
+================================================================================
+FUTURAS MEJORAS — Jarvis AI Agent para Home Assistant
+================================================================================
+Ultima actualizacion: 2026-05-10
+Version actual: 3.14.2
+
+Prioridad: ALTA | MEDIA | BAJA
+Orden del usuario: INTELIGENCIA primero, luego el resto.
+
+================================================================================
+SPRINT 1 — INTELIGENCIA (proximo)                                    ALTA
+================================================================================
+
+[ ] Patrones temporales
+    - Jarvis aprende rutinas del usuario analizando historial de entidades
+    - Detecta patrones: "Siempre enciendes el despacho a las 9:00"
+    - Sugiere automatizaciones basadas en patrones detectados
+    - Implementacion: analizar get_history de entidades frecuentes
+
+[v] Contexto de presencia (HECHO v2.3.0)
+    - updateLiveContext() consulta person.* en cada request
+    - Inyecta presencia, luces, clima, media, alertas en system prompt
+
+[ ] Scoring de la instalacion
+    - "Tu instalacion tiene un 72/100 en optimizacion"
+    - Detectar: automatizaciones sin usar, entidades sin nombre amigable,
+      integraciones desactualizadas, dispositivos offline
+    - Plan de mejora paso a paso
+
+[ ] Diagnostico inteligente de problemas
+    - "Jarvis, la luz del bano no funciona" → revisa logs, comprueba entidad,
+      busca en internet, sugiere fix
+    - Auto-analiza errores del log de HA
+    - Propone fixes basados en learnings previos
+
+[v] Modo proactivo (HECHO v3.5.0)
+    - proactiveThinkingLoop() detecta anomalias
+    - Envia alertas por Telegram y al chat
+    - Sugiere acciones correctivas
+
+[ ] Rutinas por voz natural
+    - "Jarvis, cuando llegue a casa enciende el salon y pon musica"
+    - Traduce lenguaje natural → YAML de automatizacion valido
+
+================================================================================
+SPRINT 2 — UX: CHAT FLOTANTE                                        ALTA
+================================================================================
+
+[ ] Chat flotante (boton en esquina del panel HA)
+    - Boton circular flotante visible SIEMPRE en cualquier pestana de HA
+    - Al hacer click se abre un panel/popup con el chat de Jarvis
+    - Tiene contexto de la pestana actual
+    - Implementacion: custom_panel o lovelace-card con iframe + JS inyectado
+
+[v] Entrada por voz (HECHO v3.11.0)
+    - Web Speech API es-ES, auto-envio al terminar
+    - Indicador visual rojo mientras escucha
+
+[v] Salida por voz / TTS (HECHO v3.11.0)
+    - SpeechSynthesis lee respuestas automaticamente
+    - Tool speak() para altavoces del hogar (Alexa + Piper)
+
+================================================================================
+SPRINT 3 — COMUNICACION EXTERNA                                     ALTA
+================================================================================
+
+[ ] Bot de Telegram bidireccional
+    - Integrar bot de Telegram directamente en el add-on (node-telegram-bot-api)
+    - Hablar con Jarvis desde Telegram como si fuera el chat de HA
+    - Enviar notificaciones proactivas (alertas, sugerencias)
+    - Comandos rapidos: /estado, /luces, /temperatura, /apagar_todo
+
+[ ] Notificaciones push inteligentes
+    - Jarvis decide cuando algo es importante y notifica
+    - No spam: agrupa alertas similares
+    - Prioridades: urgente vs informativa
+
+================================================================================
+SPRINT 4 — UX Y OPERATIVAS                                          MEDIA
+================================================================================
+
+[ ] Respuestas con acciones rapidas
+    - Botones "Deshacer" cuando Jarvis ejecuta acciones
+    - Botones de confirmacion inline para acciones grandes
+
+[ ] Paneles visuales en el chat
+    - "Estado de la casa?" → cards con iconos, no solo texto
+    - Mini-graficas de temperatura/consumo inline (SVG)
+
+[ ] Comandos rapidos (slash commands)
+    - /scan, /estado, /backup, /undo, /score, /diagnostico
+
+[ ] Backup inteligente
+    - Antes de write_file en /config, guardar copia en /data/backups/
+    - Historial de cambios: que se cambio, cuando, por que
+
+[ ] Testing de automatizaciones (dry-run)
+    - "Jarvis, simula la automatizacion X" → dice que pasaria sin ejecutar
+
+[ ] Modo dashboard
+    - Vista rapida del estado al abrir el chat (antes del welcome)
+
+================================================================================
+SPRINT 5 — AVANZADO (futuro)                                        BAJA
+================================================================================
+
+[ ] Analisis de consumo energetico
+    - Informes: consumo por dia/semana/mes
+    - Sugerir optimizaciones, detectar dispositivos vampiro
+
+[ ] Soporte multi-usuario
+    - Identificar quien habla, memoria separada por usuario
+
+[ ] Templates y blueprints
+    - Biblioteca de automatizaciones comunes
+
+[ ] Voz avanzada (wake word)
+    - Wake word: "Hey Jarvis" (escucha continua)
+
+[ ] Programacion horaria del agente (cron interno)
+    - "Todos los dias a las 7:00 dime el tiempo y enciende la cafetera"
+
+[ ] Integracion con camaras + vision
+    - Describir lo que ve, alertas basadas en deteccion visual
+
+[ ] Plugin system
+    - Carpeta /config/jarvis_plugins/ con archivos JS
+
+[ ] Modo debug
+    - Tokens consumidos, tiempos de respuesta, coste estimado
+
+[ ] Export/Import de configuracion
+    - Exportar memoria + learnings + configuracion del agente
+
+================================================================================
+IDEAS EN EVALUACION
+================================================================================
+
+[?] Streaming a la API de Anthropic
+    - Respuesta mas rapida, pero complica gestion de tool_use
+
+[?] Base de datos SQLite en vez de JSON
+    - Evaluar si el rendimiento baja con muchas entradas
+
+[?] Multiples modelos (router inteligente)
+    - Haiku para tareas simples, Sonnet para complejas
+
+[?] Agente con vision (camaras + Claude Vision)
+    - Potente para seguridad: "Quien hay en la puerta?"
+
+================================================================================
+COMPLETADO (referencia)
+================================================================================
+
+[v] Contexto de presencia — v2.3.0
+[v] Modo proactivo — v3.5.0
+[v] Entrada por voz — v3.11.0
+[v] Salida por voz / TTS — v3.11.0
+[v] Red de agentes IA — v3.10.0 (gateway externo), v3.14.0 (Jarvis es gateway)
+[v] Normas de red v2.0 — v3.14.1
+[v] Descubrimiento y presentaciones — v3.14.1
+[v] AGENT_CARD protocolo v2.0 — v3.14.2
+[v] Autoreparacion — v3.10.0
+[v] Auto-update — v3.3.0
+[v] Subida de archivos al chat — v3.8.0
+[v] Red local (scan, ping, WoL) — v3.9.0
+[v] Archivos del PC — v3.9.0
+[v] Panel Red en UI — v3.11.0
+
+================================================================================
+NOTAS
+================================================================================
+
+- El agente se llama JARVIS
+- Orden de desarrollo: Inteligencia → Comunicacion → UX → Avanzado
+- Antes de implementar, actualizar ESTADO_PROYECTO.txt
+- Despues de implementar, actualizar CHANGELOG.txt y subir version
+- Telegram bidireccional es prioridad tras features de inteligencia
+- Objetivo: cuanto mas se use, mas inteligente se vuelve

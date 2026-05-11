@@ -1,0 +1,1791 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jarvis · Home Assistant</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117;
+    --bg2: #161b27;
+    --bg3: #1e2538;
+    --border: #2a3148;
+    --accent: #6c8ef7;
+    --accent2: #a78bfa;
+    --text: #e2e8f8;
+    --text2: #8892aa;
+    --text3: #4a5568;
+    --user-bg: #1a2340;
+    --ai-bg: #161b27;
+    --tool-bg: #0d1520;
+    --tool-border: #1e3a5f;
+    --success: #34d399;
+    --error: #f87171;
+    --radius: 14px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 20px;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .jarvis-3d-header {
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    overflow: hidden;
+    cursor: pointer;
+    border: 2px solid var(--accent);
+    box-shadow: 0 0 12px rgba(108, 142, 247, 0.4);
+  }
+
+  .jarvis-3d-header canvas {
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+
+  .header-info h1 {
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: -0.3px;
+  }
+
+  .header-info p {
+    font-size: 11px;
+    color: var(--text2);
+    font-family: 'DM Mono', monospace;
+  }
+
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    background: var(--success);
+    border-radius: 50%;
+    margin-left: auto;
+    box-shadow: 0 0 8px var(--success);
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* ── Messages ── */
+  #messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    scroll-behavior: smooth;
+  }
+
+  #messages::-webkit-scrollbar { width: 4px; }
+  #messages::-webkit-scrollbar-track { background: transparent; }
+  #messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .message {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    animation: fadeUp 0.25s ease;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .message.user { align-items: flex-end; }
+  .message.ai   { align-items: flex-start; }
+
+  .bubble {
+    max-width: 80%;
+    padding: 12px 16px;
+    border-radius: var(--radius);
+    line-height: 1.6;
+    font-size: 14px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .message.user .bubble {
+    background: var(--user-bg);
+    border: 1px solid #2a3f6f;
+    border-bottom-right-radius: 4px;
+    color: var(--text);
+  }
+
+  .message.ai .bubble {
+    background: var(--ai-bg);
+    border: 1px solid var(--border);
+    border-bottom-left-radius: 4px;
+  }
+
+  .message-label {
+    font-size: 10px;
+    font-family: 'DM Mono', monospace;
+    color: var(--text3);
+    padding: 0 4px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+
+  /* ── Tool blocks ── */
+  .tool-block {
+    max-width: 80%;
+    background: var(--tool-bg);
+    border: 1px solid var(--tool-border);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-family: 'DM Mono', monospace;
+    font-size: 11.5px;
+    color: var(--text2);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    animation: fadeUp 0.2s ease;
+  }
+
+  .tool-icon {
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  .tool-name {
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  .tool-status {
+    margin-left: auto;
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 20px;
+    background: #1a3a5c;
+    color: #60a5fa;
+  }
+
+  .tool-status.done {
+    background: #1a3d2e;
+    color: var(--success);
+  }
+
+  .tool-status.error {
+    background: #3d1a1a;
+    color: var(--error);
+  }
+
+  /* ── Thinking indicator ── */
+  .thinking {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: var(--ai-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    border-bottom-left-radius: 4px;
+    width: fit-content;
+    color: var(--text2);
+    font-size: 13px;
+  }
+
+  .dots {
+    display: flex;
+    gap: 4px;
+  }
+
+  .dots span {
+    width: 6px;
+    height: 6px;
+    background: var(--accent);
+    border-radius: 50%;
+    animation: bounce 1.2s infinite;
+  }
+
+  .dots span:nth-child(2) { animation-delay: 0.2s; }
+  .dots span:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes bounce {
+    0%, 80%, 100% { transform: scale(0.8); opacity: 0.5; }
+    40% { transform: scale(1.2); opacity: 1; }
+  }
+
+  /* ── Bienvenida ── */
+  .welcome {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    gap: 12px;
+    color: var(--text2);
+    text-align: center;
+    padding: 40px;
+  }
+
+  .welcome-logo {
+    width: 64px;
+    height: 64px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    margin-bottom: 8px;
+    box-shadow: 0 8px 32px rgba(108, 142, 247, 0.25);
+  }
+
+  .welcome h2 {
+    font-size: 20px;
+    font-weight: 500;
+    color: var(--text);
+    letter-spacing: -0.5px;
+  }
+
+  .welcome p {
+    font-size: 13px;
+    max-width: 360px;
+    line-height: 1.7;
+  }
+
+  .suggestions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    margin-top: 8px;
+    max-width: 480px;
+  }
+
+  .suggestion {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 7px 14px;
+    font-size: 12.5px;
+    color: var(--text2);
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+
+  .suggestion:hover {
+    background: var(--bg3);
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  /* ── Input area ── */
+  footer {
+    padding: 16px 20px;
+    background: var(--bg2);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .input-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 10px 12px;
+    transition: border-color 0.2s;
+  }
+
+  .input-row:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(108, 142, 247, 0.1);
+  }
+
+  #input {
+    flex: 1;
+    background: none;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-size: 14px;
+    font-family: 'DM Sans', sans-serif;
+    resize: none;
+    max-height: 120px;
+    line-height: 1.5;
+  }
+
+  #input::placeholder { color: var(--text3); }
+
+  #send-btn {
+    width: 34px;
+    height: 34px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: opacity 0.15s, transform 0.1s;
+  }
+
+  #send-btn:hover { opacity: 0.9; transform: scale(1.05); }
+  #send-btn:active { transform: scale(0.95); }
+  #send-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+  #send-btn svg { width: 16px; height: 16px; fill: white; }
+
+  .hint {
+    font-size: 10px;
+    color: var(--text3);
+    text-align: center;
+    margin-top: 8px;
+    font-family: 'DM Mono', monospace;
+  }
+
+  /* ── Clear button ── */
+  .clear-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text2);
+    font-size: 11px;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    transition: all 0.15s;
+    margin-left: auto;
+    display: block;
+    margin-bottom: 8px;
+  }
+  .clear-btn:hover { border-color: var(--error); color: var(--error); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="jarvis-3d-header" id="jarvis-header-orb"></div>
+  <div class="header-info">
+    <h1>Jarvis</h1>
+    <p id="jarvis-status-text">Listo · Home Assistant</p>
+  </div>
+  <button id="local-folder-btn" onclick="connectLocalFolder()" title="Conectar carpeta del PC para que Jarvis pueda leer tus archivos locales" style="background:transparent;border:1px solid var(--border);border-radius:10px;padding:6px 10px;color:var(--text2);cursor:pointer;font-size:11px;font-family:'DM Mono',monospace;display:flex;align-items:center;gap:5px;transition:all 0.2s;flex-shrink:0;" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="if(!localDirectoryHandle){this.style.borderColor='var(--border)';this.style.color='var(--text2)'}">
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+    <span id="local-folder-label">PC</span>
+  </button>
+  <button id="tts-btn" onclick="toggleTTS()" title="Activar/silenciar voz de Jarvis" style="background:transparent;border:1px solid var(--border);border-radius:10px 0 0 10px;padding:6px 10px;color:var(--text2);cursor:pointer;font-size:11px;font-family:'DM Mono',monospace;display:flex;align-items:center;gap:5px;transition:all 0.2s;flex-shrink:0;">
+    <svg id="tts-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M15.54 8.46a5 5 0 010 7.07"/></svg>
+    <span id="tts-label">Voz</span>
+  </button>
+  <button id="voice-picker-btn" onclick="toggleVoicePicker()" title="Cambiar voz de Jarvis" style="background:transparent;border:1px solid var(--border);border-left:none;border-radius:0 10px 10px 0;padding:6px 6px;color:var(--text2);cursor:pointer;font-size:10px;font-family:'DM Mono',monospace;display:flex;align-items:center;gap:3px;transition:all 0.2s;flex-shrink:0;">
+    <span id="voice-name" style="max-width:50px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+    <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+  </button>
+  <div id="voice-picker-panel" style="display:none;position:absolute;top:50px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;z-index:1001;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,0.5);min-width:200px;">
+    <div style="padding:8px 12px;border-bottom:1px solid var(--border);font-size:11px;color:var(--text2);font-family:'DM Mono',monospace;">Voz de Jarvis</div>
+    <div id="voice-picker-list" style="padding:4px;max-height:300px;overflow-y:auto;"></div>
+  </div>
+  <button id="network-btn" onclick="toggleNetworkPanel()" title="Red de agentes IA" style="background:transparent;border:1px solid var(--border);border-radius:10px;padding:6px 10px;color:var(--text2);cursor:pointer;font-size:11px;font-family:'DM Mono',monospace;display:flex;align-items:center;gap:5px;transition:all 0.2s;flex-shrink:0;position:relative;" onmouseover="this.style.borderColor='var(--accent2)';this.style.color='var(--accent2)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text2)'">
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><line x1="12" y1="7" x2="5" y2="17"/><line x1="12" y1="7" x2="19" y2="17"/></svg>
+    <span>Red</span>
+    <span id="network-badge" style="display:none;background:var(--error);color:#fff;border-radius:50%;width:14px;height:14px;font-size:9px;display:none;align-items:center;justify-content:center;position:absolute;top:-4px;right:-4px;"></span>
+  </button>
+  <button id="saver-btn" onclick="toggleSaverMode()" title="Modo ahorro: usa Haiku en vez de Sonnet — mucho más barato" style="background:transparent;border:1px solid var(--border);border-radius:10px;padding:6px 10px;color:var(--text2);cursor:pointer;font-size:11px;font-family:'DM Mono',monospace;display:flex;align-items:center;gap:5px;transition:all 0.2s;flex-shrink:0;" onmouseover="this.style.borderColor='#f59e0b';this.style.color='#f59e0b'" onmouseout="if(!saverModeActive){this.style.borderColor='var(--border)';this.style.color='var(--text2)'}">
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+    <span id="saver-label">Ahorro</span>
+  </button>
+  <span id="cost-badge" title="Coste estimado de la sesión actual (se resetea al reiniciar Jarvis)" style="font-size:10px;color:var(--text2);font-family:'DM Mono',monospace;flex-shrink:0;opacity:0.7;cursor:default;">$0.0000</span>
+  <div class="status-dot" id="status-dot" title="Conectado"></div>
+</header>
+
+<!-- Panel de red de agentes -->
+<div id="network-panel" style="display:none;position:fixed;top:60px;right:16px;width:360px;max-height:80vh;background:var(--bg2);border:1px solid var(--border);border-radius:14px;z-index:1000;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.4);flex-direction:column;">
+  <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+    <span style="font-size:13px;font-weight:500;color:var(--text)">🌐 Red de Agentes IA</span>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button onclick="loadNetworkPanel()" style="background:transparent;border:none;color:var(--text2);cursor:pointer;font-size:11px;padding:2px 6px;border:1px solid var(--border);border-radius:6px;">↻ Actualizar</button>
+      <button onclick="toggleNetworkPanel()" style="background:transparent;border:none;color:var(--text2);cursor:pointer;font-size:16px;line-height:1;">×</button>
+    </div>
+  </div>
+  <div id="network-panel-content" style="overflow-y:auto;max-height:calc(80vh - 50px);padding:12px;display:flex;flex-direction:column;gap:10px;">
+    <div style="color:var(--text2);font-size:12px;text-align:center;padding:20px;">Cargando red...</div>
+  </div>
+</div>
+
+
+<div id="messages">
+  <div class="welcome" id="welcome">
+    <div class="welcome-logo">🏠</div>
+    <h2>¿Qué quieres controlar hoy?</h2>
+    <p>Soy Jarvis, tu agente IA especializado. Controlo dispositivos, creo automatizaciones, gestiono archivos y aprendo de tu instalación.</p>
+    <div class="suggestions">
+      <div class="suggestion" onclick="sendSuggestion(this)">💡 Enciende las luces del salón</div>
+      <div class="suggestion" onclick="sendSuggestion(this)">🌡️ ¿Qué temperatura hace en casa?</div>
+      <div class="suggestion" onclick="sendSuggestion(this)">🔌 ¿Qué enchufes están encendidos?</div>
+      <div class="suggestion" onclick="sendSuggestion(this)">🤖 Muéstrame mis automatizaciones</div>
+      <div class="suggestion" onclick="sendSuggestion(this)">📊 Estado general de la casa</div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <button class="clear-btn" onclick="clearChat()" id="clear-btn" style="display:none">🗑 Limpiar chat</button>
+  <button class="clear-btn" onclick="showLogs()" id="logs-btn" style="display:inline-block;border-color:var(--accent);color:var(--accent)">📋 Logs</button>
+  <!-- Archivos adjuntos pendientes -->
+  <div id="attachments-bar" style="display:none;padding:6px 12px;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--border);background:var(--bg2);"></div>
+  <div class="input-row">
+    <!-- Input oculto para seleccionar archivos -->
+    <input type="file" id="file-input" multiple accept="*/*" style="display:none" onchange="handleFileSelect(event)">
+    <button id="attach-btn" onclick="document.getElementById('file-input').click()" title="Adjuntar archivo" style="background:transparent;border:1px solid var(--border);border-radius:10px;padding:8px 10px;color:var(--text2);cursor:pointer;flex-shrink:0;transition:all 0.2s;" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text2)'">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+    </button>
+    <textarea id="input" placeholder="Escribe o pulsa el micrófono..." rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+    <button id="mic-btn" onclick="toggleVoice()" title="Hablar con Jarvis (español)" style="background:transparent;border:1px solid var(--border);border-radius:10px;padding:8px 10px;color:var(--text2);cursor:pointer;flex-shrink:0;transition:all 0.2s;position:relative;">
+      <svg id="mic-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+    </button>
+    <button id="send-btn" onclick="sendMessage()">
+      <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
+    </button>
+  </div>
+  <div class="hint">Enter para enviar · Shift+Enter nueva línea · 📎 para adjuntar archivos</div>
+</footer>
+
+<script>
+  let conversationHistory = [];
+  let isStreaming = false;
+
+  function autoResize(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+  }
+
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  }
+
+  function sendSuggestion(el) {
+    document.getElementById('input').value = el.textContent.replace(/^[^\w]+/, '').trim();
+    sendMessage();
+  }
+
+  function scrollToBottom() {
+    const msgs = document.getElementById('messages');
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
+  function addMessage(role, text) {
+    hideWelcome();
+    const container = document.getElementById('messages');
+    const div = document.createElement('div');
+    div.className = `message ${role}`;
+
+    const label = document.createElement('div');
+    label.className = 'message-label';
+    label.textContent = role === 'user' ? 'TÚ' : 'JARVIS';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.textContent = text;
+
+    div.appendChild(label);
+    div.appendChild(bubble);
+    container.appendChild(div);
+    scrollToBottom();
+    return bubble;
+  }
+
+  function addToolBlock(toolName, status = 'running') {
+    hideWelcome();
+    const container = document.getElementById('messages');
+    const div = document.createElement('div');
+    div.className = 'message ai';
+
+    const block = document.createElement('div');
+    block.className = 'tool-block';
+
+    const icons = {
+      get_entities: '📋', get_entity_state: '🔍', call_service: '⚡',
+      get_automations: '🤖', toggle_automation: '🔄', get_history: '📊',
+      search_entities: '🔎', save_memory: '💾', get_memory: '🧠', delete_memory: '🗑️',
+      create_automation: '⚙️', reload_config: '🔄', read_file: '📄', write_file: '✍️',
+      append_file: '📝', list_directory: '📁', web_search: '🌐', fetch_url: '🔗',
+      learn: '🧪', scan_installation: '🏗️', check_config: '✅',
+      get_dashboards: '🎨', get_dashboard_config: '📐', update_dashboard: '🖌️',
+      get_installed_frontend: '🧩', search_hacs_resources: '🔍',
+      install_hacs_resource: '📦', ha_knowledge: '📚', proxmox_api: '🖥️',
+      get_system_logs: '📋', get_error_log: '🚨',
+      telegram_send: '📨', telegram_send_image: '🖼️', telegram_get_updates: '📩',
+      analyze_github_repos: '🐙', agent_communicate: '🤝',
+      create_custom_tool: '🛠️', run_custom_tool: '▶️',
+      create_addon: '🏗️', proactive_thought: '💭', knowledge_db: '📚'
+    };
+    const labels = {
+      get_entities: 'Consultando entidades', get_entity_state: 'Leyendo estado',
+      call_service: 'Ejecutando servicio', get_automations: 'Cargando automatizaciones',
+      toggle_automation: 'Gestionando automatización', get_history: 'Consultando historial',
+      search_entities: 'Buscando dispositivos', save_memory: 'Guardando en memoria',
+      get_memory: 'Consultando memoria', delete_memory: 'Borrando de memoria',
+      create_automation: 'Creando automatización', reload_config: 'Recargando configuración',
+      read_file: 'Leyendo archivo', write_file: 'Escribiendo archivo',
+      append_file: 'Añadiendo a archivo', list_directory: 'Listando directorio',
+      web_search: 'Buscando en internet', fetch_url: 'Consultando URL',
+      learn: 'Aprendiendo', scan_installation: 'Escaneando instalación',
+      check_config: 'Verificando configuración',
+      get_dashboards: 'Listando dashboards', get_dashboard_config: 'Analizando dashboard',
+      update_dashboard: 'Modificando dashboard', get_installed_frontend: 'Revisando cards instaladas',
+      search_hacs_resources: 'Buscando herramientas HA',
+      install_hacs_resource: 'Instalando recurso', ha_knowledge: 'Consultando docs HA',
+      proxmox_api: 'Gestionando Proxmox',
+      get_system_logs: 'Leyendo logs del sistema', get_error_log: 'Revisando errores',
+      telegram_send: 'Enviando por Telegram', telegram_send_image: 'Enviando imagen',
+      telegram_get_updates: 'Leyendo mensajes Telegram',
+      analyze_github_repos: 'Analizando repos GitHub',
+      agent_communicate: 'Comunicando con otro agente',
+      create_custom_tool: 'Creando herramienta custom',
+      run_custom_tool: 'Ejecutando herramienta',
+      create_addon: 'Creando nuevo add-on',
+      proactive_thought: 'Pensamiento proactivo',
+      knowledge_db: 'Base de conocimiento'
+    };
+
+    block.innerHTML = `
+      <span class="tool-icon">${icons[toolName] || '🔧'}</span>
+      <span class="tool-name">${labels[toolName] || toolName}</span>
+      <span class="tool-status" id="ts-${Date.now()}">${status === 'running' ? 'ejecutando...' : '✓ listo'}</span>
+    `;
+
+    div.appendChild(block);
+    container.appendChild(div);
+    scrollToBottom();
+    return block.querySelector('.tool-status');
+  }
+
+  // Nombres amigables para cada tool
+  const TOOL_LABELS = {
+    get_entities: '🔍 Buscando entidades',
+    get_entity_state: '📡 Leyendo estado',
+    call_service: '⚡ Ejecutando servicio',
+    search_entities: '🔎 Buscando dispositivos',
+    get_history: '📈 Leyendo historial',
+    get_automations: '🤖 Leyendo automatizaciones',
+    create_automation: '🏗️ Creando automatización',
+    reload_config: '🔄 Recargando configuración',
+    read_file: '📄 Leyendo archivo',
+    write_file: '💾 Escribiendo archivo',
+    append_file: '📝 Actualizando archivo',
+    list_directory: '📁 Explorando directorio',
+    web_search: '🌐 Buscando en internet',
+    fetch_url: '🌍 Obteniendo URL',
+    save_memory: '🧠 Guardando en memoria',
+    get_memory: '🧠 Consultando memoria',
+    learn: '📚 Registrando aprendizaje',
+    scan_installation: '🔭 Escaneando instalación',
+    check_config: '✅ Verificando configuración',
+    get_dashboards: '🖥️ Leyendo dashboards',
+    get_dashboard_config: '🖥️ Leyendo configuración del panel',
+    update_dashboard: '🖥️ Actualizando dashboard',
+    get_installed_frontend: '🎨 Revisando cards instaladas',
+    search_hacs_resources: '🔍 Buscando en HACS',
+    install_hacs_resource: '📦 Instalando recurso HACS',
+    ha_knowledge: '📖 Consultando documentación HA',
+    proxmox_api: '🖥️ Accediendo a Proxmox',
+    get_system_logs: '📋 Leyendo logs del sistema',
+    get_error_log: '⚠️ Leyendo log de errores',
+    telegram_send: '📱 Enviando mensaje Telegram',
+    telegram_send_image: '📷 Enviando imagen',
+    telegram_get_updates: '📱 Revisando mensajes Telegram',
+    analyze_github_repos: '🐙 Analizando repositorios GitHub',
+    create_custom_tool: '🔧 Creando herramienta',
+    run_custom_tool: '▶️ Ejecutando herramienta',
+    agent_communicate: '🤝 Comunicando con agente',
+    create_addon: '📦 Creando add-on',
+    proactive_thought: '💭 Registrando pensamiento',
+    knowledge_db: '📚 Base de conocimiento',
+    ha_supervisor: '⚙️ Gestionando sistema HA',
+    update_self: '🧬 Actualizando mi conocimiento',
+    network: '📡 Explorando la red',
+    local_file: '💻 Accediendo a archivos del PC',
+    agent_chat: '🤝 Hablando con otro agente',
+    agent_network: '🌐 Red de agentes IA',
+  };
+
+  let toolStepCount = 0;
+
+  function addThinking(toolName, toolInput) {
+    hideWelcome();
+    const container = document.getElementById('messages');
+    let div = document.getElementById('thinking');
+    if (!div) {
+      div = document.createElement('div');
+      div.className = 'message ai';
+      div.id = 'thinking';
+      container.appendChild(div);
+    }
+
+    toolStepCount++;
+    const label = toolName ? (TOOL_LABELS[toolName] || `⚙️ ${toolName}`) : 'Pensando...';
+
+    // Construir detalle del input
+    let detail = '';
+    if (toolInput) {
+      if (toolInput.domain) detail = toolInput.domain;
+      else if (toolInput.entity_id) detail = toolInput.entity_id;
+      else if (toolInput.query) detail = `"${toolInput.query}"`;
+      else if (toolInput.action) detail = toolInput.action;
+      else if (toolInput.service) detail = `${toolInput.domain || ''}.${toolInput.service}`;
+      else if (toolInput.filepath) detail = toolInput.filepath.split('/').pop();
+      else if (toolInput.message) detail = `"${toolInput.message.slice(0, 40)}${toolInput.message.length > 40 ? '...' : ''}"`;
+      else if (toolInput.slug) detail = toolInput.slug;
+      else if (toolInput.addon_slug) detail = toolInput.addon_slug;
+      else if (toolInput.integration_domain) detail = toolInput.integration_domain;
+    }
+
+    div.innerHTML = `<div class="thinking">
+      <div class="dots"><span></span><span></span><span></span></div>
+      <div style="display:flex;flex-direction:column;gap:2px;">
+        <span style="font-size:13px;color:var(--accent);font-weight:500;">${label}${detail ? ' — ' + detail : ''}</span>
+        <span style="font-size:11px;color:var(--text3);">Paso ${toolStepCount}</span>
+      </div>
+    </div>`;
+    scrollToBottom();
+  }
+
+  function removeThinking() {
+    const t = document.getElementById('thinking');
+    if (t) t.remove();
+    toolStepCount = 0;
+  }
+
+  function hideWelcome() {
+    const w = document.getElementById('welcome');
+    if (w) w.remove();
+    document.getElementById('clear-btn').style.display = 'block';
+  }
+
+  async function clearChat() {
+    conversationHistory = [];
+    // Borrar también en el servidor
+    try { await fetch('api/history', { method: 'DELETE' }); } catch {}
+    const msgs = document.getElementById('messages');
+    msgs.innerHTML = `
+      <div class="welcome" id="welcome">
+        <div class="welcome-logo">🏠</div>
+        <h2>¿Qué quieres controlar hoy?</h2>
+        <p>Soy Jarvis, tu agente IA especializado. Controlo dispositivos, creo automatizaciones, gestiono archivos y aprendo de tu instalación.</p>
+        <div class="suggestions">
+          <div class="suggestion" onclick="sendSuggestion(this)">💡 Enciende las luces del salón</div>
+          <div class="suggestion" onclick="sendSuggestion(this)">🌡️ ¿Qué temperatura hace en casa?</div>
+          <div class="suggestion" onclick="sendSuggestion(this)">🔌 ¿Qué enchufes están encendidos?</div>
+          <div class="suggestion" onclick="sendSuggestion(this)">🤖 Muéstrame mis automatizaciones</div>
+          <div class="suggestion" onclick="sendSuggestion(this)">📊 Estado general de la casa</div>
+        </div>
+      </div>
+    `;
+    document.getElementById('clear-btn').style.display = 'none';
+  }
+
+  async function showLogs() {
+    try {
+      const res = await fetch('api/logs?lines=100');
+      const data = await res.json();
+      const container = document.getElementById('messages');
+      // Quitar logs anteriores si los hay
+      const prev = document.getElementById('logs-panel');
+      if (prev) { prev.remove(); return; }
+
+      const panel = document.createElement('div');
+      panel.className = 'message ai';
+      panel.id = 'logs-panel';
+      let html = '<div style="background:#0a0e14;border:1px solid var(--border);border-radius:var(--radius);padding:12px;max-height:400px;overflow-y:auto;">';
+      html += '<div style="color:var(--accent);font-weight:500;margin-bottom:8px;">📋 Logs internos de Jarvis <span onclick="document.getElementById(\'logs-panel\').remove()" style="float:right;cursor:pointer;color:var(--text2)">✕</span></div>';
+      html += '<pre style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--text2);white-space:pre-wrap;margin:0;">';
+      for (const log of data.logs) {
+        const time = log.ts.split('T')[1].split('.')[0];
+        const color = log.msg.includes('Error') || log.msg.includes('error') ? 'var(--error)' :
+                      log.msg.includes('boot') || log.msg.includes('OK') ? 'var(--success)' : 'var(--text2)';
+        html += `<span style="color:${color}">[${time}] ${log.msg}</span>\n`;
+      }
+      html += '</pre></div>';
+      panel.innerHTML = html;
+      container.appendChild(panel);
+      container.scrollTop = container.scrollHeight;
+    } catch (e) {
+      alert('No se pudieron cargar logs: ' + e.message);
+    }
+  }
+
+  // ── Gestión de archivos adjuntos ────────────────────────────────────────────
+  let pendingFiles = []; // [{name, type, encoding, content, size, preview}]
+
+  const FILE_ICONS = {
+    'image': '🖼️', 'text': '📄', 'application/json': '📋', 'application/pdf': '📕',
+    'yaml': '⚙️', 'log': '📋', 'python': '🐍', 'javascript': '📜', 'shell': '🖥️'
+  };
+
+  function getFileIcon(name, type) {
+    if (type.startsWith('image/')) return '🖼️';
+    if (type === 'application/pdf') return '📕';
+    const ext = name.split('.').pop().toLowerCase();
+    if (['yaml','yml'].includes(ext)) return '⚙️';
+    if (['log','txt'].includes(ext)) return '📋';
+    if (ext === 'py') return '🐍';
+    if (['js','ts'].includes(ext)) return '📜';
+    if (['sh','bash'].includes(ext)) return '🖥️';
+    if (ext === 'json') return '📋';
+    return '📄';
+  }
+
+  async function handleFileSelect(event) {
+    const files = Array.from(event.target.files);
+    if (!files.length) return;
+
+    for (const file of files) {
+      if (file.size > 10 * 1024 * 1024) {
+        alert(`"${file.name}" es demasiado grande (máx 10MB)`);
+        continue;
+      }
+
+      const isImage = file.type.startsWith('image/');
+      const isPDF = file.type === 'application/pdf';
+
+      try {
+        let content, encoding, preview;
+        if (isImage || isPDF) {
+          // Base64 para imágenes y PDFs
+          content = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = e => resolve(e.target.result.split(',')[1]); // solo base64
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+          encoding = 'base64';
+          preview = isImage ? URL.createObjectURL(file) : null;
+        } else {
+          // Texto para el resto
+          content = await file.text();
+          encoding = 'text';
+          preview = null;
+        }
+
+        pendingFiles.push({ name: file.name, type: file.type || 'text/plain', encoding, content, size: file.size, preview });
+      } catch (e) {
+        console.error('Error leyendo archivo:', e);
+      }
+    }
+
+    // Limpiar input para permitir seleccionar el mismo archivo otra vez
+    event.target.value = '';
+    renderAttachmentsBar();
+  }
+
+  function renderAttachmentsBar() {
+    const bar = document.getElementById('attachments-bar');
+    if (pendingFiles.length === 0) { bar.style.display = 'none'; return; }
+    bar.style.display = 'flex';
+    bar.innerHTML = pendingFiles.map((f, i) => {
+      const icon = getFileIcon(f.name, f.type);
+      const sizeStr = f.size > 1024 ? `${(f.size/1024).toFixed(0)}KB` : `${f.size}B`;
+      const thumb = f.preview ? `<img src="${f.preview}" style="width:28px;height:28px;object-fit:cover;border-radius:4px;margin-right:4px;">` : '';
+      return `<div style="display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:4px 10px;font-size:12px;">
+        ${thumb}${icon} <span style="color:var(--text);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${f.name}</span>
+        <span style="color:var(--text3)">${sizeStr}</span>
+        <span onclick="removeFile(${i})" style="cursor:pointer;color:var(--text3);margin-left:2px;" title="Quitar">✕</span>
+      </div>`;
+    }).join('');
+  }
+
+  window.removeFile = function(i) {
+    if (pendingFiles[i]?.preview) URL.revokeObjectURL(pendingFiles[i].preview);
+    pendingFiles.splice(i, 1);
+    renderAttachmentsBar();
+  };
+
+  // ── VOZ: STT + TTS ───────────────────────────────────────────────────────────
+  let recognition = null;
+  let isListening = false;
+  let ttsEnabled = localStorage.getItem('jarvis_tts') !== 'false';
+  let currentAudio = null;
+  let ttsAvailable = null;
+  let edgeVoices = [];
+  let currentVoice = localStorage.getItem('jarvis_tts_voice') || 'es-ES-AlvaroNeural';
+
+  async function checkTTSAvailable() {
+    try {
+      const r = await fetch('api/tts/status');
+      const d = await r.json();
+      ttsAvailable = !!d.available;
+    } catch { ttsAvailable = false; }
+  }
+
+  async function loadVoices() {
+    try {
+      const r = await fetch('api/tts/voices');
+      const d = await r.json();
+      edgeVoices = d.voices || [];
+      updateVoicePickerList();
+      updateVoiceName();
+    } catch { edgeVoices = []; }
+  }
+
+  function updateVoiceName() {
+    const el = document.getElementById('voice-name');
+    if (!el) return;
+    const v = edgeVoices.find(x => x.id === currentVoice);
+    el.textContent = v ? v.name : currentVoice.split('-').pop().replace('Neural', '');
+  }
+
+  function updateVoicePickerList() {
+    const list = document.getElementById('voice-picker-list');
+    if (!list) return;
+    const edgeList = edgeVoices.filter(v => v.engine !== 'openai');
+    const openaiList = edgeVoices.filter(v => v.engine === 'openai');
+    function renderVoice(v) {
+      const active = v.id === currentVoice;
+      const icon = v.gender === 'M' ? '👨' : v.gender === 'F' ? '👩' : '🤖';
+      return '<div onclick="selectVoice(\'' + v.id + '\')" style="padding:8px 12px;cursor:pointer;border-radius:6px;display:flex;align-items:center;gap:8px;font-size:12px;font-family:\'DM Sans\',sans-serif;' +
+        (active ? 'background:var(--accent);color:#fff;' : 'color:var(--text);') +
+        '" onmouseover="if(this.style.background!==\'var(--accent)\')this.style.background=\'rgba(255,255,255,0.05)\'" onmouseout="if(this.style.background!==\'var(--accent)\')this.style.background=\'transparent\'">' +
+        '<span>' + icon + '</span>' +
+        '<div><div style="font-weight:500;">' + v.name + '</div>' +
+        '<div style="font-size:10px;opacity:0.7;">' + v.desc + '</div></div>' +
+        (active ? '<span style="margin-left:auto;">✓</span>' : '') +
+        '</div>';
+    }
+    function sectionHeader(label) {
+      return '<div style="padding:6px 12px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;opacity:0.5;color:var(--text);font-family:\'DM Sans\',sans-serif;border-bottom:1px solid rgba(255,255,255,0.06);">' + label + '</div>';
+    }
+    let html = '';
+    if (edgeList.length) html += sectionHeader('🎙️ Edge TTS — Gratis') + edgeList.map(renderVoice).join('');
+    if (openaiList.length) html += sectionHeader('✨ OpenAI TTS — Premium') + openaiList.map(renderVoice).join('');
+    list.innerHTML = html;
+  }
+
+  window.selectVoice = function(voiceId) {
+    currentVoice = voiceId;
+    localStorage.setItem('jarvis_tts_voice', voiceId);
+    updateVoicePickerList();
+    updateVoiceName();
+    document.getElementById('voice-picker-panel').style.display = 'none';
+    // Preview: decir el nombre de la voz
+    const v = edgeVoices.find(x => x.id === voiceId);
+    if (v && ttsEnabled) speak('Hola, soy ' + v.name);
+  };
+
+  window.toggleVoicePicker = function() {
+    const panel = document.getElementById('voice-picker-panel');
+    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+  };
+
+  // Cerrar picker al hacer click fuera
+  document.addEventListener('click', (e) => {
+    const panel = document.getElementById('voice-picker-panel');
+    const btn = document.getElementById('voice-picker-btn');
+    if (panel && btn && !panel.contains(e.target) && !btn.contains(e.target)) {
+      panel.style.display = 'none';
+    }
+  });
+
+  checkTTSAvailable();
+  loadVoices();
+  updateTTSBtn();
+
+  function cleanForTTS(text) {
+    return text
+      .replace(/\*\*(.+?)\*\*/g, '$1')
+      .replace(/\*(.+?)\*/g, '$1')
+      .replace(/`{1,3}[^`]*`{1,3}/g, '')
+      .replace(/#{1,6}\s/g, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/^[-•]\s/gm, '')
+      .replace(/\n{2,}/g, '. ')
+      .replace(/\n/g, ' ')
+      .trim();
+  }
+
+  async function speak(text) {
+    if (!ttsEnabled) return;
+    stopSpeaking();
+    const clean = cleanForTTS(text);
+    if (!clean) return;
+
+    // Edge TTS (servidor)
+    if (ttsAvailable) {
+      try {
+        const r = await fetch('api/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: clean, voice: currentVoice })
+        });
+        if (!r.ok) throw new Error('tts error');
+        const blob = await r.blob();
+        const url = URL.createObjectURL(blob);
+        currentAudio = new Audio(url);
+        currentAudio.onended = () => { URL.revokeObjectURL(url); currentAudio = null; };
+        currentAudio.play();
+        return;
+      } catch (e) { console.warn('[tts] Edge TTS fallback:', e); }
+    }
+
+    // Fallback: Web Speech API del navegador
+    if (!('speechSynthesis' in window)) return;
+    const utt = new SpeechSynthesisUtterance(clean);
+    utt.lang = 'es-ES'; utt.rate = 1.05; utt.pitch = 1.0; utt.volume = 1.0;
+    const voices = speechSynthesis.getVoices();
+    const esVoice = voices.find(v => v.lang === 'es-ES') || voices.find(v => v.lang.startsWith('es'));
+    if (esVoice) utt.voice = esVoice;
+    speechSynthesis.speak(utt);
+  }
+
+  function stopSpeaking() {
+    if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+    if ('speechSynthesis' in window) speechSynthesis.cancel();
+  }
+
+  function toggleTTS() {
+    ttsEnabled = !ttsEnabled;
+    localStorage.setItem('jarvis_tts', ttsEnabled);
+    if (!ttsEnabled) stopSpeaking();
+    updateTTSBtn();
+  }
+
+  function updateTTSBtn() {
+    const btn = document.getElementById('tts-btn');
+    const icon = document.getElementById('tts-icon');
+    const label = document.getElementById('tts-label');
+    if (!btn) return;
+    if (ttsEnabled) {
+      btn.style.borderColor = 'var(--accent)';
+      btn.style.color = 'var(--accent)';
+      label.textContent = 'Voz';
+      icon.innerHTML = '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M15.54 8.46a5 5 0 010 7.07"/>';
+    } else {
+      btn.style.borderColor = 'var(--border)';
+      btn.style.color = 'var(--text2)';
+      label.textContent = 'Mudo';
+      icon.innerHTML = '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>';
+    }
+  }
+
+  // STT — reconocimiento de voz
+  function initSTT() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return null;
+    const r = new SpeechRecognition();
+    r.lang = 'es-ES';
+    r.continuous = false;
+    r.interimResults = true;
+    r.maxAlternatives = 1;
+
+    r.onstart = () => {
+      isListening = true;
+      stopSpeaking();
+      updateMicBtn(true);
+      const input = document.getElementById('input');
+      input.placeholder = '🎤 Escuchando...';
+    };
+
+    r.onresult = (e) => {
+      const input = document.getElementById('input');
+      let interim = '', final = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) final += e.results[i][0].transcript;
+        else interim += e.results[i][0].transcript;
+      }
+      input.value = (final || interim).trim();
+      autoResize(input);
+      if (final) {
+        setTimeout(() => {
+          if (input.value.trim()) sendMessage();
+        }, 300);
+      }
+    };
+
+    r.onerror = (e) => {
+      if (e.error !== 'no-speech' && e.error !== 'aborted') {
+        console.error('STT error:', e.error);
+      }
+      stopListening();
+    };
+
+    r.onend = () => stopListening();
+    return r;
+  }
+
+  function toggleVoice() {
+    if (isListening) {
+      if (recognition) recognition.stop();
+      stopListening();
+      return;
+    }
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      addMessage('ai', '⚠️ Tu navegador no soporta reconocimiento de voz. Usa Chrome o Edge.');
+      return;
+    }
+    recognition = initSTT();
+    if (recognition) recognition.start();
+  }
+
+  function stopListening() {
+    isListening = false;
+    updateMicBtn(false);
+    const input = document.getElementById('input');
+    if (input) input.placeholder = 'Escribe o pulsa el micrófono...';
+  }
+
+  function updateMicBtn(listening) {
+    const btn = document.getElementById('mic-btn');
+    if (!btn) return;
+    if (listening) {
+      btn.style.borderColor = 'var(--error)';
+      btn.style.color = 'var(--error)';
+      btn.style.background = 'rgba(248,113,113,0.1)';
+      btn.title = 'Escuchando... (clic para parar)';
+    } else {
+      btn.style.borderColor = 'var(--border)';
+      btn.style.color = 'var(--text2)';
+      btn.style.background = 'transparent';
+      btn.title = 'Hablar con Jarvis';
+    }
+  }
+
+  // ── Panel de red de agentes ──────────────────────────────────────────────────
+  let networkPanelOpen = false;
+  let networkRefreshInterval = null;
+
+  function toggleNetworkPanel() {
+    const panel = document.getElementById('network-panel');
+    networkPanelOpen = !networkPanelOpen;
+    panel.style.display = networkPanelOpen ? 'flex' : 'none';
+    panel.style.flexDirection = 'column';
+    if (networkPanelOpen) {
+      loadNetworkPanel();
+      networkRefreshInterval = setInterval(loadNetworkPanel, 15000);
+    } else {
+      clearInterval(networkRefreshInterval);
+    }
+  }
+
+  async function loadNetworkPanel() {
+    const content = document.getElementById('network-panel-content');
+    try {
+      const res = await fetch('api/agents/status');
+      const data = await res.json();
+
+      const badge = document.getElementById('network-badge');
+      if (data.total > 0) {
+        badge.textContent = data.total;
+        badge.style.display = 'flex';
+      } else {
+        badge.style.display = 'none';
+      }
+
+      let html = '';
+
+      html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div style="background:var(--bg3);border-radius:8px;padding:8px;text-align:center;">
+          <div style="font-size:18px;font-weight:600;color:var(--success)">${data.agents.filter(a=>a.online).length}</div>
+          <div style="font-size:10px;color:var(--text2)">Online</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:8px;padding:8px;text-align:center;">
+          <div style="font-size:18px;font-weight:600;color:var(--text2)">${data.agents.filter(a=>!a.online).length}</div>
+          <div style="font-size:10px;color:var(--text2)">Offline</div>
+        </div>
+      </div>`;
+
+      if (data.agents.length > 0) {
+        html += `<div style="font-size:11px;color:var(--text2);font-family:'DM Mono',monospace;margin-bottom:2px;">AGENTES (${data.agents.length})</div>`;
+        for (const agent of data.agents) {
+          const lastSeen = agent.last_seen ? new Date(agent.last_seen).toLocaleTimeString('es-ES', {hour:'2-digit',minute:'2-digit'}) : '?';
+          const permColor = agent.permissions === 'blocked' ? 'var(--error)' : agent.permissions === 'write' ? 'var(--accent2)' : 'var(--text3)';
+          html += `<div style="background:var(--bg3);border-radius:10px;padding:10px;border-left:3px solid ${agent.online?'var(--success)':'var(--text3)'};">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+              <span style="font-size:12px;font-weight:500;color:var(--text);">${agent.name}</span>
+              <span style="font-size:10px;color:${agent.online?'var(--success)':'var(--text3)'};">${agent.online?'Online':''+lastSeen}</span>
+            </div>
+            ${agent.description?`<div style="font-size:10px;color:var(--text2);margin-bottom:4px;">${agent.description}</div>`:''}
+            ${agent.capabilities?.length>0?`<div style="font-size:10px;color:var(--text3);margin-bottom:4px;">${agent.capabilities.slice(0,5).join(' · ')}</div>`:''}
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span style="font-size:10px;color:${permColor};">${agent.permissions}</span>
+              <span style="font-size:10px;color:var(--text3);">${agent.has_callback ? 'callback' : 'sin callback'}</span>
+            </div>
+          </div>`;
+        }
+      } else {
+        html += `<div style="color:var(--text2);font-size:12px;text-align:center;padding:16px 0;">Sin agentes registrados.<br><span style="font-size:11px;color:var(--text3);">Los agentes se registran via POST /api/agents/register</span></div>`;
+      }
+
+      if (data.recent_messages?.length > 0) {
+        html += `<div style="font-size:11px;color:var(--text2);font-family:'DM Mono',monospace;margin-bottom:2px;">MENSAJES RECIENTES</div>`;
+        for (const m of data.recent_messages.slice(-5).reverse()) {
+          const timeStr = m.ts ? new Date(m.ts).toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'}) : '';
+          html += `<div style="background:var(--bg3);border-radius:8px;padding:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+              <span style="font-size:11px;color:var(--accent);font-weight:500;">${m.from}</span>
+              <span style="font-size:10px;color:var(--text3);">${timeStr}</span>
+            </div>
+            <div style="font-size:11px;color:var(--text);">${(m.text||'').slice(0,120)}</div>
+          </div>`;
+        }
+      }
+
+      content.innerHTML = html;
+    } catch (e) {
+      content.innerHTML = `<div style="color:var(--error);font-size:12px;text-align:center;padding:20px;">Error cargando la red: ${e.message}</div>`;
+    }
+  }
+
+  setTimeout(() => { loadNetworkPanel(); }, 3000);
+
+  // ── Acceso a archivos del PC (File System Access API) ────────────────────────
+  let localDirectoryHandle = null;
+
+  async function connectLocalFolder() {
+    if (!('showDirectoryPicker' in window)) {
+      alert('Tu navegador no soporta File System Access API. Usa Chrome o Edge.');
+      return;
+    }
+    try {
+      localDirectoryHandle = await window.showDirectoryPicker({ mode: 'read' });
+      updateLocalFolderBtn();
+      addMessage('ai', `📁 Carpeta conectada: **${localDirectoryHandle.name}**\nAhora puedo leer archivos de tu PC. Prueba: "¿qué hay en mi carpeta?" o "léeme el archivo X."`);
+    } catch (e) {
+      if (e.name !== 'AbortError') console.error('connectLocalFolder:', e);
+    }
+  }
+
+  function updateLocalFolderBtn() {
+    const btn = document.getElementById('local-folder-btn');
+    const label = document.getElementById('local-folder-label');
+    if (!btn || !label) return;
+    if (localDirectoryHandle) {
+      label.textContent = localDirectoryHandle.name;
+      btn.style.color = 'var(--success)';
+      btn.style.borderColor = 'var(--success)';
+      btn.onmouseout = null;
+    } else {
+      label.textContent = 'PC';
+      btn.style.color = '';
+      btn.style.borderColor = '';
+      btn.onmouseout = () => { btn.style.borderColor = 'var(--border)'; btn.style.color = 'var(--text2)'; };
+    }
+  }
+
+  async function getHandleByPath(base, filePath) {
+    if (!filePath || filePath === '.' || filePath === '') return base;
+    const parts = filePath.replace(/\\/g, '/').split('/').filter(Boolean);
+    let cur = base;
+    for (let i = 0; i < parts.length; i++) {
+      const isLast = i === parts.length - 1;
+      cur = isLast
+        ? await cur.getFileHandle(parts[i]).catch(() => cur.getDirectoryHandle(parts[i]))
+        : await cur.getDirectoryHandle(parts[i]);
+    }
+    return cur;
+  }
+
+  async function listDirEntries(dirHandle, depth, maxDepth) {
+    const entries = [];
+    for await (const [name, handle] of dirHandle.entries()) {
+      const e = { name, type: handle.kind };
+      if (handle.kind === 'directory' && depth < maxDepth) {
+        e.children = await listDirEntries(handle, depth + 1, maxDepth).catch(() => []);
+      }
+      entries.push(e);
+    }
+    return entries.sort((a, b) => {
+      if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+  }
+
+  async function searchLocalFiles(dirHandle, query, base, results) {
+    for await (const [name, handle] of dirHandle.entries()) {
+      const p = base ? `${base}/${name}` : name;
+      if (name.toLowerCase().includes(query.toLowerCase())) results.push({ name, path: p, type: handle.kind });
+      if (handle.kind === 'directory' && results.length < 200) {
+        await searchLocalFiles(handle, query, p, results).catch(() => {});
+      }
+    }
+  }
+
+  async function handleLocalRequest(event) {
+    const { requestId, action, path, query, maxDepth } = event;
+
+    const respond = async (payload) => {
+      await fetch('api/local_response', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestId, ...payload })
+      });
+    };
+
+    if (!localDirectoryHandle) {
+      return respond({ error: 'No hay carpeta conectada. Haz clic en el botón 📁 PC del header para conectar una carpeta de tu ordenador.' });
+    }
+
+    try {
+      if (action === 'read') {
+        const handle = await getHandleByPath(localDirectoryHandle, path);
+        const file = await handle.getFile();
+        if (file.type.startsWith('image/') || file.type === 'application/pdf') {
+          return respond({ error: 'Para imágenes y PDFs usa el botón 📎 para adjuntarlos directamente al chat.' });
+        }
+        let content = await file.text();
+        if (content.length > 100000) content = content.slice(0, 100000) + '\n...[truncado a 100 KB]';
+        return respond({ content, size: file.size, name: file.name, mime: file.type || 'text/plain' });
+
+      } else if (action === 'list') {
+        const dir = (path && path !== '.') ? await getHandleByPath(localDirectoryHandle, path) : localDirectoryHandle;
+        const entries = await listDirEntries(dir, 0, maxDepth || 2);
+        return respond({ entries, path: path || '.', root: localDirectoryHandle.name });
+
+      } else if (action === 'search') {
+        const results = [];
+        await searchLocalFiles(localDirectoryHandle, query || '', '', results).catch(() => {});
+        return respond({ entries: results, query, count: results.length });
+      }
+    } catch (e) {
+      return respond({ error: e.message });
+    }
+  }
+
+  // Cola de mensajes — permite enviar mientras Jarvis piensa
+  const messageQueue = [];
+  let isProcessing = false;
+
+  async function sendMessage() {
+    const input = document.getElementById('input');
+    const text = input.value.trim();
+    if (!text && pendingFiles.length === 0) return;
+
+    input.value = '';
+    input.style.height = 'auto';
+
+    // Construir mensaje de usuario para mostrar en chat
+    let displayText = text;
+    if (pendingFiles.length > 0) {
+      const fileList = pendingFiles.map(f => getFileIcon(f.name, f.type) + ' ' + f.name).join('  ');
+      displayText = (text ? text + '\n' : '') + fileList;
+    }
+
+    addMessage('user', displayText || '📎 Archivos adjuntos');
+    conversationHistory.push({ role: 'user', content: text || '(archivo adjunto)' });
+
+    // Pasar archivos a la cola junto con el texto
+    const filesSnapshot = [...pendingFiles];
+    pendingFiles = [];
+    renderAttachmentsBar();
+
+    messageQueue.push({ text: text || 'Revisa los archivos adjuntos y dime qué ves.', files: filesSnapshot });
+
+    if (isProcessing) { scrollToBottom(); return; }
+    processQueue();
+  }
+
+  async function processQueue() {
+    if (isProcessing || messageQueue.length === 0) return;
+    isProcessing = true;
+    isStreaming = true;
+
+    while (messageQueue.length > 0) {
+      const { text, files } = messageQueue.shift();
+
+      setJarvisState('thinking');
+      addThinking();
+
+      let aiText = '';
+      let aiBubble = null;
+
+      try {
+        const response = await fetch('api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: [{ role: 'user', content: text }], files: files || [] })
+        });
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            try {
+              const event = JSON.parse(line.slice(6));
+
+              if (event.type === 'text') {
+                removeThinking();
+                setJarvisState('speaking');
+                if (!aiBubble) {
+                  aiBubble = addMessage('ai', '');
+                }
+                aiText += event.text;
+                aiBubble.textContent = aiText;
+                scrollToBottom();
+
+              } else if (event.type === 'local_request') {
+                handleLocalRequest(event);
+
+              } else if (event.type === 'tool_start') {
+                addThinking(event.tool, event.input);
+
+              } else if (event.type === 'tool_end') {
+                // Breve flash de confirmación en el indicador
+                const t = document.getElementById('thinking');
+                if (t && event.result && !event.result.error) {
+                  const label = TOOL_LABELS[event.tool] || event.tool;
+                  t.querySelector('.thinking span:first-of-type') &&
+                    (t.querySelector('.thinking').style.borderColor = 'var(--success)');
+                }
+
+              } else if (event.type === 'done') {
+                removeThinking();
+                setJarvisState('idle');
+                if (aiText) speak(aiText);
+
+              } else if (event.type === 'error') {
+                removeThinking();
+                setJarvisState('idle');
+                addMessage('ai', `⚠️ Error: ${event.error}`);
+              }
+            } catch {}
+          }
+        }
+
+        removeThinking();
+        if (aiText) {
+          conversationHistory.push({ role: 'assistant', content: aiText });
+        }
+
+      } catch (err) {
+        removeThinking();
+        setJarvisState('idle');
+
+        // Detectar si fue un reinicio (connection refused / network error)
+        const isRestart = err.message.includes('Failed to fetch') || err.message.includes('NetworkError') || err.message.includes('ERR_CONNECTION');
+        if (isRestart) {
+          await handleJarvisRestart();
+        } else {
+          addMessage('ai', `⚠️ Error de conexión: ${err.message}`);
+        }
+      }
+    }
+
+    isProcessing = false;
+    isStreaming = false;
+    document.getElementById('input').focus();
+  }
+
+  // Reconexión automática cuando Jarvis se reinicia
+  async function handleJarvisRestart() {
+    const container = document.getElementById('messages');
+    const notice = document.createElement('div');
+    notice.className = 'message ai';
+    notice.id = 'restart-notice';
+    notice.innerHTML = `<div style="background:var(--bg3);border:1px solid var(--accent);border-radius:var(--radius);padding:12px 16px;display:flex;align-items:center;gap:10px;">
+      <div class="dots"><span></span><span></span><span></span></div>
+      <div>
+        <div style="font-size:13px;color:var(--accent);font-weight:500;">Jarvis se está reiniciando...</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px;">Reconectando automáticamente</div>
+      </div>
+    </div>`;
+    container.appendChild(notice);
+    scrollToBottom();
+
+    // Esperar hasta que el servidor vuelva (máx 2 min)
+    let attempts = 0;
+    const maxAttempts = 60;
+    while (attempts < maxAttempts) {
+      await new Promise(r => setTimeout(r, 2000));
+      attempts++;
+      try {
+        const health = await fetch('api/health');
+        if (health.ok) {
+          // Servidor de vuelta
+          notice.remove();
+
+          // Comprobar si había una tarea pendiente
+          const pendingRes = await fetch('api/pending_task');
+          const pending = await pendingRes.json();
+
+          if (pending.status === 'resumed' && pending.message) {
+            addMessage('ai', `✓ Jarvis ha vuelto. Retomando tarea: *"${pending.message.slice(0, 80)}${pending.message.length > 80 ? '...' : ''}"*`);
+            // Enviar la tarea para que Jarvis la complete
+            setTimeout(() => {
+              document.getElementById('input').value = 'Retoma y completa la tarea que estabas haciendo antes del reinicio.';
+              sendMessage();
+            }, 1500);
+          } else {
+            addMessage('ai', '✓ Jarvis ha vuelto y está listo.');
+          }
+          return;
+        }
+      } catch {}
+
+      // Actualizar contador en el notice
+      const countdown = notice.querySelector('.dots');
+      if (countdown) {
+        notice.querySelector('div > div:last-child').textContent = `Reconectando... (intento ${attempts}/${maxAttempts})`;
+      }
+    }
+
+    // Timeout
+    notice.remove();
+    addMessage('ai', '⚠️ No se pudo reconectar con Jarvis. Recarga la página.');
+  }
+
+  // Cargar historial del servidor al iniciar
+  async function loadHistory() {
+    try {
+      const res = await fetch('api/history');
+      const data = await res.json();
+      if (data.messages && data.messages.length > 0) {
+        conversationHistory = data.messages;
+        for (const msg of data.messages) {
+          if (msg.role === 'user' && typeof msg.content === 'string') {
+            addMessage('user', msg.content);
+          } else if (msg.role === 'assistant' && typeof msg.content === 'string') {
+            addMessage('ai', msg.content);
+          }
+        }
+        // Asegurar scroll al último mensaje después de renderizar
+        requestAnimationFrame(() => {
+          const msgs = document.getElementById('messages');
+          msgs.scrollTop = msgs.scrollHeight;
+        });
+      }
+    } catch (e) {
+      console.log('No se pudo cargar historial:', e);
+    }
+  }
+
+  // Saludo de bienvenida al cargar
+  async function loadGreeting() {
+    try {
+      const res = await fetch('api/greeting');
+      const d = await res.json();
+      if (d.error && !d.saludo) return;
+
+      const container = document.getElementById('messages');
+      const card = document.createElement('div');
+      card.className = 'message ai';
+      card.id = 'jarvis-greeting';
+
+      const dias = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+      const now = new Date();
+      const fechaStr = `${dias[now.getDay()]} ${now.toLocaleDateString('es-ES')}`;
+
+      let html = `<div style="background:linear-gradient(135deg,#0d1520,#1a2340);border:1px solid var(--accent);border-radius:var(--radius);padding:16px 18px;">`;
+      html += `<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">`;
+      html += `<div style="width:8px;height:8px;border-radius:50%;background:var(--success);box-shadow:0 0 6px var(--success);flex-shrink:0;"></div>`;
+      html += `<span style="font-size:15px;font-weight:600;color:var(--accent)">${d.saludo}, Adrián.</span>`;
+      html += `<span style="font-size:11px;color:var(--text3);margin-left:auto;">${fechaStr}</span>`;
+      html += `</div>`;
+
+      // Lo que sé
+      html += `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">`;
+      if (d.totalEntities) html += `<span style="font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:20px;padding:3px 10px;color:var(--text2);">🏠 ${d.totalEntities} entidades</span>`;
+      if (d.memory) html += `<span style="font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:20px;padding:3px 10px;color:var(--text2);">🧠 ${d.memory} en memoria</span>`;
+      if (d.learnings) html += `<span style="font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:20px;padding:3px 10px;color:var(--text2);">📚 ${d.learnings} aprendizajes</span>`;
+      if (d.lightsOn) html += `<span style="font-size:12px;background:var(--bg3);border:1px solid #eab308;border-radius:20px;padding:3px 10px;color:#eab308;">💡 ${d.lightsOn} luces encendidas</span>`;
+      if (d.routines && d.routines.length) html += `<span style="font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:20px;padding:3px 10px;color:var(--text2);">🔄 ${d.routines.length} rutinas detectadas</span>`;
+      html += `</div>`;
+
+      // Problemas detectados
+      if (d.unavailable && d.unavailable.length > 0) {
+        html += `<div style="background:#1a0d0d;border:1px solid #7f1d1d;border-radius:8px;padding:10px 12px;margin-bottom:10px;">`;
+        html += `<div style="color:#f87171;font-size:12px;font-weight:600;margin-bottom:6px;">⚠️ Dispositivos no disponibles</div>`;
+        html += `<div style="font-size:12px;color:var(--text2);">${d.unavailable.join(', ')}</div>`;
+        html += `<button onclick="sendDirectMessage('Jarvis, revisa los dispositivos no disponibles y dime cómo arreglarlos')" style="margin-top:8px;font-size:11px;padding:4px 12px;border-radius:6px;border:1px solid #f87171;color:#f87171;background:transparent;cursor:pointer;">Arreglar ahora</button>`;
+        html += `</div>`;
+      }
+
+      if (d.automationsOff && d.automationsOff.length > 0) {
+        html += `<div style="background:#1a1200;border:1px solid #78350f;border-radius:8px;padding:8px 12px;margin-bottom:10px;">`;
+        html += `<div style="color:#fbbf24;font-size:12px;font-weight:600;margin-bottom:4px;">🔕 Automatizaciones desactivadas: ${d.automationsOff.join(', ')}</div>`;
+        html += `<button onclick="sendDirectMessage('Jarvis, ¿por qué están desactivadas estas automatizaciones? ¿Debo activarlas? ${d.automationsOff.join(', ')}')" style="font-size:11px;padding:4px 12px;border-radius:6px;border:1px solid #fbbf24;color:#fbbf24;background:transparent;cursor:pointer;">Revisar</button>`;
+        html += `</div>`;
+      }
+
+      // Pensamientos pendientes
+      if (d.pendingThoughts && d.pendingThoughts.length > 0) {
+        html += `<div style="margin-bottom:10px;">`;
+        html += `<div style="font-size:12px;color:var(--accent2);font-weight:600;margin-bottom:6px;">💭 Tengo ${d.pendingThoughts.length} propuesta${d.pendingThoughts.length>1?'s':''} esperando tu aprobación</div>`;
+        for (const t of d.pendingThoughts) {
+          const emoji = { suggestion:'💡', alert:'⚠️', action_request:'🎯', optimization:'⚡', creation:'🏗️' };
+          const prioColor = { low:'#6b7280', medium:'#eab308', high:'#f97316', critical:'#ef4444' };
+          html += `<div style="margin:5px 0;padding:10px;background:var(--bg);border-radius:8px;border-left:3px solid ${prioColor[t.priority]||'#6b7280'}">`;
+          html += `<div style="font-size:13px;font-weight:500;">${emoji[t.type]||'💭'} ${t.title}</div>`;
+          html += `<div style="font-size:12px;color:var(--text2);margin-top:4px;white-space:pre-wrap;">${t.detail}</div>`;
+          html += `<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">`;
+          html += `<button onclick="applyThought(${t.id},'${t.title.replace(/'/g,"\\'")}','${t.detail.replace(/'/g,"\\'").replace(/\n/g,' ')}')" style="font-size:11px;padding:4px 12px;border-radius:6px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-weight:600;">⚡ Aplicar</button>`;
+          html += `<button onclick="resolveThought(${t.id},'reject')" style="font-size:11px;padding:4px 12px;border-radius:6px;border:1px solid var(--error);color:var(--error);background:transparent;cursor:pointer;">✗ Descartar</button>`;
+          html += `</div></div>`;
+        }
+        html += `</div>`;
+      }
+
+      // Accesos rápidos
+      html += `<div style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px;display:flex;flex-wrap:wrap;gap:6px;">`;
+      html += `<button onclick="sendDirectMessage('Jarvis, revisa mi dashboard y dime qué está mal y cómo mejorarlo')" style="font-size:11px;padding:5px 12px;border-radius:20px;border:1px solid var(--accent2);color:var(--accent2);background:transparent;cursor:pointer;">🖥️ Revisar dashboard</button>`;
+      html += `<button onclick="sendDirectMessage('Jarvis, ¿qué has aprendido sobre mi casa? ¿Qué rutinas has detectado?')" style="font-size:11px;padding:5px 12px;border-radius:20px;border:1px solid var(--border);color:var(--text2);background:transparent;cursor:pointer;">🧠 Ver lo que sé</button>`;
+      html += `<button onclick="sendDirectMessage('Jarvis, escanea la instalación y dime si hay algo que mejorar')" style="font-size:11px;padding:5px 12px;border-radius:20px;border:1px solid var(--border);color:var(--text2);background:transparent;cursor:pointer;">🔍 Escanear todo</button>`;
+      html += `</div>`;
+      html += `</div>`;
+
+      card.innerHTML = html;
+      container.appendChild(card);
+      requestAnimationFrame(() => { container.scrollTop = container.scrollHeight; });
+    } catch (e) {
+      console.log('No se pudo cargar saludo:', e);
+    }
+  }
+
+  // Enviar mensaje directamente desde botones de la UI
+  window.sendDirectMessage = function(text) {
+    document.getElementById('input').value = text;
+    sendMessage();
+  };
+
+  // Aplicar un pensamiento proactivo
+  window.applyThought = async function(id, title, detail) {
+    try {
+      await fetch(`api/pending_thoughts/${id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'approve' })
+      });
+      const greeting = document.getElementById('jarvis-greeting');
+      if (greeting) greeting.remove();
+    } catch {}
+    sendDirectMessage(`Jarvis, quiero que apliques esta propuesta: "${title}". Detalles: ${detail}`);
+  };
+
+  // Cargar pensamientos proactivos pendientes (standalone, sin historial)
+  async function loadPendingThoughts() {
+    // El saludo ya muestra los pensamientos — esta función queda como backup
+    // si el saludo no se ha mostrado (hay historial previo)
+    try {
+      const res = await fetch('api/pending_thoughts');
+      const data = await res.json();
+      if (!data.thoughts || data.thoughts.length === 0) return;
+
+      // Solo mostrar si NO ya hay un greeting
+      if (document.getElementById('jarvis-greeting')) return;
+
+      const container = document.getElementById('messages');
+      const banner = document.createElement('div');
+      banner.className = 'message ai';
+      banner.id = 'thoughts-banner';
+      const prioColor = { low:'#6b7280', medium:'#eab308', high:'#f97316', critical:'#ef4444' };
+      const emoji = { suggestion:'💡', alert:'⚠️', action_request:'🎯', optimization:'⚡', creation:'🏗️' };
+      let html = '<div style="background:var(--tool-bg);border:1px solid #4a3f6b;border-radius:var(--radius);padding:12px 16px;">';
+      html += '<div style="color:var(--accent2);font-weight:500;margin-bottom:8px;">💭 Jarvis tiene propuestas para ti</div>';
+      for (const t of data.thoughts) {
+        html += `<div style="margin:6px 0;padding:8px;background:var(--bg);border-radius:8px;border-left:3px solid ${prioColor[t.priority]||'#6b7280'}">`;
+        html += `<div style="font-size:13px;font-weight:500;">${emoji[t.type]||'💭'} ${t.title}</div>`;
+        html += `<div style="font-size:12px;color:var(--text2);margin-top:4px;">${t.detail}</div>`;
+        html += `<div style="margin-top:8px;display:flex;gap:8px;">`;
+        html += `<button onclick="applyThought(${t.id},'${t.title.replace(/'/g,"\\'")}','${t.detail.replace(/'/g,"\\'").replace(/\n/g,' ')}')" style="font-size:11px;padding:4px 12px;border-radius:6px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-weight:600;">⚡ Aplicar</button>`;
+        html += `<button onclick="resolveThought(${t.id},'reject')" style="font-size:11px;padding:4px 12px;border-radius:6px;border:1px solid var(--error);color:var(--error);background:transparent;cursor:pointer;">✗ Descartar</button>`;
+        html += `</div></div>`;
+      }
+      html += '</div>';
+      banner.innerHTML = html;
+      container.appendChild(banner);
+      requestAnimationFrame(() => { container.scrollTop = container.scrollHeight; });
+    } catch (e) {
+      console.log('No se pudieron cargar pensamientos:', e);
+    }
+  }
+
+  window.resolveThought = async function(id, action) {
+    try {
+      await fetch(`api/pending_thoughts/${id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action })
+      });
+      const banner = document.getElementById('thoughts-banner');
+      if (banner) banner.remove();
+      loadPendingThoughts();
+    } catch (e) { console.log('Error resolviendo pensamiento:', e); }
+  };
+
+  // ── Modo ahorro y badge de coste ─────────────────────────────────────────────
+  let saverModeActive = false;
+
+  async function toggleSaverMode() {
+    try {
+      const res = await fetch('api/saver', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+      const d = await res.json();
+      saverModeActive = d.saver_mode;
+      updateSaverBtn();
+    } catch(e) { console.warn('saver toggle error', e); }
+  }
+
+  function updateSaverBtn() {
+    const btn = document.getElementById('saver-btn');
+    const label = document.getElementById('saver-label');
+    if (!btn) return;
+    if (saverModeActive) {
+      btn.style.borderColor = '#f59e0b';
+      btn.style.color = '#f59e0b';
+      label.textContent = '⚡ Ahorro';
+    } else {
+      btn.style.borderColor = 'var(--border)';
+      btn.style.color = 'var(--text2)';
+      label.textContent = 'Ahorro';
+    }
+  }
+
+  async function updateCostBadge() {
+    try {
+      const res = await fetch('api/cost');
+      const d = await res.json();
+      const badge = document.getElementById('cost-badge');
+      if (badge) {
+        badge.textContent = '$' + parseFloat(d.state).toFixed(4);
+        badge.title = `Coste sesión: $${d.state} USD\nLlamadas: ${d.attributes.calls}\nTokens entrada: ${d.attributes.input_tokens.toLocaleString()}\nTokens salida: ${d.attributes.output_tokens.toLocaleString()}\nCache leído: ${(d.attributes.cache_read_tokens||0).toLocaleString()}\nModelo: ${d.attributes.model}\nDesde: ${new Date(d.attributes.since).toLocaleTimeString('es-ES')}`;
+      }
+      // Sync estado del modo ahorro con el servidor
+      if (d.attributes.saver_mode !== saverModeActive) {
+        saverModeActive = d.attributes.saver_mode;
+        updateSaverBtn();
+      }
+    } catch(e) {}
+  }
+
+  // Actualizar badge de coste cada 30 segundos
+  setInterval(updateCostBadge, 30000);
+
+  // Inicialización
+  async function init() {
+    await loadHistory();
+    // Si no hay historial previo, mostrar saludo completo
+    if (conversationHistory.length === 0) {
+      await loadGreeting();
+    } else {
+      // Si hay historial, solo mostrar pensamientos pendientes
+      await loadPendingThoughts();
+    }
+    document.getElementById('input').focus();
+    updateCostBadge(); // Cargar coste inicial
+    connectPushEvents(); // Canal SSE persistente para mensajes en tiempo real
+  }
+  init();
+
+  // ── Canal SSE persistente — mensajes de agentes en tiempo real ───────────────
+  function connectPushEvents() {
+    const es = new EventSource('api/events');
+    es.onmessage = (e) => {
+      try {
+        const event = JSON.parse(e.data);
+        if (event.type === 'agent_message') {
+          addMessage('ai', `📡 **${event.from}** (red de agentes):\n\n${event.text}`);
+          speak(`Mensaje de ${event.from}: ${event.text}`);
+        } else if (event.type === 'agent_response') {
+          addMessage('ai', `🤖 Respondí a **${event.to}**: ${event.text}`);
+          // Notificación del navegador si está en segundo plano
+          if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+            new Notification(`Jarvis — Mensaje de ${event.from}`, { body: event.text.slice(0, 100) });
+          }
+        }
+      } catch {}
+    };
+    es.onerror = () => { es.close(); setTimeout(connectPushEvents, 5000); };
+  }
+
+  // Pedir permiso de notificaciones al cargar
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+
+  // ── Jarvis 3D Holographic Face (Three.js) ─────────────────────────────────
+  let jarvisState = 'idle'; // idle, thinking, speaking
+
+  function setJarvisState(state) {
+    jarvisState = state;
+    const statusText = document.getElementById('jarvis-status-text');
+    if (state === 'thinking') statusText.textContent = 'Pensando...';
+    else if (state === 'speaking') statusText.textContent = 'Respondiendo...';
+    else statusText.textContent = 'Listo · Home Assistant';
+  }
+
+  (function initJarvis3D() {
+    if (typeof THREE === 'undefined') return;
+
+    // ─── Mini orb for header ───
+    const headerContainer = document.getElementById('jarvis-header-orb');
+    if (headerContainer) {
+      const hs = new THREE.Scene();
+      const hc = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+      hc.position.z = 2.5;
+      const hr = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+      hr.setSize(80, 80);
+      hr.setPixelRatio(2);
+      headerContainer.appendChild(hr.domElement);
+
+      const hCore = new THREE.Mesh(
+        new THREE.SphereGeometry(0.7, 24, 24),
+        new THREE.MeshBasicMaterial({ color: 0x4a90e2, wireframe: true, transparent: true, opacity: 0.7 })
+      );
+      hs.add(hCore);
+      const hGlow = new THREE.Mesh(
+        new THREE.SphereGeometry(0.5, 16, 16),
+        new THREE.MeshBasicMaterial({ color: 0x6cb4f7, transparent: true, opacity: 0.4 })
+      );
+      hs.add(hGlow);
+
+      (function animHeader() {
+        requestAnimationFrame(animHeader);
+        hCore.rotation.y += 0.01;
+        hCore.rotation.x += 0.005;
+        const s = jarvisState === 'thinking' ? 2.5 : jarvisState === 'speaking' ? 1.8 : 1;
+        hCore.rotation.y += 0.005 * s;
+        hGlow.material.opacity = 0.3 + Math.sin(Date.now() * 0.003 * s) * 0.2;
+        hr.render(hs, hc);
+      })();
+    }
+
+  })();
+</script>
+</body>
+</html>
