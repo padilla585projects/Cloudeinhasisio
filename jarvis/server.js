@@ -90,7 +90,7 @@ function findAgentByKey(apiKey) {
   return null;
 }
 
-const JARVIS_VERSION = '3.15.6';
+const JARVIS_VERSION = '3.15.7';
 
 const NETWORK_NORMS = {
   version: '2.0',
@@ -3298,7 +3298,8 @@ function sanitizeMessagesForOpenAI(messages) {
       // Anthropic image → OpenAI image_url
       if (block.type === 'image' && block.source) {
         const { media_type, data } = block.source;
-        return { type: 'image_url', image_url: { url: `data:${media_type};base64,${data}` } };
+        const b64 = (data || '').replace(/^data:[^;]+;base64,/, '').replace(/\s/g, '');
+        return { type: 'image_url', image_url: { url: `data:${media_type};base64,${b64}` } };
       }
       // Anthropic document → texto
       if (block.type === 'document') {
@@ -4249,7 +4250,10 @@ app.post('/api/chat', async (req, res) => {
 
           if (file.encoding === 'base64' && mime.startsWith('image/')) {
             // Imágenes → formato OpenAI image_url (visión)
-            userContent.push({ type: 'image_url', image_url: { url: `data:${mime};base64,${file.content}` } });
+            // Limpiar: quitar prefijo data URI si ya viene incluido, y eliminar espacios/saltos
+            let b64 = file.content.replace(/^data:[^;]+;base64,/, '').replace(/\s/g, '');
+            const safeMime = mime.split(';')[0] || 'image/jpeg';
+            userContent.push({ type: 'image_url', image_url: { url: `data:${safeMime};base64,${b64}` } });
 
           } else if (file.encoding === 'base64') {
             // Cualquier archivo binario (PDF, docx, xlsx, zip...) → guardar en /data/uploads/
