@@ -3,6 +3,36 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.15.0 (2026-05-11) — Migración a OpenAI: dual-model + búsqueda Google
+────────────────────────────────────────────────────────────────────────────────
+
+Cambio de proveedor IA: de Anthropic a OpenAI para reducir costes ~85%.
+Para un hogar con 20 msgs/día el coste baja de ~$200/mes a ~$10/mes.
+
+Modelos:
+  - gpt-4o-mini: consultas simples (encender luces, estados, saludos)
+  - gpt-4.1-mini: consultas complejas (automatizaciones, debugging, dashboards)
+  - La clasificación automática simple/complejo ya existía, ahora enruta a OpenAI
+
+Búsqueda web:
+  - Serper (Google) como motor primario — requiere SERPER_API_KEY en config
+  - DuckDuckGo como fallback automático si Serper falla o no hay key
+  - Resultados Google incluyen answer box cuando está disponible
+
+Config:
+  - Nueva key obligatoria: openai_api_key
+  - Nueva key opcional: serper_api_key (Google search)
+  - anthropic_api_key queda como opcional (ya no se usa para el agente)
+  - Eliminada opción model (fija: gpt-4o-mini / gpt-4.1-mini)
+
+Técnico:
+  - Nuevo helper callOpenAI() unifica todas las llamadas a la API
+  - openAITools: conversión automática del formato Anthropic → OpenAI
+  - Bucle agéntico reescrito para formato OpenAI (tool_calls, finish_reason)
+  - Tool results en mensajes separados con role:'tool' (formato OpenAI)
+  - 8 llamadas a Anthropic eliminadas, 0 llamadas restantes
+
+────────────────────────────────────────────────────────────────────────────────
 v3.14.6 (2026-05-11) — OpenAI TTS + Edge TTS: selector dual de voces
 ────────────────────────────────────────────────────────────────────────────────
 

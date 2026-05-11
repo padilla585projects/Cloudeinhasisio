@@ -14,19 +14,20 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(__dirname));
 
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const MODEL = process.env.MODEL || 'claude-sonnet-4-6';
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
+const SERPER_API_KEY = process.env.SERPER_API_KEY || '';
+const MODEL = 'gpt-4.1-mini';      // Consultas complejas
+const BG_MODEL = 'gpt-4o-mini';    // Consultas simples y tareas background
 const HA_TOKEN = process.env.HA_TOKEN;
 const HA_URL = process.env.HA_URL || 'http://supervisor/core';
 const LANGUAGE = process.env.LANGUAGE || 'es';
-const BG_MODEL = 'claude-haiku-4-5-20251001';  // Modelo económico para tareas background
 const PROXMOX_URL = process.env.PROXMOX_URL || '';  // ej: https://192.168.1.100:8006
 const PROXMOX_TOKEN = process.env.PROXMOX_TOKEN || '';  // ej: user@pam!tokenid=token-secret
 const PROXMOX_NODE = process.env.PROXMOX_NODE || 'pve';  // nombre del nodo
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
 const GITHUB_REPO = 'padilla585projects/Cloudeinhasisio';
 const GITHUB_BRANCH = 'main';
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 
 // ── Rutas del filesystem de HA ───────────────────────────────────────────────
 const DATA_DIR = '/data';                    // Persistente del add-on
@@ -89,7 +90,7 @@ function findAgentByKey(apiKey) {
   return null;
 }
 
-const JARVIS_VERSION = '3.14.6';
+const JARVIS_VERSION = '3.15.0';
 
 const NETWORK_NORMS = {
   version: '2.0',
@@ -1194,13 +1195,32 @@ async function executeTool(name, input) {
 
       // ─── Internet ───
       case 'web_search': {
-        // Usar DuckDuckGo HTML (no requiere API key)
+        // Primario: Serper (Google). Fallback: DuckDuckGo
+        if (SERPER_API_KEY) {
+          try {
+            const serperRes = await fetch('https://google.serper.dev/search', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'X-API-KEY': SERPER_API_KEY },
+              body: JSON.stringify({ q: input.query, num: 8, hl: 'es' })
+            });
+            if (serperRes.ok) {
+              const serperData = await serperRes.json();
+              const results = (serperData.organic || []).slice(0, 8).map(r => ({
+                url: r.link, title: r.title, snippet: r.snippet || ''
+              }));
+              if (serperData.answerBox) results.unshift({ url: '', title: 'Respuesta directa', snippet: serperData.answerBox.answer || serperData.answerBox.snippet || '' });
+              return { query: input.query, results, source: 'google', count: results.length };
+            }
+          } catch (e) {
+            console.log('[search] Serper falló, usando DuckDuckGo:', e.message);
+          }
+        }
+        // Fallback DuckDuckGo
         const encoded = encodeURIComponent(input.query);
         const res = await fetch(`https://html.duckduckgo.com/html/?q=${encoded}`, {
           headers: { 'User-Agent': 'Mozilla/5.0 (compatible; HABot/1.0)' }
         });
         const html = await res.text();
-        // Extraer resultados básicos
         const results = [];
         const regex = /<a rel="nofollow" class="result__a" href="([^"]+)"[^>]*>([^<]+)<\/a>[\s\S]*?<a class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
         let match;
@@ -1211,7 +1231,7 @@ async function executeTool(name, input) {
             snippet: match[3].replace(/<[^>]+>/g, '').trim()
           });
         }
-        return { query: input.query, results, count: results.length };
+        return { query: input.query, results, source: 'duckduckgo', count: results.length };
       }
 
       case 'fetch_url': {
@@ -3260,6 +3280,49 @@ Prohibida la copia, redistribucion y uso comercial.`);
   }
 }
 
+// ── OpenAI tools (formato convertido desde Anthropic) ───────────────────────
+const openAITools = tools.map(t => ({
+  type: 'function',
+  function: {
+    name: t.name,
+    description: t.description,
+    parameters: t.input_schema || { type: 'object', properties: {} }
+  }
+}));
+
+// Helper unificado para llamar a OpenAI Chat Completions
+async function callOpenAI(model, system, messages, aiTools, maxTokens) {
+  const msgs = system ? [{ role: 'system', content: system }, ...messages] : [...messages];
+  const body = { model, max_tokens: maxTokens, messages: msgs };
+  if (aiTools && aiTools.length > 0) body.tools = aiTools;
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENAI_API_KEY}` },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`OpenAI error ${response.status}: ${err}`);
+  }
+
+  const data = await response.json();
+  const choice = data.choices[0];
+  const message = choice.message;
+  return {
+    text: message.content || '',
+    toolCalls: (message.tool_calls || []).map(tc => ({
+      id: tc.id,
+      name: tc.function.name,
+      input: (() => { try { return JSON.parse(tc.function.arguments); } catch { return {}; } })()
+    })),
+    finishReason: choice.finish_reason,
+    message,
+    usage: data.usage || {}
+  };
+}
+
 // ── System Prompt (dinámico) ─────────────────────────────────────────────────
 
 function buildSystemPrompt() {
@@ -4127,110 +4190,81 @@ app.post('/api/chat', async (req, res) => {
     let finalText = '';
     let iterations = 0;
     const MAX_ITERATIONS = saverMode ? 8 : activeMaxIter;
-    let consecutiveTextOnly = 0; // Detectar si lleva varias respuestas sin tools (realmente terminó)
+    let consecutiveTextOnly = 0;
+    const systemPrompt = buildSystemPrompt();
 
     while (iterations < MAX_ITERATIONS) {
       iterations++;
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01',
-          'anthropic-beta': 'prompt-caching-2024-07-31'
-        },
-        body: JSON.stringify({
-          model: activeModel,
-          max_tokens: activeMaxTokens,
-          system: buildSystemPromptArray(),
-          tools,
-          messages: currentMessages
-        })
-      });
-
-      if (!response.ok) {
-        const err = await response.text();
-        console.log(`[claude] Error API iter=${iterations}: ${err}`);
-        // Reintentar una vez si es error temporal (429, 529)
-        if (err.includes('overloaded') || err.includes('529') || err.includes('429')) {
+      let result;
+      try {
+        result = await callOpenAI(activeModel, systemPrompt, currentMessages, openAITools, activeMaxTokens);
+      } catch (err) {
+        console.log(`[jarvis] Error API iter=${iterations}: ${err.message}`);
+        if (err.message.includes('429') || err.message.includes('503')) {
           await new Promise(r => setTimeout(r, 3000));
           continue;
         }
-        sendEvent({ type: 'error', error: `Error API: ${err}` });
+        sendEvent({ type: 'error', error: `Error API: ${err.message}` });
         break;
       }
 
-      const data = await response.json();
-      if (data.usage) {
-        apiUsage.calls++;
-        apiUsage.inputTokens += data.usage.input_tokens || 0;
-        apiUsage.outputTokens += data.usage.output_tokens || 0;
-        apiUsage.cacheReadTokens += data.usage.cache_read_input_tokens || 0;
-        apiUsage.cacheCreationTokens += data.usage.cache_creation_input_tokens || 0;
-      }
-      console.log(`[claude] iter=${iterations} stop=${data.stop_reason} blocks=${data.content.map(b => b.type).join(',')} tokens=${data.usage ? data.usage.input_tokens + '+' + data.usage.output_tokens : '?'}`);
+      apiUsage.calls++;
+      apiUsage.inputTokens += result.usage.prompt_tokens || 0;
+      apiUsage.outputTokens += result.usage.completion_tokens || 0;
+      console.log(`[jarvis] iter=${iterations} finish=${result.finishReason} tools=${result.toolCalls.length} tokens=${result.usage.prompt_tokens}+${result.usage.completion_tokens}`);
 
-      for (const block of data.content) {
-        if (block.type === 'text') {
-          finalText += block.text;
-          sendEvent({ type: 'text', text: block.text });
-        }
+      if (result.text) {
+        finalText += result.text;
+        sendEvent({ type: 'text', text: result.text });
       }
 
-      const toolUseBlocks = data.content.filter(b => b.type === 'tool_use');
+      if (result.toolCalls.length === 0) {
+        if (result.finishReason === 'stop') break;
 
-      // Si no hay tools: puede ser fin real O pausa indebida mid-task
-      if (toolUseBlocks.length === 0) {
-        // Si stop_reason es end_turn → tarea terminada, salir
-        if (data.stop_reason === 'end_turn') break;
-
-        // Si fue max_tokens → Claude se quedó sin tokens a mitad, inyectar "continúa"
-        if (data.stop_reason === 'max_tokens') {
-          currentMessages.push({ role: 'assistant', content: data.content });
-          currentMessages.push({ role: 'user', content: [{ type: 'text', text: 'Continúa con la tarea. No te has detenido por instrucción mía.' }] });
-          console.log(`[claude] max_tokens en iter=${iterations}, inyectando continuación`);
+        if (result.finishReason === 'length') {
+          currentMessages.push(result.message);
+          currentMessages.push({ role: 'user', content: 'Continúa con la tarea. No te has detenido por instrucción mía.' });
+          console.log(`[jarvis] length en iter=${iterations}, inyectando continuación`);
           continue;
         }
 
-        // Acumular respuestas sin tools — si hay 2 seguidas sin herramientas, es que terminó
         consecutiveTextOnly++;
         if (consecutiveTextOnly >= 2) break;
 
-        // Primera respuesta sin tools: puede estar planificando. Dejar continuar.
-        currentMessages.push({ role: 'assistant', content: data.content });
-        currentMessages.push({ role: 'user', content: [{ type: 'text', text: 'Continúa ejecutando los pasos necesarios para completar la tarea.' }] });
+        currentMessages.push(result.message);
+        currentMessages.push({ role: 'user', content: 'Continúa ejecutando los pasos necesarios para completar la tarea.' });
         continue;
       }
 
-      // Hay tools → resetear contador de texto puro
       consecutiveTextOnly = 0;
 
-      for (const block of toolUseBlocks) {
-        sendEvent({ type: 'tool_start', tool: block.name, input: block.input });
+      for (const tc of result.toolCalls) {
+        sendEvent({ type: 'tool_start', tool: tc.name, input: tc.input });
       }
 
-      // Ejecutar tools — con manejo de error individual (no abortar todo si una falla)
       const results = await Promise.all(
-        toolUseBlocks.map(async block => {
+        result.toolCalls.map(async tc => {
           try {
-            return await executeTool(block.name, block.input);
+            return await executeTool(tc.name, tc.input);
           } catch (err) {
-            console.log(`[claude] Tool ${block.name} falló: ${err.message}`);
+            console.log(`[jarvis] Tool ${tc.name} falló: ${err.message}`);
             return { error: err.message, hint: 'Prueba una aproximación alternativa.' };
           }
         })
       );
 
-      const toolResults = toolUseBlocks.map((block, i) => {
-        sendEvent({ type: 'tool_end', tool: block.name, result: results[i] });
-        const raw = JSON.stringify(results[i]);
-        const maxLen = (saverMode || activeModel === BG_MODEL) ? 2000 : 8000;
-        const content = raw.length > maxLen ? raw.slice(0, maxLen) + '\n...[truncado para ahorrar tokens]' : raw;
-        return { type: 'tool_result', tool_use_id: block.id, content };
-      });
+      // Mensaje assistant con tool_calls
+      currentMessages.push(result.message);
 
-      currentMessages.push({ role: 'assistant', content: data.content });
-      currentMessages.push({ role: 'user', content: toolResults });
+      // Resultados de cada tool como mensajes separados (formato OpenAI)
+      const maxLen = (saverMode || activeModel === BG_MODEL) ? 2000 : 8000;
+      for (let i = 0; i < result.toolCalls.length; i++) {
+        const tc = result.toolCalls[i];
+        sendEvent({ type: 'tool_end', tool: tc.name, result: results[i] });
+        const raw = JSON.stringify(results[i]);
+        const content = raw.length > maxLen ? raw.slice(0, maxLen) + '\n...[truncado para ahorrar tokens]' : raw;
+        currentMessages.push({ role: 'tool', tool_call_id: tc.id, content });
+      }
     }
 
     if (iterations >= MAX_ITERATIONS) {
@@ -4259,16 +4293,13 @@ app.post('/api/chat', async (req, res) => {
 });
 
 function calcCost(usage) {
-  // Sonnet 4.6: $3/MTok input, $15/MTok output, $3.75/MTok cache write, $0.30/MTok cache read
-  // Haiku 4.5:  $0.80/MTok input, $4/MTok output, $1/MTok cache write, $0.08/MTok cache read
-  const sonnetIn = 3 / 1e6, sonnetOut = 15 / 1e6;
-  const sonnetCacheW = 3.75 / 1e6, sonnetCacheR = 0.30 / 1e6;
-  const cost =
-    usage.inputTokens * sonnetIn +
-    usage.outputTokens * sonnetOut +
-    (usage.cacheCreationTokens || 0) * sonnetCacheW +
-    (usage.cacheReadTokens || 0) * sonnetCacheR;
-  return Math.round(cost * 10000) / 10000; // 4 decimales
+  // gpt-4.1-mini: $0.40/MTok input, $1.60/MTok output
+  // gpt-4o-mini:  $0.15/MTok input, $0.60/MTok output
+  // Promedio ponderado (70% mini, 30% 4.1-mini)
+  const avgIn = (0.15 * 0.7 + 0.40 * 0.3) / 1e6;
+  const avgOut = (0.60 * 0.7 + 1.60 * 0.3) / 1e6;
+  const cost = usage.inputTokens * avgIn + usage.outputTokens * avgOut;
+  return Math.round(cost * 10000) / 10000;
 }
 
 // Health
@@ -4764,38 +4795,22 @@ Prioridad: arreglar cosas rotas > optimizar > sugerir mejoras.`;
       }
     }
 
-    const bgTools = ['proactive_thought', 'learn', 'save_memory', 'call_service', 'get_entity_state']
-      .map(n => tools.find(t => t.name === n)).filter(Boolean);
+    const bgToolNames = ['proactive_thought', 'learn', 'save_memory', 'call_service', 'get_entity_state'];
+    const bgTools = openAITools.filter(t => bgToolNames.includes(t.function.name));
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: BG_MODEL,
-        max_tokens: 1024,
-        system: 'Eres Jarvis en modo autónomo. ACTÚAS primero (call_service para arreglar cosas), luego reportas con proactive_thought. Si no hay nada útil, di solo "OK". Español. Sé directo.',
-        tools: bgTools,
-        messages: [{ role: 'user', content: analysisPrompt + autoFixLog }]
-      })
-    });
-
-    if (!response.ok) {
-      console.log(`[proactive] Error API: ${response.status} ${await response.text()}`);
+    let proResult;
+    try {
+      proResult = await callOpenAI(BG_MODEL, 'Eres Jarvis en modo autónomo. ACTÚAS primero (call_service para arreglar cosas), luego reportas con proactive_thought. Si no hay nada útil, di solo "OK". Español. Sé directo.', [{ role: 'user', content: analysisPrompt + autoFixLog }], bgTools, 1024);
+    } catch (err) {
+      console.log(`[proactive] Error API: ${err.message}`);
       return;
     }
 
-    const data = await response.json();
-    const toolCalls = data.content.filter(b => b.type === 'tool_use');
-
-    for (const tc of toolCalls) {
+    for (const tc of proResult.toolCalls) {
       await executeTool(tc.name, tc.input);
     }
 
-    console.log(`[proactive] Ciclo completo. ${toolCalls.length} acciones tomadas.`);
+    console.log(`[proactive] Ciclo completo. ${proResult.toolCalls.length} acciones tomadas.`);
   } catch (err) {
     console.log(`[proactive] Error: ${err.message}`);
   }
@@ -4903,47 +4918,30 @@ async function analyzePatterns() {
     summary += `\nRUTINAS YA DETECTADAS: ${existingTitles || '(ninguna todavía)'}\n`;
     summary += `\nDatos: ${snapshots.length} snapshots en ${Math.round((Date.now() - new Date(snapshots[0].ts).getTime()) / 3600_000)}h\n`;
 
-    // Pedir a Claude que detecte patrones
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: BG_MODEL,
-        max_tokens: 600,
-        system: 'Eres Jarvis analizando patrones de vida del hogar. Detecta rutinas de los habitantes. Si encuentras un patrón claro y accionable (se podría automatizar), usa proactive_thought para sugerir la automatización. Si detectas algo que memorizar, usa save_memory. Solo patrones CLAROS con >60% de consistencia. Español. Breve.',
-        tools: [tools.find(t => t.name === 'proactive_thought'), tools.find(t => t.name === 'save_memory'), tools.find(t => t.name === 'learn')],
-        messages: [{ role: 'user', content: summary }]
-      })
-    });
+    const patternToolNames = ['proactive_thought', 'save_memory', 'learn'];
+    const patternTools = openAITools.filter(t => patternToolNames.includes(t.function.name));
 
-    if (!response.ok) {
-      console.log(`[patterns] Error API: ${response.status}`);
+    let patResult;
+    try {
+      patResult = await callOpenAI(BG_MODEL, 'Eres Jarvis analizando patrones de vida del hogar. Detecta rutinas de los habitantes. Si encuentras un patrón claro y accionable (se podría automatizar), usa proactive_thought para sugerir la automatización. Si detectas algo que memorizar, usa save_memory. Solo patrones CLAROS con >60% de consistencia. Español. Breve.', [{ role: 'user', content: summary }], patternTools, 600);
+    } catch (err) {
+      console.log(`[patterns] Error API: ${err.message}`);
       return;
     }
 
-    const data = await response.json();
-    const toolCalls = data.content.filter(b => b.type === 'tool_use');
-
-    for (const tc of toolCalls) {
-      const result = await executeTool(tc.name, tc.input);
-      // Guardar rutinas detectadas
+    for (const tc of patResult.toolCalls) {
+      await executeTool(tc.name, tc.input);
       if (tc.name === 'proactive_thought') {
         existingRoutines.push({ title: tc.input.title, detectedAt: new Date().toISOString(), detail: tc.input.detail });
         saveJSON(ROUTINES_FILE, existingRoutines.slice(-50));
       }
     }
 
-    if (data.usage) {
-      apiUsage.calls++;
-      apiUsage.inputTokens += data.usage.input_tokens || 0;
-      apiUsage.outputTokens += data.usage.output_tokens || 0;
-    }
+    apiUsage.calls++;
+    apiUsage.inputTokens += patResult.usage.prompt_tokens || 0;
+    apiUsage.outputTokens += patResult.usage.completion_tokens || 0;
 
-    console.log(`[patterns] Análisis completo. ${toolCalls.length} patrones/acciones detectados.`);
+    console.log(`[patterns] Análisis completo. ${patResult.toolCalls.length} patrones/acciones detectados.`);
   } catch (err) {
     console.log(`[patterns] Error: ${err.message}`);
   }
@@ -5012,20 +5010,8 @@ async function knowledgeExpansionLoop() {
 
     console.log(`[knowledge] Investigando: ${topic}`);
 
-    // Pedir a Claude que genere conocimiento estructurado sobre el tema
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: BG_MODEL,
-        max_tokens: 800,
-        system: 'Eres un experto técnico. Genera conocimiento estructurado y práctico. Responde SOLO con la llamada a knowledge_db. Español. Sé conciso pero completo.',
-        tools: [tools.find(t => t.name === 'knowledge_db')],
-        messages: [{ role: 'user', content: `Genera una entrada de conocimiento sobre: "${topic}"
+    const knowledgeTools = openAITools.filter(t => t.function.name === 'knowledge_db');
+    const knowledgePrompt = `Genera una entrada de conocimiento sobre: "${topic}"
 
 Usa knowledge_db con action "add" y crea una entrada con:
 - title: título claro y descriptivo
@@ -5035,25 +5021,21 @@ Usa knowledge_db con action "add" y crea una entrada con:
 - importance: high si es muy útil para domótica/industrial, medium si es complementario
 - source: "auto-aprendizaje"
 
-Solo información VERIFICABLE y PRÁCTICA. Nada genérico.` }]
-      })
-    });
+Solo información VERIFICABLE y PRÁCTICA. Nada genérico.`;
 
-    if (!response.ok) {
-      console.log(`[knowledge] Error API: ${response.status}`);
+    let knowResult;
+    try {
+      knowResult = await callOpenAI(BG_MODEL, 'Eres un experto técnico. Genera conocimiento estructurado y práctico. Responde SOLO con la llamada a knowledge_db. Español. Sé conciso pero completo.', [{ role: 'user', content: knowledgePrompt }], knowledgeTools, 800);
+    } catch (err) {
+      console.log(`[knowledge] Error API: ${err.message}`);
       return;
     }
 
-    const data = await response.json();
-    const toolCalls = data.content.filter(b => b.type === 'tool_use');
-
-    for (const tc of toolCalls) {
-      if (tc.name === 'knowledge_db') {
-        await executeTool('knowledge_db', tc.input);
-      }
+    for (const tc of knowResult.toolCalls) {
+      if (tc.name === 'knowledge_db') await executeTool('knowledge_db', tc.input);
     }
 
-    console.log(`[knowledge] +1 entrada almacenada. Total: ${index.totalEntries + toolCalls.length} entradas en la base.`);
+    console.log(`[knowledge] +1 entrada almacenada. Total: ${index.totalEntries + knowResult.toolCalls.length} entradas en la base.`);
   } catch (err) {
     console.log(`[knowledge] Error: ${err.message}`);
   }
@@ -5156,16 +5138,14 @@ ${learnings.slice(-50).map((l, i) => `[${i}] (${l.type}) ${l.context}: ${l.lesso
 
 Responde SOLO con un JSON array de strings (las reglas). Máx 20 reglas. Solo las más útiles y accionables.`;
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: BG_MODEL, max_tokens: 1024, messages: [{ role: 'user', content: prompt }] })
-    });
-
-    if (!response.ok) return;
-    const data = await response.json();
-    const text = data.content[0]?.text || '';
-    const match = text.match(/\[[\s\S]*\]/);
+    let distillResult;
+    try {
+      distillResult = await callOpenAI(BG_MODEL, null, [{ role: 'user', content: prompt }], null, 1024);
+    } catch (err) {
+      console.log(`[distill] Error API: ${err.message}`);
+      return;
+    }
+    const match = distillResult.text.match(/\[[\s\S]*\]/);
     if (match) {
       const rules = JSON.parse(match[0]);
       saveJSON(path.join(DATA_DIR, 'distilled_rules.json'), rules);
@@ -5197,49 +5177,34 @@ Si ${senderName} tiene permisos 'read', solo puede consultar — no ejecutar acc
 Después notifica a Adrián brevemente via telegram_send con lo que hizo ${senderName} y cómo has respondido.
 Sé conciso y directo. Esto es una conversación entre agentes, no con el usuario.`;
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({
-        model: BG_MODEL, // Siempre Haiku para mensajes entre agentes
-        max_tokens: 2048,
-        system: systemMsg,
-        tools,
-        messages: [{ role: 'user', content: `Mensaje de ${senderName}: "${msgText}"` }]
-      }),
-      timeout: 30000
-    });
+    // Mini bucle agéntico para mensajes entre agentes (OpenAI format)
+    let agentMsgs = [{ role: 'user', content: `Mensaje de ${senderName}: "${msgText}"` }];
+    let agentIter = 0;
+    let agentFinalText = '';
 
-    if (!response.ok) { console.log(`[agent] Error Claude: ${response.status}`); return; }
-    const data = await response.json();
+    while (agentIter < 5) {
+      agentIter++;
+      let agentResult;
+      try {
+        agentResult = await callOpenAI(BG_MODEL, systemMsg, agentMsgs, openAITools, 2048);
+      } catch (err) {
+        console.log(`[agent] Error API iter=${agentIter}: ${err.message}`);
+        break;
+      }
 
-    // Ejecutar tools que Jarvis decida usar
-    let msgs = [{ role: 'user', content: `Mensaje de ${senderName}: "${msgText}"` }];
-    let iter = 0;
-    let currentData = data;
+      if (agentResult.text) agentFinalText += agentResult.text;
 
-    while (currentData.stop_reason === 'tool_use' && iter < 5) {
-      iter++;
-      const toolUses = currentData.content.filter(b => b.type === 'tool_use');
-      msgs.push({ role: 'assistant', content: currentData.content });
-      const results = await Promise.all(toolUses.map(t => executeTool(t.name, t.input)));
-      msgs.push({ role: 'user', content: toolUses.map((t, i) => ({ type: 'tool_result', tool_use_id: t.id, content: JSON.stringify(results[i]).slice(0, 2000) })) });
+      if (agentResult.toolCalls.length === 0) break;
 
-      const r2 = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model: BG_MODEL, max_tokens: 2048, system: systemMsg, tools, messages: msgs }),
-        timeout: 30000
-      });
-      if (!r2.ok) break;
-      currentData = await r2.json();
+      agentMsgs.push(agentResult.message);
+      const agentResults = await Promise.all(agentResult.toolCalls.map(tc => executeTool(tc.name, tc.input)));
+      for (let i = 0; i < agentResult.toolCalls.length; i++) {
+        agentMsgs.push({ role: 'tool', tool_call_id: agentResult.toolCalls[i].id, content: JSON.stringify(agentResults[i]).slice(0, 2000) });
+      }
     }
 
-    const finalText = (currentData.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
-    if (finalText) console.log(`[agent] Respuesta autónoma a ${senderName}: ${finalText.slice(0, 100)}`);
-
-    // Notificar en el chat si hay alguien conectado
-    if (finalText) pushToAll({ type: 'agent_response', from: 'Jarvis', to: senderName, text: finalText });
+    if (agentFinalText) console.log(`[agent] Respuesta autónoma a ${senderName}: ${agentFinalText.slice(0, 100)}`);
+    if (agentFinalText) pushToAll({ type: 'agent_response', from: 'Jarvis', to: senderName, text: agentFinalText });
 
   } catch (e) {
     console.log(`[agent] Error procesando mensaje de ${senderName}: ${e.message}`);
@@ -5388,15 +5353,14 @@ Responde ÚNICAMENTE con este JSON (sin texto extra):
   "confidence": "high|medium|low"
 }`;
 
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: BG_MODEL, max_tokens: 1024, messages: [{ role: 'user', content: repairPrompt }] })
-    });
-    if (!resp.ok) { console.log(`[self-repair] API error: ${resp.status}`); return; }
-
-    const d = await resp.json();
-    const text = d.content?.[0]?.text || '';
+    let repairResult;
+    try {
+      repairResult = await callOpenAI(BG_MODEL, null, [{ role: 'user', content: repairPrompt }], null, 1024);
+    } catch (err) {
+      console.log(`[self-repair] API error: ${err.message}`);
+      return;
+    }
+    const text = repairResult.text;
     const match = text.match(/\{[\s\S]*\}/);
     if (!match) { console.log('[self-repair] No pude parsear respuesta:', text.slice(0, 200)); return; }
 
