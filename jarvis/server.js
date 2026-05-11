@@ -90,7 +90,7 @@ function findAgentByKey(apiKey) {
   return null;
 }
 
-const JARVIS_VERSION = '3.15.8';
+const JARVIS_VERSION = '3.15.9';
 
 const NETWORK_NORMS = {
   version: '2.0',
@@ -3291,28 +3291,47 @@ const openAITools = tools.map(t => ({
 }));
 
 // Convierte bloques de contenido de formato Anthropic a OpenAI
-function sanitizeMessagesForOpenAI(messages) {
+function sanitizeMessagesForOpenAI(messages, stripImages = false) {
   return messages.map(msg => {
     if (!Array.isArray(msg.content)) return msg;
-    const content = msg.content.map(block => {
-      // Anthropic image → OpenAI image_url
-      if (block.type === 'image' && block.source) {
-        const { media_type, data } = block.source;
-        const b64 = (data || '').replace(/^data:[^;]+;base64,/, '').replace(/\s/g, '');
-        return { type: 'image_url', image_url: { url: `data:${media_type};base64,${b64}` } };
-      }
-      // Anthropic document → texto
-      if (block.type === 'document') {
-        return { type: 'text', text: '📎 [Documento adjunto]' };
-      }
-      // tool_result de Anthropic → ignorar (no debería llegar aquí)
-      if (block.type === 'tool_result') {
-        return { type: 'text', text: block.content || '' };
-      }
-      return block;
-    });
+    const content = msg.content
+      .map(block => {
+        // Eliminar imágenes del historial si se pide (evita errores en conversaciones largas)
+        if (stripImages && (block.type === 'image_url' || block.type === 'image')) {
+          return { type: 'text', text: '[imagen adjunta anteriormente]' };
+        }
+        // Anthropic image → OpenAI image_url
+        if (block.type === 'image' && block.source) {
+          const { media_type, data } = block.source;
+          const b64 = (data || '').replace(/^data:[^;]+;base64,/, '').replace(/\s/g, '');
+          return { type: 'image_url', image_url: { url: `data:${media_type};base64,${b64}`, detail: 'auto' } };
+        }
+        // Anthropic document → texto
+        if (block.type === 'document') return { type: 'text', text: '📎 [Documento adjunto]' };
+        // tool_result de Anthropic → texto
+        if (block.type === 'tool_result') return { type: 'text', text: block.content || '' };
+        return block;
+      })
+      .filter(Boolean);
+    // Si tras filtrar solo quedan imágenes eliminadas y el array queda vacío, poner texto placeholder
+    const hasText = content.some(b => b.type === 'text');
+    if (!hasText && content.length === 0) return { ...msg, content: [{ type: 'text', text: '[mensaje anterior]' }] };
     return { ...msg, content };
   });
+}
+
+// Limpia imágenes del historial persistente para evitar que queden atascadas
+function stripImagesFromHistory() {
+  conversationHistory = conversationHistory.map(msg => {
+    if (!Array.isArray(msg.content)) return msg;
+    const content = msg.content.map(block =>
+      (block.type === 'image_url' || block.type === 'image')
+        ? { type: 'text', text: '[imagen]' }
+        : block
+    );
+    return { ...msg, content };
+  });
+  saveHistory();
 }
 
 // Helper unificado para llamar a OpenAI Chat Completions
@@ -4366,8 +4385,21 @@ app.post('/api/chat', async (req, res) => {
           await new Promise(r => setTimeout(r, 3000));
           continue;
         }
-        sendEvent({ type: 'error', error: `Error API: ${err.message}` });
-        break;
+        // Error de imagen inválida → limpiar imágenes del historial y reintentar
+        if (err.message.includes('base64') || err.message.includes('image') || err.message.includes('invalid_value')) {
+          console.log('[jarvis] Error de imagen — limpiando historial y reintentando sin imágenes...');
+          stripImagesFromHistory();
+          currentMessages = sanitizeMessagesForOpenAI([...conversationHistory], true);
+          try {
+            result = await callOpenAI(activeModel, systemPrompt, currentMessages, openAITools, activeMaxTokens);
+          } catch (err2) {
+            sendEvent({ type: 'error', error: `Error API: ${err2.message}` });
+            break;
+          }
+        } else {
+          sendEvent({ type: 'error', error: `Error API: ${err.message}` });
+          break;
+        }
       }
 
       apiUsage.calls++;
