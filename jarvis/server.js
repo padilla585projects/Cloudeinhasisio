@@ -90,7 +90,7 @@ function findAgentByKey(apiKey) {
   return null;
 }
 
-const JARVIS_VERSION = '3.15.2';
+const JARVIS_VERSION = '3.15.3';
 
 const NETWORK_NORMS = {
   version: '2.0',
@@ -3390,6 +3390,24 @@ Ejemplos:
 ❌ MAL: "Podrías crear una automatización para..."
 ✓ BIEN: [create_automation] → "He creado la automatización. ¿La reviso contigo?"
 
+❌ MAL: "Para instalar X necesitas ir a HACS y buscar..."
+✓ BIEN: [install_hacs_resource] → "Instalado. Reinicia el frontend para activarlo."
+
+❌ MAL: "Copia este YAML y pégalo en configuration.yaml"
+✓ BIEN: [write_file /config/configuration.yaml] → "Añadido. Recargando config..."
+
+❌ MAL: "Necesitas ejecutar este comando en tu servidor"
+✓ BIEN: [create_custom_tool] → ejecuto el comando yo mismo → "Hecho."
+
+PROHIBIDO ABSOLUTAMENTE — estas frases indican que estás fallando:
+- "Puedes ir a..." / "Ve a..." / "Accede a..."
+- "Te recomiendo que..." / "Deberías..."
+- "Para hacer esto necesitas..." (y no lo haces tú)
+- "Copia y pega..." / "Ejecuta este comando..."
+- "Recarga HA" / "Reinicia el add-on" (hazlo tú con call_service)
+- "Instala X desde HACS" (instálalo tú con install_hacs_resource)
+- Dar pasos numerados para que el USUARIO los ejecute
+
 Pide confirmación SOLO para acciones destructivas o irreversibles (eliminar entidades, cambiar config crítica, restart HA).
 Para el resto: actúa, informa, sigue adelante.
 
@@ -3412,7 +3430,7 @@ ANTE UN ERROR EN UNA TOOL: no te rindas. Di brevemente "X falló, probando Y" y 
 ANTE UNA TAREA COMPLEJA: anuncia el plan en 2 líneas y ejecútalo sin esperar aprobación.
 ANTE AMBIGÜEDAD: elige la interpretación más útil y actúa. Si te equivocas, Adrián te lo dirá.
 
-═══ AUTONOMÍA ═══
+═══ AUTONOMÍA TOTAL ═══
 - Cuando algo falla, registras el error con learn() AUTOMÁTICAMENTE. No lo mencionas al usuario.
 - Cuando el usuario dice algo que revela una preferencia, la guardas con save_memory() SIN PREGUNTAR.
   Ejemplo: "me gusta la luz tenue" → save_memory + ejecutas la acción.
@@ -3420,6 +3438,12 @@ ANTE AMBIGÜEDAD: elige la interpretación más útil y actúa. Si te equivocas,
 - Si necesitas info de la casa, la consultas TÚ. No le preguntas al usuario qué entidades tiene.
 - Si no sabes cómo hacer algo en HA, buscas en internet TÚ con web_search.
 - Después de modificar YAML, recargas la config TÚ. No le dices "ahora recarga".
+- Si falta una herramienta → la creas TÚ con create_custom_tool (shell, python, node).
+- Si falta una integración → la instalas TÚ con install_hacs_resource.
+- Si un archivo es difícil de leer → creas un script TÚ para procesarlo.
+- Si un comando falla → pruebas una alternativa TÚ. No le dices al usuario que lo pruebe él.
+- NUNCA le pidas a Adrián que haga algo que tú puedes hacer con tus herramientas.
+- Si realmente no puedes hacer algo (hardware físico, acceso externo sin credenciales) → dilo con claridad y brevedad. Nada más.
 
 ═══ EFICIENCIA ═══
 CRÍTICO: Llama MÚLTIPLES tools A LA VEZ en cada turno. Cada turno extra son segundos de espera.
@@ -4144,21 +4168,46 @@ app.post('/api/chat', async (req, res) => {
 
     const lastMsg = messages[messages.length - 1];
     if (lastMsg && lastMsg.role === 'user') {
-      // Si hay archivos adjuntos, construir mensaje multi-contenido para Claude
+      // Si hay archivos adjuntos — acepta CUALQUIER tipo, Jarvis se busca la vida
       if (files && files.length > 0) {
         const userContent = [];
         if (lastMsg.content) userContent.push({ type: 'text', text: lastMsg.content });
+
+        // Asegurar directorio de uploads
+        const uploadsDir = path.join(DATA_DIR, 'uploads');
+        if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
         for (const file of files) {
-          const mime = file.type || 'text/plain';
+          const mime = file.type || 'application/octet-stream';
+          const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+
           if (file.encoding === 'base64' && mime.startsWith('image/')) {
-            // Formato OpenAI para imágenes
+            // Imágenes → formato OpenAI image_url (visión)
             userContent.push({ type: 'image_url', image_url: { url: `data:${mime};base64,${file.content}` } });
-          } else if (file.encoding === 'base64' && mime === 'application/pdf') {
-            // OpenAI no soporta PDF nativo — adjuntar como texto indicativo
-            userContent.push({ type: 'text', text: `📎 **${file.name}** (PDF adjunto — usa fetch_url o read_file para acceder al contenido si está en /config)` });
+
+          } else if (file.encoding === 'base64') {
+            // Cualquier archivo binario (PDF, docx, xlsx, zip...) → guardar en /data/uploads/
+            const filePath = path.join(uploadsDir, safeName);
+            try {
+              fs.writeFileSync(filePath, Buffer.from(file.content, 'base64'));
+              // Intentar leer como texto para adjuntar contenido directamente
+              const raw = fs.readFileSync(filePath);
+              const text = raw.toString('utf8').replace(/\0/g, '');
+              const isPrintable = text.length > 0 && (text.match(/[\x20-\x7E\n\r\t]/g) || []).length / text.length > 0.7;
+              if (isPrintable) {
+                const truncated = text.length > 60000 ? text.slice(0, 60000) + '\n...[truncado]' : text;
+                userContent.push({ type: 'text', text: `📎 **${file.name}** (guardado en ${filePath}):\n\`\`\`\n${truncated}\n\`\`\`` });
+              } else {
+                userContent.push({ type: 'text', text: `📎 **${file.name}** guardado en ${filePath} (${mime}). Usa read_file("${filePath}") para acceder a su contenido o create_custom_tool para procesarlo.` });
+              }
+            } catch (e) {
+              userContent.push({ type: 'text', text: `📎 **${file.name}** (${mime}) — error guardando: ${e.message}` });
+            }
+
           } else {
-            const truncated = file.content.length > 50000 ? file.content.slice(0, 50000) + '\n...[truncado]' : file.content;
-            userContent.push({ type: 'text', text: `\n\n📎 **${file.name}**\n\`\`\`\n${truncated}\n\`\`\`` });
+            // Texto plano
+            const truncated = file.content.length > 60000 ? file.content.slice(0, 60000) + '\n...[truncado]' : file.content;
+            userContent.push({ type: 'text', text: `📎 **${file.name}**\n\`\`\`\n${truncated}\n\`\`\`` });
           }
         }
         conversationHistory.push({ role: 'user', content: userContent });
