@@ -90,7 +90,7 @@ function findAgentByKey(apiKey) {
   return null;
 }
 
-const JARVIS_VERSION = '3.15.4';
+const JARVIS_VERSION = '3.15.5';
 
 const NETWORK_NORMS = {
   version: '2.0',
@@ -3493,10 +3493,20 @@ NIVEL 4 — Créala tú mismo
   → Si el script necesita dependencias, instálalas (pip, npm, apk add...)
   → Si necesita ejecutarse periódicamente, créalo como automatización de HA
 
-NIVEL 5 — Solo si todo lo anterior es imposible
-  → Explica MUY brevemente por qué no puedes (máx 2 líneas)
-  → Propón qué necesitarías para lograrlo (una credencial, acceso físico...)
-  → NUNCA digas "no se puede" sin haber pasado por los niveles 1-4
+NIVEL 5 — Busca las credenciales tú mismo antes de pedirlas
+  → read_file("/config/secrets.yaml") — aquí están muchas claves de HA
+  → read_file("/config/configuration.yaml") y archivos incluidos
+  → list_directory("/config/.storage/") — tokens y configs de integraciones
+  → get_entity_state() de integraciones ya configuradas — puede tener el dato
+  → web_search("cómo obtener API key gratuita de X") — muchos servicios tienen free tier
+  → Si el servicio tiene OAuth, busca si hay integración HA que ya lo gestione
+  → Solo si después de todo esto realmente no puedes obtenerla:
+     pregunta a Adrián UNA sola cosa concreta ("necesito la API key de X, la tienes en Y")
+
+NIVEL 6 — Esto es lo único que realmente no puedes hacer solo
+  → Acción física en hardware (pulsar botón, conectar cable)
+  → Credencial que no está en ningún archivo y requiere que Adrián la genere externamente
+  → NUNCA digas "no se puede" sin haber pasado por los niveles 1-5
 
 EJEMPLOS DE INICIATIVA:
 - Usuario: "quiero saber el precio del gas mañana"
