@@ -90,7 +90,7 @@ function findAgentByKey(apiKey) {
   return null;
 }
 
-const JARVIS_VERSION = '3.15.1';
+const JARVIS_VERSION = '3.15.2';
 
 const NETWORK_NORMS = {
   version: '2.0',
@@ -3290,9 +3290,34 @@ const openAITools = tools.map(t => ({
   }
 }));
 
+// Convierte bloques de contenido de formato Anthropic a OpenAI
+function sanitizeMessagesForOpenAI(messages) {
+  return messages.map(msg => {
+    if (!Array.isArray(msg.content)) return msg;
+    const content = msg.content.map(block => {
+      // Anthropic image → OpenAI image_url
+      if (block.type === 'image' && block.source) {
+        const { media_type, data } = block.source;
+        return { type: 'image_url', image_url: { url: `data:${media_type};base64,${data}` } };
+      }
+      // Anthropic document → texto
+      if (block.type === 'document') {
+        return { type: 'text', text: '📎 [Documento adjunto]' };
+      }
+      // tool_result de Anthropic → ignorar (no debería llegar aquí)
+      if (block.type === 'tool_result') {
+        return { type: 'text', text: block.content || '' };
+      }
+      return block;
+    });
+    return { ...msg, content };
+  });
+}
+
 // Helper unificado para llamar a OpenAI Chat Completions
 async function callOpenAI(model, system, messages, aiTools, maxTokens) {
-  const msgs = system ? [{ role: 'system', content: system }, ...messages] : [...messages];
+  const sanitized = sanitizeMessagesForOpenAI(messages);
+  const msgs = system ? [{ role: 'system', content: system }, ...sanitized] : [...sanitized];
   const body = { model, max_tokens: maxTokens, messages: msgs };
   if (aiTools && aiTools.length > 0) body.tools = aiTools;
 
@@ -4126,9 +4151,11 @@ app.post('/api/chat', async (req, res) => {
         for (const file of files) {
           const mime = file.type || 'text/plain';
           if (file.encoding === 'base64' && mime.startsWith('image/')) {
-            userContent.push({ type: 'image', source: { type: 'base64', media_type: mime, data: file.content } });
+            // Formato OpenAI para imágenes
+            userContent.push({ type: 'image_url', image_url: { url: `data:${mime};base64,${file.content}` } });
           } else if (file.encoding === 'base64' && mime === 'application/pdf') {
-            userContent.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: file.content } });
+            // OpenAI no soporta PDF nativo — adjuntar como texto indicativo
+            userContent.push({ type: 'text', text: `📎 **${file.name}** (PDF adjunto — usa fetch_url o read_file para acceder al contenido si está en /config)` });
           } else {
             const truncated = file.content.length > 50000 ? file.content.slice(0, 50000) + '\n...[truncado]' : file.content;
             userContent.push({ type: 'text', text: `\n\n📎 **${file.name}**\n\`\`\`\n${truncated}\n\`\`\`` });
