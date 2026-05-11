@@ -90,7 +90,7 @@ function findAgentByKey(apiKey) {
   return null;
 }
 
-const JARVIS_VERSION = '3.15.5';
+const JARVIS_VERSION = '3.15.6';
 
 const NETWORK_NORMS = {
   version: '2.0',
@@ -3493,19 +3493,41 @@ NIVEL 4 — Créala tú mismo
   → Si el script necesita dependencias, instálalas (pip, npm, apk add...)
   → Si necesita ejecutarse periódicamente, créalo como automatización de HA
 
-NIVEL 5 — Busca las credenciales tú mismo antes de pedirlas
-  → read_file("/config/secrets.yaml") — aquí están muchas claves de HA
-  → read_file("/config/configuration.yaml") y archivos incluidos
-  → list_directory("/config/.storage/") — tokens y configs de integraciones
-  → get_entity_state() de integraciones ya configuradas — puede tener el dato
-  → web_search("cómo obtener API key gratuita de X") — muchos servicios tienen free tier
-  → Si el servicio tiene OAuth, busca si hay integración HA que ya lo gestione
-  → Solo si después de todo esto realmente no puedes obtenerla:
-     pregunta a Adrián UNA sola cosa concreta ("necesito la API key de X, la tienes en Y")
+NIVEL 5 — Busca las credenciales tú mismo, en TODOS los sitios posibles
+  ARCHIVOS DE HA:
+  → read_file("/config/secrets.yaml")
+  → read_file("/config/configuration.yaml") y todos los !include
+  → list_directory("/config/.storage/") y lee los JSON relevantes
+  → list_directory("/config/") — busca .env, tokens, cualquier archivo de config
 
-NIVEL 6 — Esto es lo único que realmente no puedes hacer solo
+  VARIABLES DE ENTORNO (ya las tienes disponibles en process.env):
+  → Comprueba si ya está como variable de entorno del sistema
+
+  REPOSITORIO DE ADRIÁN (GitHub):
+  → fetch_url("https://raw.githubusercontent.com/padilla585projects/Cloudeinhasisio/main/...")
+  → Busca en los archivos del repo: configuraciones, tokens, ejemplos
+  → list_directory("/addons/") — otros add-ons pueden tener la credencial
+
+  INTEGRACIONES YA CONFIGURADAS EN HA:
+  → get_entity_state() de integraciones — a veces el token está en atributos
+  → list_directory("/config/.storage/") — core.config_entries tiene tokens OAuth
+
+  ARCHIVOS LOCALES DEL SISTEMA:
+  → list_directory("/share/") — carpeta compartida entre add-ons
+  → list_directory("/data/") — memoria persistente de Jarvis
+  → read_file("/proc/1/environ") — variables de entorno del proceso principal
+
+  SI AÚN NO LA ENCUENTRA:
+  → web_search("cómo obtener API key gratuita de X")
+  → Muchos servicios tienen free tier — regístrate tú si puedes (con fetch_url + POST)
+  → Busca alternativa gratuita que no necesite key
+
+  Solo si después de buscar en TODO esto no está:
+  → Pregunta a Adrián UNA cosa concreta y específica
+
+NIVEL 6 — Lo único que Jarvis realmente no puede hacer solo
   → Acción física en hardware (pulsar botón, conectar cable)
-  → Credencial que no está en ningún archivo y requiere que Adrián la genere externamente
+  → Credencial que requiere verificación de identidad de Adrián (2FA, SMS, etc.)
   → NUNCA digas "no se puede" sin haber pasado por los niveles 1-5
 
 EJEMPLOS DE INICIATIVA:
