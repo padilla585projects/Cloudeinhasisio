@@ -90,7 +90,7 @@ function findAgentByKey(apiKey) {
   return null;
 }
 
-const JARVIS_VERSION = '3.15.0';
+const JARVIS_VERSION = '3.15.1';
 
 const NETWORK_NORMS = {
   version: '2.0',
@@ -4620,7 +4620,7 @@ app.listen(PORT, '0.0.0.0', () => {
 
 async function proactiveThinkingLoop() {
   try {
-    if (!ANTHROPIC_API_KEY) return;
+    if (!OPENAI_API_KEY) return;
     console.log('[proactive] Jarvis pensando...');
 
     // Recopilar TODO el contexto
@@ -4648,10 +4648,12 @@ async function proactiveThinkingLoop() {
       else if (e.entity_id.includes('pvpc') || e.entity_id.includes('esios') || e.entity_id.includes('energy_cost')) group = 'energia';
       else if (e.entity_id.includes('archer') || e.entity_id.includes('router')) group = 'router';
       else if (e.entity_id.includes('giulietta') || e.entity_id.includes('_car_')) group = 'coche';
-      else if (e.entity_id.startsWith('light.') || e.entity_id.startsWith('sensor.') && e.attributes?.via_device) group = 'zigbee';
+      else if (e.attributes?.via_device || e.attributes?.manufacturer === 'IKEA' || e.attributes?.manufacturer === 'Philips' || String(e.attributes?.via_device || '').length > 0) group = 'zigbee';
+      else if (e.entity_id.startsWith('light.') || e.entity_id.startsWith('sensor.') || e.entity_id.startsWith('binary_sensor.') || e.entity_id.startsWith('switch.')) group = 'zigbee';
       if (!unavailableGroups[group]) unavailableGroups[group] = [];
       unavailableGroups[group].push(e.attributes?.friendly_name || e.entity_id);
     }
+    const zigbeeUnavailable = unavailableGroups['zigbee'] || [];
 
     // Detectar patrón de caída masiva (mismo timestamp ±2min)
     let massCrashInfo = '';
@@ -4757,6 +4759,9 @@ REGLAS CRÍTICAS:
 - Si detectas un dispositivo caído y PUEDES arreglarlo → usa call_service para arreglarlo AHORA
 - Si no puedes arreglarlo tú (hardware físico) → proactive_thought con detalle de qué hace falta
 - Si lo arreglaste → proactive_thought con el resultado ("He recargado X, Y dispositivos recuperados")
+- ZIGBEE caídos: usa call_service hassio/addon_restart con addon=45df7312_zigbee2mqtt para reiniciar Z2M
+- MQTT caído: recarga la integración mqtt con reload_config_entry
+- Alexa caída: recarga alexa_media_player con reload_config_entry
 
 RESPONDE ejecutando acciones (call_service para recargas) y luego proactive_thought con el resumen.
 Si no hay nada útil que hacer, responde solo "OK".
@@ -4765,12 +4770,28 @@ Prioridad: arreglar cosas rotas > optimizar > sugerir mejoras.`;
 
     // ── Auto-fix previo al LLM: si hay caída masiva, recargar integraciones conocidas ──
     let autoFixLog = '';
-    if (massCrashInfo && unavailable.length > 5) {
+    const hayCaidaMasiva = unavailable.length > 5;
+    if (hayCaidaMasiva) {
       console.log('[proactive] Caída masiva detectada — intentando auto-fix de integraciones...');
       try {
         const configEntries = await haGet('/config/config_entries').catch(() => []);
-        const autoReloadDomains = ['alexa_media_player', 'pvpc_energyhourly', 'tp_link', 'rest', 'reolink', 'alfa_romeo', 'awattar'];
+        const autoReloadDomains = ['alexa_media_player', 'pvpc_energyhourly', 'tp_link', 'rest', 'reolink', 'alfa_romeo', 'awattar', 'mqtt'];
         const fixResults = [];
+
+        // Auto-fix Zigbee2MQTT: si hay muchos dispositivos Zigbee caídos, reiniciar el add-on
+        if (zigbeeUnavailable.length > 3) {
+          try {
+            console.log(`[auto-fix] ${zigbeeUnavailable.length} dispositivos Zigbee caídos — reiniciando Zigbee2MQTT...`);
+            await fetch('http://supervisor/addons/45df7312_zigbee2mqtt/restart', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${HA_TOKEN}`, 'Content-Type': 'application/json' }
+            });
+            fixResults.push(`✓ Zigbee2MQTT reiniciado (${zigbeeUnavailable.length} dispositivos afectados)`);
+            await new Promise(r => setTimeout(r, 8000)); // Esperar que Z2M arranque
+          } catch (err) {
+            fixResults.push(`✗ Zigbee2MQTT restart: ${err.message}`);
+          }
+        }
 
         for (const domain of autoReloadDomains) {
           const entries = configEntries.filter(e => e.domain === domain);
@@ -4787,7 +4808,6 @@ Prioridad: arreglar cosas rotas > optimizar > sugerir mejoras.`;
 
         if (fixResults.length > 0) {
           autoFixLog = `\n\nAUTO-FIX EJECUTADO (antes de este análisis):\n${fixResults.join('\n')}\nInforma al usuario de estas acciones en tu proactive_thought.`;
-          // Esperar 5s para que las integraciones reconecten
           await new Promise(r => setTimeout(r, 5000));
         }
       } catch (err) {
