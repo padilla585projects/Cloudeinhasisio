@@ -90,7 +90,7 @@ function findAgentByKey(apiKey) {
   return null;
 }
 
-const JARVIS_VERSION = '3.15.7';
+const JARVIS_VERSION = '3.15.8';
 
 const NETWORK_NORMS = {
   version: '2.0',
@@ -4250,10 +4250,26 @@ app.post('/api/chat', async (req, res) => {
 
           if (file.encoding === 'base64' && mime.startsWith('image/')) {
             // Imágenes → formato OpenAI image_url (visión)
-            // Limpiar: quitar prefijo data URI si ya viene incluido, y eliminar espacios/saltos
             let b64 = file.content.replace(/^data:[^;]+;base64,/, '').replace(/\s/g, '');
             const safeMime = mime.split(';')[0] || 'image/jpeg';
-            userContent.push({ type: 'image_url', image_url: { url: `data:${safeMime};base64,${b64}` } });
+            // OpenAI solo soporta jpeg, png, webp, gif — y máx ~4MB en base64
+            const supportedMimes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+            const b64Bytes = b64.length * 0.75;
+            console.log(`[image] mime=${safeMime} size=${Math.round(b64Bytes/1024)}KB b64len=${b64.length}`);
+
+            if (!supportedMimes.includes(safeMime)) {
+              // Formato no soportado → guardar en disco y decírselo a Jarvis
+              const filePath = path.join(uploadsDir, safeName);
+              fs.writeFileSync(filePath, Buffer.from(b64, 'base64'));
+              userContent.push({ type: 'text', text: `📎 Imagen **${file.name}** (${safeMime}) guardada en ${filePath} — formato no soportado por visión, usa read_file o create_custom_tool para procesarla.` });
+            } else if (b64Bytes > 4 * 1024 * 1024) {
+              // Demasiado grande → guardar en disco
+              const filePath = path.join(uploadsDir, safeName);
+              fs.writeFileSync(filePath, Buffer.from(b64, 'base64'));
+              userContent.push({ type: 'text', text: `📎 Imagen **${file.name}** demasiado grande (${Math.round(b64Bytes/1024/1024)}MB) guardada en ${filePath}. Usa read_file para describirla o create_custom_tool para procesarla.` });
+            } else {
+              userContent.push({ type: 'image_url', image_url: { url: `data:${safeMime};base64,${b64}`, detail: 'auto' } });
+            }
 
           } else if (file.encoding === 'base64') {
             // Cualquier archivo binario (PDF, docx, xlsx, zip...) → guardar en /data/uploads/
