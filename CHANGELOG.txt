@@ -3,6 +3,22 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.20.3 (2026-05-12) — NEXUS: experto de aprendizaje
+────────────────────────────────────────────────────────────────────────────────
+
+MÓDULO: aprendizaje
+  - Gestión completa de memoria (save/get/delete_memory), learnings (learn),
+    knowledge_db (add/query/connect/export), self_knowledge, análisis de patrones
+  - Filosofía: aprender de TODO automáticamente, cada interacción mejora el sistema
+  - Instrucciones para nexus_manage: crear especialistas nuevos cuando detecte necesidad
+
+EXPERTO: aprendizaje (MODEL, 15 iters)
+  - Módulos: [base, autonomy, aprendizaje, ha_control, inamovible]
+  - Router regex: recuerda|aprende|memoria|olvida|qué sabes|qué has aprendido|knowledge|patrón
+
+Total NEXUS: 12 expertos base, 19 módulos base
+
+────────────────────────────────────────────────────────────────────────────────
 v3.20.2 (2026-05-12) — NEXUS: 4 expertos especializados + módulos temáticos
 ────────────────────────────────────────────────────────────────────────────────
 
