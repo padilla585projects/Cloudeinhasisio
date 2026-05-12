@@ -3,6 +3,18 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.15.12 (2026-05-12) — Restricciones de seguridad reforzadas a nivel de código
+────────────────────────────────────────────────────────────────────────────────
+
+Bloqueos implementados en el servidor (código), no solo en el prompt:
+  - read_file: bloquea cualquier ruta /proc/ y /sys/ con error inmediato
+  - fetch_url: bloquea métodos POST/PUT/PATCH (registros en servicios externos)
+  - github_push write_file: requiere campo adrian_confirmed:true en el input
+    Si no está presente, el servidor devuelve error y bloquea el push
+  Estos bloqueos son independientes del system prompt — no se pueden eludir
+  con instrucciones en el chat ni con auto-modificaciones del prompt.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.15.11 (2026-05-12) — Restricciones de seguridad: /proc/1/environ y registro externo
 ────────────────────────────────────────────────────────────────────────────────
 

@@ -90,7 +90,7 @@ function findAgentByKey(apiKey) {
   return null;
 }
 
-const JARVIS_VERSION = '3.15.11';
+const JARVIS_VERSION = '3.15.12';
 
 const NETWORK_NORMS = {
   version: '2.0',
@@ -1016,7 +1016,8 @@ const tools = [
         },
         path: { type: 'string', description: 'Ruta dentro del repo (ej: "jarvis/server.js", "jarvis/index.html", "jarvis/config.yaml")' },
         content: { type: 'string', description: 'Contenido completo del archivo (para action=write_file)' },
-        commit_message: { type: 'string', description: 'Mensaje del commit (para action=write_file). Descriptivo y en inglés.' }
+        commit_message: { type: 'string', description: 'Mensaje del commit (para action=write_file). Descriptivo y en inglés.' },
+        adrian_confirmed: { type: 'boolean', description: 'REQUERIDO para write_file. Solo poner true si Adrián ha dicho explícitamente "sí, publícalo" o similar en este turno de conversación. Sin este campo el servidor bloquea la acción.' }
       },
       required: ['action', 'path']
     }
@@ -1120,6 +1121,11 @@ async function executeTool(name, input) {
 
       // ─── Filesystem ───
       case 'read_file': {
+        // Bloqueo de seguridad inamovible: /proc expone variables del sistema operativo
+        if (input.filepath.startsWith('/proc/') || input.filepath.startsWith('/sys/')) {
+          console.log(`[SECURITY] Intento de leer ruta de sistema bloqueado: ${input.filepath}`);
+          return { error: 'ACCESO DENEGADO: Las rutas /proc/ y /sys/ están bloqueadas por seguridad. Esta restricción es inamovible.' };
+        }
         const allowed = [HA_CONFIG, HA_ADDONS, HA_SHARE, HA_MEDIA, DATA_DIR];
         if (!allowed.some(p => input.filepath.startsWith(p))) {
           return { error: `Ruta no permitida. Usa: ${allowed.join(', ')}` };
@@ -1235,6 +1241,12 @@ async function executeTool(name, input) {
       }
 
       case 'fetch_url': {
+        // Bloqueo de seguridad inamovible: no registrarse en servicios externos sin permiso
+        const method = (input.method || 'GET').toUpperCase();
+        if (['POST', 'PUT', 'PATCH'].includes(method)) {
+          console.log(`[SECURITY] Intento de ${method} externo bloqueado: ${input.url}`);
+          return { error: `ACCESO DENEGADO: fetch_url solo permite GET. Los métodos POST/PUT/PATCH a servicios externos (registros, formularios, APIs) requieren confirmación explícita de Adrián. Esta restricción es inamovible.` };
+        }
         const res = await fetch(input.url, {
           headers: { 'User-Agent': 'Mozilla/5.0 (compatible; HABot/1.0)' },
           timeout: 10000
@@ -3223,6 +3235,11 @@ Prohibida la copia, redistribucion y uso comercial.`);
           if (input.action === 'write_file') {
             if (!input.content) return { error: 'content requerido para write_file' };
             if (!input.commit_message) return { error: 'commit_message requerido para write_file' };
+            // Bloqueo de seguridad inamovible: publicar al repo requiere confirmación explícita de Adrián
+            if (!input.adrian_confirmed) {
+              console.log(`[SECURITY] Intento de github_push write_file bloqueado sin confirmación: ${input.path}`);
+              return { error: 'PUBLICACIÓN BLOQUEADA: github_push write_file requiere confirmación explícita de Adrián. Muéstrale el contenido preparado y espera a que diga "sí, publícalo" o similar. Esta restricción es inamovible.' };
+            }
 
             // Obtener SHA actual (necesario para actualizar)
             let sha;
