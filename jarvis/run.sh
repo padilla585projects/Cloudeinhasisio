@@ -1,12 +1,21 @@
 #!/usr/bin/with-contenv bashio
 
-export ANTHROPIC_API_KEY=$(bashio::config 'anthropic_api_key')
-export MODEL=$(bashio::config 'model')
+export OPENAI_API_KEY=$(bashio::config 'openai_api_key')
 export LANGUAGE=$(bashio::config 'language')
 export HA_TOKEN="${SUPERVISOR_TOKEN}"
 export HA_URL="http://supervisor/core"
 
-# Proxmox (opcional) — defaults vacíos para evitar "unbound variable"
+export SERPER_API_KEY=""
+if bashio::config.has_value 'serper_api_key'; then
+  export SERPER_API_KEY=$(bashio::config 'serper_api_key')
+fi
+
+export ANTHROPIC_API_KEY=""
+if bashio::config.has_value 'anthropic_api_key'; then
+  export ANTHROPIC_API_KEY=$(bashio::config 'anthropic_api_key')
+fi
+
+# Proxmox (opcional)
 export PROXMOX_URL=""
 export PROXMOX_TOKEN=""
 export PROXMOX_NODE="pve"
@@ -26,13 +35,13 @@ if bashio::config.has_value 'github_token'; then
   export GITHUB_TOKEN=$(bashio::config 'github_token')
 fi
 
-export OPENAI_API_KEY=""
-if bashio::config.has_value 'openai_api_key'; then
-  export OPENAI_API_KEY=$(bashio::config 'openai_api_key')
+bashio::log.info "Iniciando Jarvis AI Agent v3.15.0..."
+bashio::log.info "Modelos: gpt-4o-mini (simple) + gpt-4.1-mini (complejo)"
+if [ -n "${SERPER_API_KEY:-}" ]; then
+  bashio::log.info "Busqueda: Google (Serper)"
+else
+  bashio::log.info "Busqueda: DuckDuckGo (sin SERPER_API_KEY)"
 fi
-
-bashio::log.info "Iniciando Jarvis AI Agent..."
-bashio::log.info "Modelo: ${MODEL}"
 if [ -n "${PROXMOX_URL:-}" ]; then
   bashio::log.info "Proxmox: ${PROXMOX_URL} (nodo: ${PROXMOX_NODE})"
 fi

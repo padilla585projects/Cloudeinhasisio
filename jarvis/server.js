@@ -14,19 +14,20 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(__dirname));
 
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const MODEL = process.env.MODEL || 'claude-sonnet-4-6';
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
+const SERPER_API_KEY = process.env.SERPER_API_KEY || '';
+const MODEL = 'gpt-4.1-mini';      // Consultas complejas
+const BG_MODEL = 'gpt-4o-mini';    // Consultas simples y tareas background
 const HA_TOKEN = process.env.HA_TOKEN;
 const HA_URL = process.env.HA_URL || 'http://supervisor/core';
 const LANGUAGE = process.env.LANGUAGE || 'es';
-const BG_MODEL = 'claude-haiku-4-5-20251001';  // Modelo económico para tareas background
 const PROXMOX_URL = process.env.PROXMOX_URL || '';  // ej: https://192.168.1.100:8006
 const PROXMOX_TOKEN = process.env.PROXMOX_TOKEN || '';  // ej: user@pam!tokenid=token-secret
 const PROXMOX_NODE = process.env.PROXMOX_NODE || 'pve';  // nombre del nodo
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
 const GITHUB_REPO = 'padilla585projects/Cloudeinhasisio';
 const GITHUB_BRANCH = 'main';
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 
 // ── Rutas del filesystem de HA ───────────────────────────────────────────────
 const DATA_DIR = '/data';                    // Persistente del add-on
@@ -89,7 +90,7 @@ function findAgentByKey(apiKey) {
   return null;
 }
 
-const JARVIS_VERSION = '3.14.7';
+const JARVIS_VERSION = '3.15.9';
 
 const NETWORK_NORMS = {
   version: '2.0',
@@ -794,7 +795,7 @@ const tools = [
   // ─── Crear add-ons ───
   {
     name: 'create_addon',
-    description: 'Crea un nuevo add-on de HA. Genera la estructura completa (config.yaml, Dockerfile, run.sh, código). IMPORTANTE: puedes diseñar y preparar el add-on completo, pero NO publicarlo al repositorio sin confirmación explícita de Adrián. El proceso es: construir → mostrar a Adrián → esperar aprobación → publicar.',
+    description: 'Crea un nuevo add-on de HA dentro de este mismo repositorio. Genera la estructura completa (config.yaml, Dockerfile, run.sh, server/código) con la misma licencia blindada. El nuevo add-on aparecerá automáticamente en la tienda de HA cuando se actualice el repo.',
     input_schema: {
       type: 'object',
       properties: {
@@ -1004,7 +1005,7 @@ const tools = [
   // ─── GitHub self-evolution ───
   {
     name: 'github_push',
-    description: 'Lee o modifica archivos en el repo de GitHub de Jarvis via API. Permite a Jarvis evolucionar su propio código: añadir tools, corregir bugs, mejorar la UI. IMPORTANTE: write_file hace un commit real al repo público — REQUIERE confirmación explícita de Adrián antes de ejecutar. Puedes preparar y mostrar el contenido, pero NO hacer push sin permiso. Después de un push autorizado, usar ha_supervisor→update_addon para aplicar los cambios.',
+    description: 'Lee o modifica archivos en el repo de GitHub de Jarvis via API. Permite a Jarvis evolucionar su propio código: añadir tools, corregir bugs, mejorar la UI. Siempre crea un commit con mensaje descriptivo. IMPORTANTE: después de modificar server.js o index.html, usar ha_supervisor→update_addon para aplicar los cambios.',
     input_schema: {
       type: 'object',
       properties: {
@@ -1194,13 +1195,32 @@ async function executeTool(name, input) {
 
       // ─── Internet ───
       case 'web_search': {
-        // Usar DuckDuckGo HTML (no requiere API key)
+        // Primario: Serper (Google). Fallback: DuckDuckGo
+        if (SERPER_API_KEY) {
+          try {
+            const serperRes = await fetch('https://google.serper.dev/search', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'X-API-KEY': SERPER_API_KEY },
+              body: JSON.stringify({ q: input.query, num: 8, hl: 'es' })
+            });
+            if (serperRes.ok) {
+              const serperData = await serperRes.json();
+              const results = (serperData.organic || []).slice(0, 8).map(r => ({
+                url: r.link, title: r.title, snippet: r.snippet || ''
+              }));
+              if (serperData.answerBox) results.unshift({ url: '', title: 'Respuesta directa', snippet: serperData.answerBox.answer || serperData.answerBox.snippet || '' });
+              return { query: input.query, results, source: 'google', count: results.length };
+            }
+          } catch (e) {
+            console.log('[search] Serper falló, usando DuckDuckGo:', e.message);
+          }
+        }
+        // Fallback DuckDuckGo
         const encoded = encodeURIComponent(input.query);
         const res = await fetch(`https://html.duckduckgo.com/html/?q=${encoded}`, {
           headers: { 'User-Agent': 'Mozilla/5.0 (compatible; HABot/1.0)' }
         });
         const html = await res.text();
-        // Extraer resultados básicos
         const results = [];
         const regex = /<a rel="nofollow" class="result__a" href="([^"]+)"[^>]*>([^<]+)<\/a>[\s\S]*?<a class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
         let match;
@@ -1211,7 +1231,7 @@ async function executeTool(name, input) {
             snippet: match[3].replace(/<[^>]+>/g, '').trim()
           });
         }
-        return { query: input.query, results, count: results.length };
+        return { query: input.query, results, source: 'duckduckgo', count: results.length };
       }
 
       case 'fetch_url': {
@@ -3260,6 +3280,94 @@ Prohibida la copia, redistribucion y uso comercial.`);
   }
 }
 
+// ── OpenAI tools (formato convertido desde Anthropic) ───────────────────────
+const openAITools = tools.map(t => ({
+  type: 'function',
+  function: {
+    name: t.name,
+    description: t.description,
+    parameters: t.input_schema || { type: 'object', properties: {} }
+  }
+}));
+
+// Convierte bloques de contenido de formato Anthropic a OpenAI
+function sanitizeMessagesForOpenAI(messages, stripImages = false) {
+  return messages.map(msg => {
+    if (!Array.isArray(msg.content)) return msg;
+    const content = msg.content
+      .map(block => {
+        // Eliminar imágenes del historial si se pide (evita errores en conversaciones largas)
+        if (stripImages && (block.type === 'image_url' || block.type === 'image')) {
+          return { type: 'text', text: '[imagen adjunta anteriormente]' };
+        }
+        // Anthropic image → OpenAI image_url
+        if (block.type === 'image' && block.source) {
+          const { media_type, data } = block.source;
+          const b64 = (data || '').replace(/^data:[^;]+;base64,/, '').replace(/\s/g, '');
+          return { type: 'image_url', image_url: { url: `data:${media_type};base64,${b64}`, detail: 'auto' } };
+        }
+        // Anthropic document → texto
+        if (block.type === 'document') return { type: 'text', text: '📎 [Documento adjunto]' };
+        // tool_result de Anthropic → texto
+        if (block.type === 'tool_result') return { type: 'text', text: block.content || '' };
+        return block;
+      })
+      .filter(Boolean);
+    // Si tras filtrar solo quedan imágenes eliminadas y el array queda vacío, poner texto placeholder
+    const hasText = content.some(b => b.type === 'text');
+    if (!hasText && content.length === 0) return { ...msg, content: [{ type: 'text', text: '[mensaje anterior]' }] };
+    return { ...msg, content };
+  });
+}
+
+// Limpia imágenes del historial persistente para evitar que queden atascadas
+function stripImagesFromHistory() {
+  conversationHistory = conversationHistory.map(msg => {
+    if (!Array.isArray(msg.content)) return msg;
+    const content = msg.content.map(block =>
+      (block.type === 'image_url' || block.type === 'image')
+        ? { type: 'text', text: '[imagen]' }
+        : block
+    );
+    return { ...msg, content };
+  });
+  saveHistory();
+}
+
+// Helper unificado para llamar a OpenAI Chat Completions
+async function callOpenAI(model, system, messages, aiTools, maxTokens) {
+  const sanitized = sanitizeMessagesForOpenAI(messages);
+  const msgs = system ? [{ role: 'system', content: system }, ...sanitized] : [...sanitized];
+  const body = { model, max_tokens: maxTokens, messages: msgs };
+  if (aiTools && aiTools.length > 0) body.tools = aiTools;
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENAI_API_KEY}` },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`OpenAI error ${response.status}: ${err}`);
+  }
+
+  const data = await response.json();
+  const choice = data.choices[0];
+  const message = choice.message;
+  return {
+    text: message.content || '',
+    toolCalls: (message.tool_calls || []).map(tc => ({
+      id: tc.id,
+      name: tc.function.name,
+      input: (() => { try { return JSON.parse(tc.function.arguments); } catch { return {}; } })()
+    })),
+    finishReason: choice.finish_reason,
+    message,
+    usage: data.usage || {}
+  };
+}
+
 // ── System Prompt (dinámico) ─────────────────────────────────────────────────
 
 function buildSystemPrompt() {
@@ -3302,6 +3410,24 @@ Ejemplos:
 ❌ MAL: "Podrías crear una automatización para..."
 ✓ BIEN: [create_automation] → "He creado la automatización. ¿La reviso contigo?"
 
+❌ MAL: "Para instalar X necesitas ir a HACS y buscar..."
+✓ BIEN: [install_hacs_resource] → "Instalado. Reinicia el frontend para activarlo."
+
+❌ MAL: "Copia este YAML y pégalo en configuration.yaml"
+✓ BIEN: [write_file /config/configuration.yaml] → "Añadido. Recargando config..."
+
+❌ MAL: "Necesitas ejecutar este comando en tu servidor"
+✓ BIEN: [create_custom_tool] → ejecuto el comando yo mismo → "Hecho."
+
+PROHIBIDO ABSOLUTAMENTE — estas frases indican que estás fallando:
+- "Puedes ir a..." / "Ve a..." / "Accede a..."
+- "Te recomiendo que..." / "Deberías..."
+- "Para hacer esto necesitas..." (y no lo haces tú)
+- "Copia y pega..." / "Ejecuta este comando..."
+- "Recarga HA" / "Reinicia el add-on" (hazlo tú con call_service)
+- "Instala X desde HACS" (instálalo tú con install_hacs_resource)
+- Dar pasos numerados para que el USUARIO los ejecute
+
 Pide confirmación SOLO para acciones destructivas o irreversibles (eliminar entidades, cambiar config crítica, restart HA).
 Para el resto: actúa, informa, sigue adelante.
 
@@ -3324,7 +3450,7 @@ ANTE UN ERROR EN UNA TOOL: no te rindas. Di brevemente "X falló, probando Y" y 
 ANTE UNA TAREA COMPLEJA: anuncia el plan en 2 líneas y ejecútalo sin esperar aprobación.
 ANTE AMBIGÜEDAD: elige la interpretación más útil y actúa. Si te equivocas, Adrián te lo dirá.
 
-═══ AUTONOMÍA ═══
+═══ AUTONOMÍA TOTAL ═══
 - Cuando algo falla, registras el error con learn() AUTOMÁTICAMENTE. No lo mencionas al usuario.
 - Cuando el usuario dice algo que revela una preferencia, la guardas con save_memory() SIN PREGUNTAR.
   Ejemplo: "me gusta la luz tenue" → save_memory + ejecutas la acción.
@@ -3332,6 +3458,12 @@ ANTE AMBIGÜEDAD: elige la interpretación más útil y actúa. Si te equivocas,
 - Si necesitas info de la casa, la consultas TÚ. No le preguntas al usuario qué entidades tiene.
 - Si no sabes cómo hacer algo en HA, buscas en internet TÚ con web_search.
 - Después de modificar YAML, recargas la config TÚ. No le dices "ahora recarga".
+- Si falta una herramienta → la creas TÚ con create_custom_tool (shell, python, node).
+- Si falta una integración → la instalas TÚ con install_hacs_resource.
+- Si un archivo es difícil de leer → creas un script TÚ para procesarlo.
+- Si un comando falla → pruebas una alternativa TÚ. No le dices al usuario que lo pruebe él.
+- NUNCA le pidas a Adrián que haga algo que tú puedes hacer con tus herramientas.
+- Si realmente no puedes hacer algo (hardware físico, acceso externo sin credenciales) → dilo con claridad y brevedad. Nada más.
 
 ═══ EFICIENCIA ═══
 CRÍTICO: Llama MÚLTIPLES tools A LA VEZ en cada turno. Cada turno extra son segundos de espera.
@@ -3357,10 +3489,76 @@ Eres EL MAYOR ESPECIALISTA en:
 
 - Automatización industrial: PLCs (Siemens S7, Allen-Bradley, Schneider), Modbus TCP/RTU, OPC-UA, SCADA/HMI, sensores 4-20mA, VFDs — expertise completa, usa web_search para detalles específicos
 
-SI NO SABES ALGO → lo buscas con ha_knowledge o web_search. NUNCA inventes.
-SI FALTA UNA HERRAMIENTA → la buscas con search_hacs_resources y la instalas con install_hacs_resource.
-SI NO EXISTE LA HERRAMIENTA → la CREAS tú con create_custom_tool (shell, python o node).
-Tu filosofía: ENCONTRAR LA SOLUCIÓN o CREARLA. NUNCA decir "no se puede".
+═══ PROTOCOLO DE ESCALADA — NUNCA TE RINDAS ═══
+
+Cuando no puedes hacer algo directamente, sigues ESTE ORDEN sin excepción:
+
+NIVEL 1 — Intenta con las herramientas que tienes
+  → call_service, read_file, write_file, create_automation, etc.
+  → Si falla, prueba una variante diferente. No te rindas al primer error.
+
+NIVEL 2 — Busca la solución en internet
+  → web_search("cómo hacer X en home assistant")
+  → fetch_url(documentación oficial o GitHub)
+  → Si encuentras la solución, impleméntala TÚ.
+
+NIVEL 3 — Busca una integración o add-on que lo haga
+  → search_hacs_resources("X")
+  → Si existe → install_hacs_resource() → configúralo TÚ
+  → Busca también add-ons del Supervisor que puedan ayudar
+
+NIVEL 4 — Créala tú mismo
+  → create_custom_tool() con shell, python o node
+  → Escribe el script, ejecútalo, comprueba que funciona
+  → Si el script necesita dependencias, instálalas (pip, npm, apk add...)
+  → Si necesita ejecutarse periódicamente, créalo como automatización de HA
+
+NIVEL 5 — Busca las credenciales tú mismo, en TODOS los sitios posibles
+  ARCHIVOS DE HA:
+  → read_file("/config/secrets.yaml")
+  → read_file("/config/configuration.yaml") y todos los !include
+  → list_directory("/config/.storage/") y lee los JSON relevantes
+  → list_directory("/config/") — busca .env, tokens, cualquier archivo de config
+
+  VARIABLES DE ENTORNO (ya las tienes disponibles en process.env):
+  → Comprueba si ya está como variable de entorno del sistema
+
+  REPOSITORIO DE ADRIÁN (GitHub):
+  → fetch_url("https://raw.githubusercontent.com/padilla585projects/Cloudeinhasisio/main/...")
+  → Busca en los archivos del repo: configuraciones, tokens, ejemplos
+  → list_directory("/addons/") — otros add-ons pueden tener la credencial
+
+  INTEGRACIONES YA CONFIGURADAS EN HA:
+  → get_entity_state() de integraciones — a veces el token está en atributos
+  → list_directory("/config/.storage/") — core.config_entries tiene tokens OAuth
+
+  ARCHIVOS LOCALES DEL SISTEMA:
+  → list_directory("/share/") — carpeta compartida entre add-ons
+  → list_directory("/data/") — memoria persistente de Jarvis
+  → read_file("/proc/1/environ") — variables de entorno del proceso principal
+
+  SI AÚN NO LA ENCUENTRA:
+  → web_search("cómo obtener API key gratuita de X")
+  → Muchos servicios tienen free tier — regístrate tú si puedes (con fetch_url + POST)
+  → Busca alternativa gratuita que no necesite key
+
+  Solo si después de buscar en TODO esto no está:
+  → Pregunta a Adrián UNA cosa concreta y específica
+
+NIVEL 6 — Lo único que Jarvis realmente no puede hacer solo
+  → Acción física en hardware (pulsar botón, conectar cable)
+  → Credencial que requiere verificación de identidad de Adrián (2FA, SMS, etc.)
+  → NUNCA digas "no se puede" sin haber pasado por los niveles 1-5
+
+EJEMPLOS DE INICIATIVA:
+- Usuario: "quiero saber el precio del gas mañana"
+  → web_search → encuentra API → create_custom_tool → muestra el precio
+- Usuario: "controla mi robot aspirador"
+  → search_hacs_resources("robot vacuum") → instala integración → lo configura
+- Usuario: "avísame cuando llueva"
+  → busca integración meteorológica → si no existe crea script que consulte API → crea automatización
+
+MENTALIDAD: Eres un ingeniero que tiene internet, acceso al sistema de archivos, puede ejecutar código y tiene acceso total a Home Assistant. Con eso se puede hacer casi TODO.
 
 ═══ BASE DE CONOCIMIENTO ═══
 Tienes una base de datos propia donde guardas TODO lo que aprendes:
@@ -3414,14 +3612,6 @@ REGLAS CRÍTICAS:
 - SIEMPRE usar ha_supervisor→update_addon después de modificar server.js o index.html
 - Si el usuario te pide una capacidad nueva: impleméntala tú solo, sin pedir ayuda
 - Commit messages en inglés, descriptivos (ej: "feat: add weather tool", "fix: memory leak in history")
-
-⚠️ LÍMITE DE AUTONOMÍA — PUBLICACIÓN REQUIERE PERMISO EXPLÍCITO:
-Puedes CONSTRUIR cualquier cosa (add-ons, scripts, código, patches). NO puedes PUBLICAR sin que Adrián lo apruebe.
-- github_push(write_file) → REQUIERE confirmación explícita de Adrián antes de ejecutar
-- create_addon → puedes generar el código completo, pero NO hacer push al repo
-- update_self con patch_code → puedes preparar el patch, pero NO publicarlo solo
-- Cualquier commit al repo público requiere que Adrián diga "sí, publícalo" o "hazlo"
-RAZÓN: Build ≠ Deploy. Adrián decide qué sale al repositorio público.
 
 ESTO ES REAL: no estás simulando. Cada commit que haces va a GitHub y HA lo instala.
 
@@ -4064,19 +4254,65 @@ app.post('/api/chat', async (req, res) => {
 
     const lastMsg = messages[messages.length - 1];
     if (lastMsg && lastMsg.role === 'user') {
-      // Si hay archivos adjuntos, construir mensaje multi-contenido para Claude
+      // Si hay archivos adjuntos — acepta CUALQUIER tipo, Jarvis se busca la vida
       if (files && files.length > 0) {
         const userContent = [];
         if (lastMsg.content) userContent.push({ type: 'text', text: lastMsg.content });
+
+        // Asegurar directorio de uploads
+        const uploadsDir = path.join(DATA_DIR, 'uploads');
+        if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
         for (const file of files) {
-          const mime = file.type || 'text/plain';
+          const mime = file.type || 'application/octet-stream';
+          const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+
           if (file.encoding === 'base64' && mime.startsWith('image/')) {
-            userContent.push({ type: 'image', source: { type: 'base64', media_type: mime, data: file.content } });
-          } else if (file.encoding === 'base64' && mime === 'application/pdf') {
-            userContent.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: file.content } });
+            // Imágenes → formato OpenAI image_url (visión)
+            let b64 = file.content.replace(/^data:[^;]+;base64,/, '').replace(/\s/g, '');
+            const safeMime = mime.split(';')[0] || 'image/jpeg';
+            // OpenAI solo soporta jpeg, png, webp, gif — y máx ~4MB en base64
+            const supportedMimes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+            const b64Bytes = b64.length * 0.75;
+            console.log(`[image] mime=${safeMime} size=${Math.round(b64Bytes/1024)}KB b64len=${b64.length}`);
+
+            if (!supportedMimes.includes(safeMime)) {
+              // Formato no soportado → guardar en disco y decírselo a Jarvis
+              const filePath = path.join(uploadsDir, safeName);
+              fs.writeFileSync(filePath, Buffer.from(b64, 'base64'));
+              userContent.push({ type: 'text', text: `📎 Imagen **${file.name}** (${safeMime}) guardada en ${filePath} — formato no soportado por visión, usa read_file o create_custom_tool para procesarla.` });
+            } else if (b64Bytes > 4 * 1024 * 1024) {
+              // Demasiado grande → guardar en disco
+              const filePath = path.join(uploadsDir, safeName);
+              fs.writeFileSync(filePath, Buffer.from(b64, 'base64'));
+              userContent.push({ type: 'text', text: `📎 Imagen **${file.name}** demasiado grande (${Math.round(b64Bytes/1024/1024)}MB) guardada en ${filePath}. Usa read_file para describirla o create_custom_tool para procesarla.` });
+            } else {
+              userContent.push({ type: 'image_url', image_url: { url: `data:${safeMime};base64,${b64}`, detail: 'auto' } });
+            }
+
+          } else if (file.encoding === 'base64') {
+            // Cualquier archivo binario (PDF, docx, xlsx, zip...) → guardar en /data/uploads/
+            const filePath = path.join(uploadsDir, safeName);
+            try {
+              fs.writeFileSync(filePath, Buffer.from(file.content, 'base64'));
+              // Intentar leer como texto para adjuntar contenido directamente
+              const raw = fs.readFileSync(filePath);
+              const text = raw.toString('utf8').replace(/\0/g, '');
+              const isPrintable = text.length > 0 && (text.match(/[\x20-\x7E\n\r\t]/g) || []).length / text.length > 0.7;
+              if (isPrintable) {
+                const truncated = text.length > 60000 ? text.slice(0, 60000) + '\n...[truncado]' : text;
+                userContent.push({ type: 'text', text: `📎 **${file.name}** (guardado en ${filePath}):\n\`\`\`\n${truncated}\n\`\`\`` });
+              } else {
+                userContent.push({ type: 'text', text: `📎 **${file.name}** guardado en ${filePath} (${mime}). Usa read_file("${filePath}") para acceder a su contenido o create_custom_tool para procesarlo.` });
+              }
+            } catch (e) {
+              userContent.push({ type: 'text', text: `📎 **${file.name}** (${mime}) — error guardando: ${e.message}` });
+            }
+
           } else {
-            const truncated = file.content.length > 50000 ? file.content.slice(0, 50000) + '\n...[truncado]' : file.content;
-            userContent.push({ type: 'text', text: `\n\n📎 **${file.name}**\n\`\`\`\n${truncated}\n\`\`\`` });
+            // Texto plano
+            const truncated = file.content.length > 60000 ? file.content.slice(0, 60000) + '\n...[truncado]' : file.content;
+            userContent.push({ type: 'text', text: `📎 **${file.name}**\n\`\`\`\n${truncated}\n\`\`\`` });
           }
         }
         conversationHistory.push({ role: 'user', content: userContent });
@@ -4135,110 +4371,94 @@ app.post('/api/chat', async (req, res) => {
     let finalText = '';
     let iterations = 0;
     const MAX_ITERATIONS = saverMode ? 8 : activeMaxIter;
-    let consecutiveTextOnly = 0; // Detectar si lleva varias respuestas sin tools (realmente terminó)
+    let consecutiveTextOnly = 0;
+    const systemPrompt = buildSystemPrompt();
 
     while (iterations < MAX_ITERATIONS) {
       iterations++;
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01',
-          'anthropic-beta': 'prompt-caching-2024-07-31'
-        },
-        body: JSON.stringify({
-          model: activeModel,
-          max_tokens: activeMaxTokens,
-          system: buildSystemPromptArray(),
-          tools,
-          messages: currentMessages
-        })
-      });
-
-      if (!response.ok) {
-        const err = await response.text();
-        console.log(`[claude] Error API iter=${iterations}: ${err}`);
-        // Reintentar una vez si es error temporal (429, 529)
-        if (err.includes('overloaded') || err.includes('529') || err.includes('429')) {
+      let result;
+      try {
+        result = await callOpenAI(activeModel, systemPrompt, currentMessages, openAITools, activeMaxTokens);
+      } catch (err) {
+        console.log(`[jarvis] Error API iter=${iterations}: ${err.message}`);
+        if (err.message.includes('429') || err.message.includes('503')) {
           await new Promise(r => setTimeout(r, 3000));
           continue;
         }
-        sendEvent({ type: 'error', error: `Error API: ${err}` });
-        break;
-      }
-
-      const data = await response.json();
-      if (data.usage) {
-        apiUsage.calls++;
-        apiUsage.inputTokens += data.usage.input_tokens || 0;
-        apiUsage.outputTokens += data.usage.output_tokens || 0;
-        apiUsage.cacheReadTokens += data.usage.cache_read_input_tokens || 0;
-        apiUsage.cacheCreationTokens += data.usage.cache_creation_input_tokens || 0;
-      }
-      console.log(`[claude] iter=${iterations} stop=${data.stop_reason} blocks=${data.content.map(b => b.type).join(',')} tokens=${data.usage ? data.usage.input_tokens + '+' + data.usage.output_tokens : '?'}`);
-
-      for (const block of data.content) {
-        if (block.type === 'text') {
-          finalText += block.text;
-          sendEvent({ type: 'text', text: block.text });
+        // Error de imagen inválida → limpiar imágenes del historial y reintentar
+        if (err.message.includes('base64') || err.message.includes('image') || err.message.includes('invalid_value')) {
+          console.log('[jarvis] Error de imagen — limpiando historial y reintentando sin imágenes...');
+          stripImagesFromHistory();
+          currentMessages = sanitizeMessagesForOpenAI([...conversationHistory], true);
+          try {
+            result = await callOpenAI(activeModel, systemPrompt, currentMessages, openAITools, activeMaxTokens);
+          } catch (err2) {
+            sendEvent({ type: 'error', error: `Error API: ${err2.message}` });
+            break;
+          }
+        } else {
+          sendEvent({ type: 'error', error: `Error API: ${err.message}` });
+          break;
         }
       }
 
-      const toolUseBlocks = data.content.filter(b => b.type === 'tool_use');
+      apiUsage.calls++;
+      apiUsage.inputTokens += result.usage.prompt_tokens || 0;
+      apiUsage.outputTokens += result.usage.completion_tokens || 0;
+      console.log(`[jarvis] iter=${iterations} finish=${result.finishReason} tools=${result.toolCalls.length} tokens=${result.usage.prompt_tokens}+${result.usage.completion_tokens}`);
 
-      // Si no hay tools: puede ser fin real O pausa indebida mid-task
-      if (toolUseBlocks.length === 0) {
-        // Si stop_reason es end_turn → tarea terminada, salir
-        if (data.stop_reason === 'end_turn') break;
+      if (result.text) {
+        finalText += result.text;
+        sendEvent({ type: 'text', text: result.text });
+      }
 
-        // Si fue max_tokens → Claude se quedó sin tokens a mitad, inyectar "continúa"
-        if (data.stop_reason === 'max_tokens') {
-          currentMessages.push({ role: 'assistant', content: data.content });
-          currentMessages.push({ role: 'user', content: [{ type: 'text', text: 'Continúa con la tarea. No te has detenido por instrucción mía.' }] });
-          console.log(`[claude] max_tokens en iter=${iterations}, inyectando continuación`);
+      if (result.toolCalls.length === 0) {
+        if (result.finishReason === 'stop') break;
+
+        if (result.finishReason === 'length') {
+          currentMessages.push(result.message);
+          currentMessages.push({ role: 'user', content: 'Continúa con la tarea. No te has detenido por instrucción mía.' });
+          console.log(`[jarvis] length en iter=${iterations}, inyectando continuación`);
           continue;
         }
 
-        // Acumular respuestas sin tools — si hay 2 seguidas sin herramientas, es que terminó
         consecutiveTextOnly++;
         if (consecutiveTextOnly >= 2) break;
 
-        // Primera respuesta sin tools: puede estar planificando. Dejar continuar.
-        currentMessages.push({ role: 'assistant', content: data.content });
-        currentMessages.push({ role: 'user', content: [{ type: 'text', text: 'Continúa ejecutando los pasos necesarios para completar la tarea.' }] });
+        currentMessages.push(result.message);
+        currentMessages.push({ role: 'user', content: 'Continúa ejecutando los pasos necesarios para completar la tarea.' });
         continue;
       }
 
-      // Hay tools → resetear contador de texto puro
       consecutiveTextOnly = 0;
 
-      for (const block of toolUseBlocks) {
-        sendEvent({ type: 'tool_start', tool: block.name, input: block.input });
+      for (const tc of result.toolCalls) {
+        sendEvent({ type: 'tool_start', tool: tc.name, input: tc.input });
       }
 
-      // Ejecutar tools — con manejo de error individual (no abortar todo si una falla)
       const results = await Promise.all(
-        toolUseBlocks.map(async block => {
+        result.toolCalls.map(async tc => {
           try {
-            return await executeTool(block.name, block.input);
+            return await executeTool(tc.name, tc.input);
           } catch (err) {
-            console.log(`[claude] Tool ${block.name} falló: ${err.message}`);
+            console.log(`[jarvis] Tool ${tc.name} falló: ${err.message}`);
             return { error: err.message, hint: 'Prueba una aproximación alternativa.' };
           }
         })
       );
 
-      const toolResults = toolUseBlocks.map((block, i) => {
-        sendEvent({ type: 'tool_end', tool: block.name, result: results[i] });
-        const raw = JSON.stringify(results[i]);
-        const maxLen = (saverMode || activeModel === BG_MODEL) ? 2000 : 8000;
-        const content = raw.length > maxLen ? raw.slice(0, maxLen) + '\n...[truncado para ahorrar tokens]' : raw;
-        return { type: 'tool_result', tool_use_id: block.id, content };
-      });
+      // Mensaje assistant con tool_calls
+      currentMessages.push(result.message);
 
-      currentMessages.push({ role: 'assistant', content: data.content });
-      currentMessages.push({ role: 'user', content: toolResults });
+      // Resultados de cada tool como mensajes separados (formato OpenAI)
+      const maxLen = (saverMode || activeModel === BG_MODEL) ? 2000 : 8000;
+      for (let i = 0; i < result.toolCalls.length; i++) {
+        const tc = result.toolCalls[i];
+        sendEvent({ type: 'tool_end', tool: tc.name, result: results[i] });
+        const raw = JSON.stringify(results[i]);
+        const content = raw.length > maxLen ? raw.slice(0, maxLen) + '\n...[truncado para ahorrar tokens]' : raw;
+        currentMessages.push({ role: 'tool', tool_call_id: tc.id, content });
+      }
     }
 
     if (iterations >= MAX_ITERATIONS) {
@@ -4267,16 +4487,13 @@ app.post('/api/chat', async (req, res) => {
 });
 
 function calcCost(usage) {
-  // Sonnet 4.6: $3/MTok input, $15/MTok output, $3.75/MTok cache write, $0.30/MTok cache read
-  // Haiku 4.5:  $0.80/MTok input, $4/MTok output, $1/MTok cache write, $0.08/MTok cache read
-  const sonnetIn = 3 / 1e6, sonnetOut = 15 / 1e6;
-  const sonnetCacheW = 3.75 / 1e6, sonnetCacheR = 0.30 / 1e6;
-  const cost =
-    usage.inputTokens * sonnetIn +
-    usage.outputTokens * sonnetOut +
-    (usage.cacheCreationTokens || 0) * sonnetCacheW +
-    (usage.cacheReadTokens || 0) * sonnetCacheR;
-  return Math.round(cost * 10000) / 10000; // 4 decimales
+  // gpt-4.1-mini: $0.40/MTok input, $1.60/MTok output
+  // gpt-4o-mini:  $0.15/MTok input, $0.60/MTok output
+  // Promedio ponderado (70% mini, 30% 4.1-mini)
+  const avgIn = (0.15 * 0.7 + 0.40 * 0.3) / 1e6;
+  const avgOut = (0.60 * 0.7 + 1.60 * 0.3) / 1e6;
+  const cost = usage.inputTokens * avgIn + usage.outputTokens * avgOut;
+  return Math.round(cost * 10000) / 10000;
 }
 
 // Health
@@ -4597,7 +4814,7 @@ app.listen(PORT, '0.0.0.0', () => {
 
 async function proactiveThinkingLoop() {
   try {
-    if (!ANTHROPIC_API_KEY) return;
+    if (!OPENAI_API_KEY) return;
     console.log('[proactive] Jarvis pensando...');
 
     // Recopilar TODO el contexto
@@ -4625,10 +4842,12 @@ async function proactiveThinkingLoop() {
       else if (e.entity_id.includes('pvpc') || e.entity_id.includes('esios') || e.entity_id.includes('energy_cost')) group = 'energia';
       else if (e.entity_id.includes('archer') || e.entity_id.includes('router')) group = 'router';
       else if (e.entity_id.includes('giulietta') || e.entity_id.includes('_car_')) group = 'coche';
-      else if (e.entity_id.startsWith('light.') || e.entity_id.startsWith('sensor.') && e.attributes?.via_device) group = 'zigbee';
+      else if (e.attributes?.via_device || e.attributes?.manufacturer === 'IKEA' || e.attributes?.manufacturer === 'Philips' || String(e.attributes?.via_device || '').length > 0) group = 'zigbee';
+      else if (e.entity_id.startsWith('light.') || e.entity_id.startsWith('sensor.') || e.entity_id.startsWith('binary_sensor.') || e.entity_id.startsWith('switch.')) group = 'zigbee';
       if (!unavailableGroups[group]) unavailableGroups[group] = [];
       unavailableGroups[group].push(e.attributes?.friendly_name || e.entity_id);
     }
+    const zigbeeUnavailable = unavailableGroups['zigbee'] || [];
 
     // Detectar patrón de caída masiva (mismo timestamp ±2min)
     let massCrashInfo = '';
@@ -4734,6 +4953,9 @@ REGLAS CRÍTICAS:
 - Si detectas un dispositivo caído y PUEDES arreglarlo → usa call_service para arreglarlo AHORA
 - Si no puedes arreglarlo tú (hardware físico) → proactive_thought con detalle de qué hace falta
 - Si lo arreglaste → proactive_thought con el resultado ("He recargado X, Y dispositivos recuperados")
+- ZIGBEE caídos: usa call_service hassio/addon_restart con addon=45df7312_zigbee2mqtt para reiniciar Z2M
+- MQTT caído: recarga la integración mqtt con reload_config_entry
+- Alexa caída: recarga alexa_media_player con reload_config_entry
 
 RESPONDE ejecutando acciones (call_service para recargas) y luego proactive_thought con el resumen.
 Si no hay nada útil que hacer, responde solo "OK".
@@ -4742,12 +4964,28 @@ Prioridad: arreglar cosas rotas > optimizar > sugerir mejoras.`;
 
     // ── Auto-fix previo al LLM: si hay caída masiva, recargar integraciones conocidas ──
     let autoFixLog = '';
-    if (massCrashInfo && unavailable.length > 5) {
+    const hayCaidaMasiva = unavailable.length > 5;
+    if (hayCaidaMasiva) {
       console.log('[proactive] Caída masiva detectada — intentando auto-fix de integraciones...');
       try {
         const configEntries = await haGet('/config/config_entries').catch(() => []);
-        const autoReloadDomains = ['alexa_media_player', 'pvpc_energyhourly', 'tp_link', 'rest', 'reolink', 'alfa_romeo', 'awattar'];
+        const autoReloadDomains = ['alexa_media_player', 'pvpc_energyhourly', 'tp_link', 'rest', 'reolink', 'alfa_romeo', 'awattar', 'mqtt'];
         const fixResults = [];
+
+        // Auto-fix Zigbee2MQTT: si hay muchos dispositivos Zigbee caídos, reiniciar el add-on
+        if (zigbeeUnavailable.length > 3) {
+          try {
+            console.log(`[auto-fix] ${zigbeeUnavailable.length} dispositivos Zigbee caídos — reiniciando Zigbee2MQTT...`);
+            await fetch('http://supervisor/addons/45df7312_zigbee2mqtt/restart', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${HA_TOKEN}`, 'Content-Type': 'application/json' }
+            });
+            fixResults.push(`✓ Zigbee2MQTT reiniciado (${zigbeeUnavailable.length} dispositivos afectados)`);
+            await new Promise(r => setTimeout(r, 8000)); // Esperar que Z2M arranque
+          } catch (err) {
+            fixResults.push(`✗ Zigbee2MQTT restart: ${err.message}`);
+          }
+        }
 
         for (const domain of autoReloadDomains) {
           const entries = configEntries.filter(e => e.domain === domain);
@@ -4764,7 +5002,6 @@ Prioridad: arreglar cosas rotas > optimizar > sugerir mejoras.`;
 
         if (fixResults.length > 0) {
           autoFixLog = `\n\nAUTO-FIX EJECUTADO (antes de este análisis):\n${fixResults.join('\n')}\nInforma al usuario de estas acciones en tu proactive_thought.`;
-          // Esperar 5s para que las integraciones reconecten
           await new Promise(r => setTimeout(r, 5000));
         }
       } catch (err) {
@@ -4772,38 +5009,22 @@ Prioridad: arreglar cosas rotas > optimizar > sugerir mejoras.`;
       }
     }
 
-    const bgTools = ['proactive_thought', 'learn', 'save_memory', 'call_service', 'get_entity_state']
-      .map(n => tools.find(t => t.name === n)).filter(Boolean);
+    const bgToolNames = ['proactive_thought', 'learn', 'save_memory', 'call_service', 'get_entity_state'];
+    const bgTools = openAITools.filter(t => bgToolNames.includes(t.function.name));
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: BG_MODEL,
-        max_tokens: 1024,
-        system: 'Eres Jarvis en modo autónomo. ACTÚAS primero (call_service para arreglar cosas), luego reportas con proactive_thought. Si no hay nada útil, di solo "OK". Español. Sé directo.',
-        tools: bgTools,
-        messages: [{ role: 'user', content: analysisPrompt + autoFixLog }]
-      })
-    });
-
-    if (!response.ok) {
-      console.log(`[proactive] Error API: ${response.status} ${await response.text()}`);
+    let proResult;
+    try {
+      proResult = await callOpenAI(BG_MODEL, 'Eres Jarvis en modo autónomo. ACTÚAS primero (call_service para arreglar cosas), luego reportas con proactive_thought. Si no hay nada útil, di solo "OK". Español. Sé directo.', [{ role: 'user', content: analysisPrompt + autoFixLog }], bgTools, 1024);
+    } catch (err) {
+      console.log(`[proactive] Error API: ${err.message}`);
       return;
     }
 
-    const data = await response.json();
-    const toolCalls = data.content.filter(b => b.type === 'tool_use');
-
-    for (const tc of toolCalls) {
+    for (const tc of proResult.toolCalls) {
       await executeTool(tc.name, tc.input);
     }
 
-    console.log(`[proactive] Ciclo completo. ${toolCalls.length} acciones tomadas.`);
+    console.log(`[proactive] Ciclo completo. ${proResult.toolCalls.length} acciones tomadas.`);
   } catch (err) {
     console.log(`[proactive] Error: ${err.message}`);
   }
@@ -4911,47 +5132,30 @@ async function analyzePatterns() {
     summary += `\nRUTINAS YA DETECTADAS: ${existingTitles || '(ninguna todavía)'}\n`;
     summary += `\nDatos: ${snapshots.length} snapshots en ${Math.round((Date.now() - new Date(snapshots[0].ts).getTime()) / 3600_000)}h\n`;
 
-    // Pedir a Claude que detecte patrones
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: BG_MODEL,
-        max_tokens: 600,
-        system: 'Eres Jarvis analizando patrones de vida del hogar. Detecta rutinas de los habitantes. Si encuentras un patrón claro y accionable (se podría automatizar), usa proactive_thought para sugerir la automatización. Si detectas algo que memorizar, usa save_memory. Solo patrones CLAROS con >60% de consistencia. Español. Breve.',
-        tools: [tools.find(t => t.name === 'proactive_thought'), tools.find(t => t.name === 'save_memory'), tools.find(t => t.name === 'learn')],
-        messages: [{ role: 'user', content: summary }]
-      })
-    });
+    const patternToolNames = ['proactive_thought', 'save_memory', 'learn'];
+    const patternTools = openAITools.filter(t => patternToolNames.includes(t.function.name));
 
-    if (!response.ok) {
-      console.log(`[patterns] Error API: ${response.status}`);
+    let patResult;
+    try {
+      patResult = await callOpenAI(BG_MODEL, 'Eres Jarvis analizando patrones de vida del hogar. Detecta rutinas de los habitantes. Si encuentras un patrón claro y accionable (se podría automatizar), usa proactive_thought para sugerir la automatización. Si detectas algo que memorizar, usa save_memory. Solo patrones CLAROS con >60% de consistencia. Español. Breve.', [{ role: 'user', content: summary }], patternTools, 600);
+    } catch (err) {
+      console.log(`[patterns] Error API: ${err.message}`);
       return;
     }
 
-    const data = await response.json();
-    const toolCalls = data.content.filter(b => b.type === 'tool_use');
-
-    for (const tc of toolCalls) {
-      const result = await executeTool(tc.name, tc.input);
-      // Guardar rutinas detectadas
+    for (const tc of patResult.toolCalls) {
+      await executeTool(tc.name, tc.input);
       if (tc.name === 'proactive_thought') {
         existingRoutines.push({ title: tc.input.title, detectedAt: new Date().toISOString(), detail: tc.input.detail });
         saveJSON(ROUTINES_FILE, existingRoutines.slice(-50));
       }
     }
 
-    if (data.usage) {
-      apiUsage.calls++;
-      apiUsage.inputTokens += data.usage.input_tokens || 0;
-      apiUsage.outputTokens += data.usage.output_tokens || 0;
-    }
+    apiUsage.calls++;
+    apiUsage.inputTokens += patResult.usage.prompt_tokens || 0;
+    apiUsage.outputTokens += patResult.usage.completion_tokens || 0;
 
-    console.log(`[patterns] Análisis completo. ${toolCalls.length} patrones/acciones detectados.`);
+    console.log(`[patterns] Análisis completo. ${patResult.toolCalls.length} patrones/acciones detectados.`);
   } catch (err) {
     console.log(`[patterns] Error: ${err.message}`);
   }
@@ -5020,20 +5224,8 @@ async function knowledgeExpansionLoop() {
 
     console.log(`[knowledge] Investigando: ${topic}`);
 
-    // Pedir a Claude que genere conocimiento estructurado sobre el tema
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: BG_MODEL,
-        max_tokens: 800,
-        system: 'Eres un experto técnico. Genera conocimiento estructurado y práctico. Responde SOLO con la llamada a knowledge_db. Español. Sé conciso pero completo.',
-        tools: [tools.find(t => t.name === 'knowledge_db')],
-        messages: [{ role: 'user', content: `Genera una entrada de conocimiento sobre: "${topic}"
+    const knowledgeTools = openAITools.filter(t => t.function.name === 'knowledge_db');
+    const knowledgePrompt = `Genera una entrada de conocimiento sobre: "${topic}"
 
 Usa knowledge_db con action "add" y crea una entrada con:
 - title: título claro y descriptivo
@@ -5043,25 +5235,21 @@ Usa knowledge_db con action "add" y crea una entrada con:
 - importance: high si es muy útil para domótica/industrial, medium si es complementario
 - source: "auto-aprendizaje"
 
-Solo información VERIFICABLE y PRÁCTICA. Nada genérico.` }]
-      })
-    });
+Solo información VERIFICABLE y PRÁCTICA. Nada genérico.`;
 
-    if (!response.ok) {
-      console.log(`[knowledge] Error API: ${response.status}`);
+    let knowResult;
+    try {
+      knowResult = await callOpenAI(BG_MODEL, 'Eres un experto técnico. Genera conocimiento estructurado y práctico. Responde SOLO con la llamada a knowledge_db. Español. Sé conciso pero completo.', [{ role: 'user', content: knowledgePrompt }], knowledgeTools, 800);
+    } catch (err) {
+      console.log(`[knowledge] Error API: ${err.message}`);
       return;
     }
 
-    const data = await response.json();
-    const toolCalls = data.content.filter(b => b.type === 'tool_use');
-
-    for (const tc of toolCalls) {
-      if (tc.name === 'knowledge_db') {
-        await executeTool('knowledge_db', tc.input);
-      }
+    for (const tc of knowResult.toolCalls) {
+      if (tc.name === 'knowledge_db') await executeTool('knowledge_db', tc.input);
     }
 
-    console.log(`[knowledge] +1 entrada almacenada. Total: ${index.totalEntries + toolCalls.length} entradas en la base.`);
+    console.log(`[knowledge] +1 entrada almacenada. Total: ${index.totalEntries + knowResult.toolCalls.length} entradas en la base.`);
   } catch (err) {
     console.log(`[knowledge] Error: ${err.message}`);
   }
@@ -5164,16 +5352,14 @@ ${learnings.slice(-50).map((l, i) => `[${i}] (${l.type}) ${l.context}: ${l.lesso
 
 Responde SOLO con un JSON array de strings (las reglas). Máx 20 reglas. Solo las más útiles y accionables.`;
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: BG_MODEL, max_tokens: 1024, messages: [{ role: 'user', content: prompt }] })
-    });
-
-    if (!response.ok) return;
-    const data = await response.json();
-    const text = data.content[0]?.text || '';
-    const match = text.match(/\[[\s\S]*\]/);
+    let distillResult;
+    try {
+      distillResult = await callOpenAI(BG_MODEL, null, [{ role: 'user', content: prompt }], null, 1024);
+    } catch (err) {
+      console.log(`[distill] Error API: ${err.message}`);
+      return;
+    }
+    const match = distillResult.text.match(/\[[\s\S]*\]/);
     if (match) {
       const rules = JSON.parse(match[0]);
       saveJSON(path.join(DATA_DIR, 'distilled_rules.json'), rules);
@@ -5205,49 +5391,34 @@ Si ${senderName} tiene permisos 'read', solo puede consultar — no ejecutar acc
 Después notifica a Adrián brevemente via telegram_send con lo que hizo ${senderName} y cómo has respondido.
 Sé conciso y directo. Esto es una conversación entre agentes, no con el usuario.`;
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({
-        model: BG_MODEL, // Siempre Haiku para mensajes entre agentes
-        max_tokens: 2048,
-        system: systemMsg,
-        tools,
-        messages: [{ role: 'user', content: `Mensaje de ${senderName}: "${msgText}"` }]
-      }),
-      timeout: 30000
-    });
+    // Mini bucle agéntico para mensajes entre agentes (OpenAI format)
+    let agentMsgs = [{ role: 'user', content: `Mensaje de ${senderName}: "${msgText}"` }];
+    let agentIter = 0;
+    let agentFinalText = '';
 
-    if (!response.ok) { console.log(`[agent] Error Claude: ${response.status}`); return; }
-    const data = await response.json();
+    while (agentIter < 5) {
+      agentIter++;
+      let agentResult;
+      try {
+        agentResult = await callOpenAI(BG_MODEL, systemMsg, agentMsgs, openAITools, 2048);
+      } catch (err) {
+        console.log(`[agent] Error API iter=${agentIter}: ${err.message}`);
+        break;
+      }
 
-    // Ejecutar tools que Jarvis decida usar
-    let msgs = [{ role: 'user', content: `Mensaje de ${senderName}: "${msgText}"` }];
-    let iter = 0;
-    let currentData = data;
+      if (agentResult.text) agentFinalText += agentResult.text;
 
-    while (currentData.stop_reason === 'tool_use' && iter < 5) {
-      iter++;
-      const toolUses = currentData.content.filter(b => b.type === 'tool_use');
-      msgs.push({ role: 'assistant', content: currentData.content });
-      const results = await Promise.all(toolUses.map(t => executeTool(t.name, t.input)));
-      msgs.push({ role: 'user', content: toolUses.map((t, i) => ({ type: 'tool_result', tool_use_id: t.id, content: JSON.stringify(results[i]).slice(0, 2000) })) });
+      if (agentResult.toolCalls.length === 0) break;
 
-      const r2 = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model: BG_MODEL, max_tokens: 2048, system: systemMsg, tools, messages: msgs }),
-        timeout: 30000
-      });
-      if (!r2.ok) break;
-      currentData = await r2.json();
+      agentMsgs.push(agentResult.message);
+      const agentResults = await Promise.all(agentResult.toolCalls.map(tc => executeTool(tc.name, tc.input)));
+      for (let i = 0; i < agentResult.toolCalls.length; i++) {
+        agentMsgs.push({ role: 'tool', tool_call_id: agentResult.toolCalls[i].id, content: JSON.stringify(agentResults[i]).slice(0, 2000) });
+      }
     }
 
-    const finalText = (currentData.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
-    if (finalText) console.log(`[agent] Respuesta autónoma a ${senderName}: ${finalText.slice(0, 100)}`);
-
-    // Notificar en el chat si hay alguien conectado
-    if (finalText) pushToAll({ type: 'agent_response', from: 'Jarvis', to: senderName, text: finalText });
+    if (agentFinalText) console.log(`[agent] Respuesta autónoma a ${senderName}: ${agentFinalText.slice(0, 100)}`);
+    if (agentFinalText) pushToAll({ type: 'agent_response', from: 'Jarvis', to: senderName, text: agentFinalText });
 
   } catch (e) {
     console.log(`[agent] Error procesando mensaje de ${senderName}: ${e.message}`);
@@ -5396,15 +5567,14 @@ Responde ÚNICAMENTE con este JSON (sin texto extra):
   "confidence": "high|medium|low"
 }`;
 
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: BG_MODEL, max_tokens: 1024, messages: [{ role: 'user', content: repairPrompt }] })
-    });
-    if (!resp.ok) { console.log(`[self-repair] API error: ${resp.status}`); return; }
-
-    const d = await resp.json();
-    const text = d.content?.[0]?.text || '';
+    let repairResult;
+    try {
+      repairResult = await callOpenAI(BG_MODEL, null, [{ role: 'user', content: repairPrompt }], null, 1024);
+    } catch (err) {
+      console.log(`[self-repair] API error: ${err.message}`);
+      return;
+    }
+    const text = repairResult.text;
     const match = text.match(/\{[\s\S]*\}/);
     if (!match) { console.log('[self-repair] No pude parsear respuesta:', text.slice(0, 200)); return; }
 

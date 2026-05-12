@@ -1,6 +1,6 @@
 name: "Jarvis AI Agent"
 description: "Jarvis — Asistente IA para Home Assistant. Control por voz y texto."
-version: "3.14.7"
+version: "3.15.9"
 slug: "jarvis_ai_agent"
 init: false
 arch:
@@ -26,20 +26,20 @@ map:
   - share:rw
   - media:ro
 options:
-  anthropic_api_key: ""
-  model: "claude-sonnet-4-6"
+  openai_api_key: ""
+  serper_api_key: ""
   language: "es"
   proxmox_url: ""
   proxmox_token: ""
   proxmox_node: "pve"
   github_token: ""
-  openai_api_key: ""
+  anthropic_api_key: ""
 schema:
-  anthropic_api_key: str
-  model: str
+  openai_api_key: str
+  serper_api_key: str?
   language: str
   proxmox_url: str?
   proxmox_token: str?
   proxmox_node: str?
   github_token: str?
-  openai_api_key: str?
+  anthropic_api_key: str?
