@@ -3,6 +3,53 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.20.0 (2026-05-12) — NEXUS: sistema dinámico de routing y prompts
+────────────────────────────────────────────────────────────────────────────────
+
+SISTEMA NEXUS v1.0 — arquitectura de routing inteligente de prompts:
+
+PROMPT_MODULES (14 módulos temáticos con contenido real de Jarvis):
+  - base: identidad, creador, personalidad
+  - philosophy: agente vs asistente, regla de oro, ejemplos ❌/✓
+  - perseverance: nunca parar, cuándo sí parar
+  - autonomy: autonomía total + eficiencia (tools paralelas)
+  - ha_control: diagnóstico desconexiones, integraciones conocidas (Alexa/ESPHome/OMV/Zigbee/PVPC/Router/Coche/Cámara)
+  - diagnostico: protocolo de escalada niveles 1-6, logs y diagnóstico, Telegram
+  - automation: automatizaciones YAML, dashboards Lovelace, cards HACS
+  - filesystem: rutas /config /share /data, auto-knowledge
+  - web: internet, ha_knowledge, analyze_github_repos
+  - network: red de agentes IA, gateway, normas
+  - proxmox: entorno físico, instalación de Adrián (787 entidades, Echo/OMV/NAS)
+  - emergency: autoreparación sin permiso, errores comunes Node.js
+  - dev: auto-evolución, github_push, límite autonomía publicación, prohibido delegar código
+  - inamovible: reglas de seguridad permanentes
+
+EXPERTS (7 configuraciones):
+  - rapido (BG_MODEL, 6 iters): saludos, comandos simples, estado rápido
+  - ha_control (MODEL, 15 iters): control de dispositivos, servicios HA
+  - diagnostico (MODEL, 20 iters): desconexiones, errores, logs
+  - automatizacion (MODEL, 15 iters): automatizaciones, dashboards, YAML
+  - archivo (MODEL, 10 iters): operaciones de archivos
+  - emergencia (MODEL, 20 iters): reparación crítica de sistema
+  - dev (MODEL, 20 iters): modificación código, github_push, nuevas tools
+
+ROUTER DUAL (cero coste / coste mínimo):
+  - Capa 1: regex sin tokens (classifica ~70% de queries al instante)
+  - Capa 2: LLM BG_MODEL con ~10 tokens de output para el resto
+
+HEALTH SCORES:
+  - Reputación 0-100 por experto, persistida en /data/nexus/health.json
+  - Degradación al detectar correcciones ("perdona", "tienes razón")
+  - Recuperación +2 por éxito, fallback a ha_control si score < 20
+
+NEXUS WATCHERS (integrado en intervalo 30s):
+  - ThermalWatch: detecta >20 entidades unavailable → alerta de red en logs
+  - Recuperación automática cuando el sistema vuelve a la normalidad
+
+RESULTADO: ~50% reducción de tokens en el system prompt para la mayoría de queries
+  Antes: ~5000 tokens siempre | Ahora: 1000-2500 tokens según el experto activado
+
+────────────────────────────────────────────────────────────────────────────────
 v3.19.0 (2026-05-12) — generate_image, render_floorplan, update_ui
 ────────────────────────────────────────────────────────────────────────────────
 
