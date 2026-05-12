@@ -3,6 +3,34 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.17.0 (2026-05-12) — Chat UI mejorado: markdown, sidebar, búsqueda, sugerencias
+────────────────────────────────────────────────────────────────────────────────
+
+MARKDOWN + SYNTAX HIGHLIGHTING:
+  - Mensajes de Jarvis renderizan markdown completo (negritas, listas, tablas, código)
+  - Bloques de código con syntax highlighting (highlight.js atom-one-dark)
+  - Botón "copiar" en cada bloque de código
+  - Streaming actualiza markdown en tiempo real
+
+PANEL LATERAL DE ESTADO (sidebar):
+  - Luces encendidas con nombres, temperaturas, presencia por persona
+  - Reproducción activa de media, alertas de dispositivos no disponibles
+  - Sugerencias de Jarvis (pensamientos pendientes) clickables
+  - Se actualiza cada 30 segundos automáticamente
+  - Toggle con botón en el header, estado persistido en localStorage
+  - Nuevo endpoint GET /api/status
+
+SUGERENCIAS CONTEXTUALES:
+  - Cambian según la hora del día (mañana, mediodía, tarde, noche)
+  - Se adaptan al estado real: luces encendidas, dispositivos caídos, pensamientos pendientes
+  - Nuevo endpoint GET /api/suggestions
+
+BÚSQUEDA EN HISTORIAL:
+  - Botón de lupa en el header abre barra de búsqueda
+  - Filtra mensajes visibles en tiempo real mientras escribes
+  - Escape para cerrar y restaurar todos los mensajes
+
+────────────────────────────────────────────────────────────────────────────────
 v3.16.0 (2026-05-12) — Roadmap completo: rollback, patrones, voz, multiusuario, emergencias
 ────────────────────────────────────────────────────────────────────────────────
 

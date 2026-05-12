@@ -120,7 +120,7 @@ function findAgentByKey(apiKey) {
   return null;
 }
 
-const JARVIS_VERSION = '3.16.0';
+const JARVIS_VERSION = '3.17.0';
 
 const NETWORK_NORMS = {
   version: '2.0',
@@ -4889,6 +4889,102 @@ function calcCost(usage) {
 }
 
 // Health
+// ── Estado rápido de la casa (para el panel lateral del chat) ────────────────
+app.get('/api/status', async (req, res) => {
+  try {
+    const states = await haGet('/states');
+    const lights = states.filter(e => e.entity_id.startsWith('light.'));
+    const lightsOn = lights.filter(e => e.state === 'on');
+    const temps = states.filter(e =>
+      e.entity_id.startsWith('sensor.') &&
+      e.attributes?.unit_of_measurement === '°C' &&
+      e.attributes?.device_class === 'temperature' &&
+      !isNaN(parseFloat(e.state))
+    ).slice(0, 6).map(t => ({
+      name: (t.attributes.friendly_name || t.entity_id).replace(/temperatura/i, '').trim(),
+      value: parseFloat(t.state).toFixed(1),
+      unit: '°C'
+    }));
+    const persons = states.filter(e => e.entity_id.startsWith('person.')).map(p => ({
+      name: p.attributes.friendly_name || p.entity_id,
+      state: p.state
+    }));
+    const unavailable = states.filter(e =>
+      ['unavailable', 'unknown'].includes(e.state) &&
+      (e.entity_id.startsWith('sensor.') || e.entity_id.startsWith('binary_sensor.') ||
+       e.entity_id.startsWith('light.') || e.entity_id.startsWith('switch.'))
+    ).length;
+    const mediaPlaying = states.filter(e =>
+      e.entity_id.startsWith('media_player.') && e.state === 'playing'
+    ).map(m => ({ name: m.attributes.friendly_name || m.entity_id, media: m.attributes.media_title || '' }));
+    const thoughts = loadJSON(path.join(DATA_DIR, 'pending_thoughts.json'), []).filter(t => t.status === 'pending');
+    const activeEmergencies = loadJSON(path.join(DATA_DIR, 'active_emergencies.json'), {});
+
+    res.json({
+      lights: { on: lightsOn.length, total: lights.length, names: lightsOn.slice(0, 5).map(l => l.attributes.friendly_name || l.entity_id) },
+      temperature: temps,
+      persons,
+      unavailable,
+      media: mediaPlaying,
+      pending_thoughts: thoughts.slice(0, 3).map(t => ({ title: t.title, priority: t.priority, type: t.type })),
+      active_emergencies: Object.keys(activeEmergencies).length,
+      ts: new Date().toISOString()
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Sugerencias contextuales (basadas en hora y estado de la casa) ────────────
+app.get('/api/suggestions', async (req, res) => {
+  const hour = new Date().getHours();
+  const suggestions = [];
+
+  try {
+    const states = await haGet('/states');
+    const lightsOn = states.filter(e => e.entity_id.startsWith('light.') && e.state === 'on').length;
+    const unavailable = states.filter(e => ['unavailable','unknown'].includes(e.state)).length;
+    const thoughts = loadJSON(path.join(DATA_DIR, 'pending_thoughts.json'), []).filter(t => t.status === 'pending');
+
+    // Sugerencias por hora
+    if (hour >= 6 && hour < 10) {
+      suggestions.push('☀️ Buenos días, ¿cómo está la casa?');
+      suggestions.push('🌡️ ¿Qué temperatura hace esta mañana?');
+      suggestions.push('📊 Resumen de la noche');
+    } else if (hour >= 10 && hour < 14) {
+      suggestions.push('💡 ¿Qué luces están encendidas?');
+      suggestions.push('⚡ ¿Cuánto estoy consumiendo?');
+      suggestions.push('🔌 Estado de los enchufes');
+    } else if (hour >= 14 && hour < 18) {
+      suggestions.push('🌡️ ¿Temperatura en todas las habitaciones?');
+      suggestions.push('🤖 Revisa mis automatizaciones');
+      suggestions.push('📈 Análisis de consumo del día');
+    } else if (hour >= 18 && hour < 22) {
+      suggestions.push('🎬 Modo cine en el salón');
+      suggestions.push('💡 Luces de ambiente para la noche');
+      suggestions.push('🔒 ¿Está todo cerrado?');
+    } else {
+      suggestions.push('🌙 Modo noche — apaga todo');
+      suggestions.push('🔒 Comprueba puertas y ventanas');
+      suggestions.push('⏰ ¿Alguna automatización activa ahora?');
+    }
+
+    // Sugerencias contextuales
+    if (lightsOn > 5) suggestions.push(`💡 Hay ${lightsOn} luces encendidas, ¿apago las innecesarias?`);
+    if (unavailable > 10) suggestions.push(`⚠️ ${unavailable} dispositivos no responden, ¿lo reviso?`);
+    if (thoughts.length > 0) suggestions.push(`💭 Tengo ${thoughts.length} sugerencia${thoughts.length > 1 ? 's' : ''} pendiente${thoughts.length > 1 ? 's' : ''} para ti`);
+
+    res.json({ suggestions: suggestions.slice(0, 6), hour });
+  } catch (e) {
+    res.json({ suggestions: [
+      '💡 Enciende las luces del salón',
+      '🌡️ ¿Qué temperatura hace en casa?',
+      '🤖 Muéstrame mis automatizaciones',
+      '📊 Estado general de la casa'
+    ], hour });
+  }
+});
+
 // ── Voz bidireccional Alexa — recibe comandos de HA ──────────────────────────
 app.post('/api/alexa-voice', async (req, res) => {
   const { command, source_echo } = req.body || {};

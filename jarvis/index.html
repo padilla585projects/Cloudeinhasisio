@@ -6,6 +6,9 @@
 <title>Jarvis · Home Assistant</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <style>
   :root {
     --bg: #0f1117;
@@ -385,6 +388,159 @@
     margin-bottom: 8px;
   }
   .clear-btn:hover { border-color: var(--error); color: var(--error); }
+
+  /* ── Layout principal con sidebar ── */
+  .main-layout {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+  .chat-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+  }
+
+  /* ── Panel lateral de estado ── */
+  #status-panel {
+    width: 240px;
+    flex-shrink: 0;
+    background: var(--bg2);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: width 0.25s ease;
+  }
+  #status-panel.collapsed { width: 0; border-left: none; }
+  .sp-header {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .sp-header span { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text2); font-family: 'DM Mono', monospace; }
+  .sp-toggle { background: none; border: none; color: var(--text3); cursor: pointer; font-size: 14px; padding: 2px 4px; line-height: 1; }
+  #sp-content { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+  #sp-content::-webkit-scrollbar { width: 3px; }
+  #sp-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .sp-card {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .sp-card-title { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; font-family: 'DM Mono', monospace; margin-bottom: 6px; }
+  .sp-row { display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--text); padding: 2px 0; }
+  .sp-row span:last-child { color: var(--text2); font-family: 'DM Mono', monospace; font-size: 11px; }
+  .sp-badge { font-size: 10px; padding: 2px 7px; border-radius: 20px; font-family: 'DM Mono', monospace; }
+  .sp-badge.on { background: #1a3d2e; color: var(--success); }
+  .sp-badge.off { background: var(--bg); color: var(--text3); }
+  .sp-badge.home { background: #1a3a5c; color: #60a5fa; }
+  .sp-badge.away { background: var(--bg); color: var(--text3); }
+  .sp-badge.alert { background: #3d1a1a; color: var(--error); }
+  .sp-badge.warn { background: #3d2a1a; color: #f59e0b; }
+  .sp-thought { font-size: 11px; color: var(--text2); line-height: 1.4; border-left: 2px solid var(--accent2); padding-left: 8px; cursor: pointer; }
+  .sp-thought:hover { color: var(--text); }
+
+  /* ── Barra de búsqueda ── */
+  #search-bar {
+    display: none;
+    padding: 8px 16px;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+  }
+  #search-bar.visible { display: block; }
+  #search-input {
+    width: 100%;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 12px;
+    color: var(--text);
+    font-size: 13px;
+    font-family: 'DM Sans', sans-serif;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  #search-input:focus { border-color: var(--accent); }
+  #search-input::placeholder { color: var(--text3); }
+  .search-highlight { background: rgba(108, 142, 247, 0.25); border-radius: 2px; }
+  .message.search-hidden { display: none; }
+
+  /* ── Markdown en burbujas de Jarvis ── */
+  .bubble.markdown { white-space: normal; }
+  .bubble.markdown p { margin-bottom: 8px; line-height: 1.65; }
+  .bubble.markdown p:last-child { margin-bottom: 0; }
+  .bubble.markdown h1, .bubble.markdown h2, .bubble.markdown h3 {
+    font-weight: 600; margin: 12px 0 6px; color: var(--text); letter-spacing: -0.3px;
+  }
+  .bubble.markdown h1 { font-size: 16px; }
+  .bubble.markdown h2 { font-size: 14px; }
+  .bubble.markdown h3 { font-size: 13px; color: var(--accent); }
+  .bubble.markdown ul, .bubble.markdown ol { margin: 6px 0 8px 18px; }
+  .bubble.markdown li { margin-bottom: 3px; line-height: 1.55; font-size: 13.5px; }
+  .bubble.markdown code {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: #a78bfa;
+  }
+  .bubble.markdown pre {
+    background: #0d1117;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    overflow-x: auto;
+    margin: 8px 0;
+    position: relative;
+  }
+  .bubble.markdown pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--text);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .copy-btn {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text2);
+    font-size: 10px;
+    padding: 2px 7px;
+    cursor: pointer;
+    font-family: 'DM Mono', monospace;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .bubble.markdown pre:hover .copy-btn { opacity: 1; }
+  .copy-btn:hover { color: var(--accent); border-color: var(--accent); }
+  .bubble.markdown blockquote {
+    border-left: 3px solid var(--accent);
+    padding-left: 12px;
+    color: var(--text2);
+    margin: 6px 0;
+    font-style: italic;
+  }
+  .bubble.markdown table { border-collapse: collapse; width: 100%; font-size: 12px; margin: 8px 0; }
+  .bubble.markdown th, .bubble.markdown td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
+  .bubble.markdown th { background: var(--bg3); color: var(--accent); font-weight: 500; }
+  .bubble.markdown a { color: var(--accent); text-decoration: none; }
+  .bubble.markdown a:hover { text-decoration: underline; }
+  .bubble.markdown strong { color: var(--text); font-weight: 600; }
+  .bubble.markdown hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
 </style>
 </head>
 <body>
@@ -421,6 +577,12 @@
     <span id="saver-label">Ahorro</span>
   </button>
   <span id="cost-badge" title="Coste estimado de la sesión actual (se resetea al reiniciar Jarvis)" style="font-size:10px;color:var(--text2);font-family:'DM Mono',monospace;flex-shrink:0;opacity:0.7;cursor:default;">$0.0000</span>
+  <button onclick="toggleSearch()" title="Buscar en el historial" style="background:transparent;border:1px solid var(--border);border-radius:10px;padding:6px 10px;color:var(--text2);cursor:pointer;font-size:11px;font-family:'DM Mono',monospace;display:flex;align-items:center;gap:5px;transition:all 0.2s;flex-shrink:0;" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text2)'">
+    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+  </button>
+  <button onclick="toggleStatusPanel()" title="Panel de estado de la casa" id="status-panel-btn" style="background:transparent;border:1px solid var(--border);border-radius:10px;padding:6px 10px;color:var(--text2);cursor:pointer;font-size:11px;font-family:'DM Mono',monospace;display:flex;align-items:center;gap:5px;transition:all 0.2s;flex-shrink:0;" onmouseover="this.style.borderColor='var(--success)';this.style.color='var(--success)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text2)'">
+    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+  </button>
   <div class="status-dot" id="status-dot" title="Conectado"></div>
 </header>
 
@@ -439,6 +601,14 @@
 </div>
 
 
+<div class="main-layout">
+<div class="chat-area">
+
+<!-- Barra de búsqueda -->
+<div id="search-bar">
+  <input id="search-input" placeholder="Buscar en el historial..." oninput="searchHistory(this.value)" onkeydown="if(event.key==='Escape')closeSearch()">
+</div>
+
 <div id="messages">
   <div class="welcome" id="welcome">
     <div class="welcome-logo">🏠</div>
@@ -453,6 +623,8 @@
     </div>
   </div>
 </div>
+
+</div><!-- /messages -->
 
 <footer>
   <button class="clear-btn" onclick="clearChat()" id="clear-btn" style="display:none">🗑 Limpiar chat</button>
@@ -475,6 +647,21 @@
   </div>
   <div class="hint">Enter para enviar · Shift+Enter nueva línea · 📎 para adjuntar archivos</div>
 </footer>
+
+</div><!-- /chat-area -->
+
+<!-- Panel lateral de estado de la casa -->
+<aside id="status-panel">
+  <div class="sp-header">
+    <span>Estado</span>
+    <button class="sp-toggle" onclick="toggleStatusPanel()" title="Ocultar panel">×</button>
+  </div>
+  <div id="sp-content">
+    <div style="color:var(--text3);font-size:11px;text-align:center;padding:20px;font-family:'DM Mono',monospace;">Cargando...</div>
+  </div>
+</aside>
+
+</div><!-- /main-layout -->
 
 <script>
   let conversationHistory = [];
@@ -502,6 +689,30 @@
     msgs.scrollTop = msgs.scrollHeight;
   }
 
+  // ── Markdown renderer ────────────────────────────────────────────────────────
+  function renderMarkdown(text) {
+    if (typeof marked === 'undefined') return text;
+    marked.setOptions({ breaks: true, gfm: true });
+    const html = marked.parse(text);
+    // Añadir botón copiar a cada bloque pre>code
+    return html.replace(/<pre><code/g, '<pre><button class="copy-btn" onclick="copyCode(this)">copiar</button><code');
+  }
+
+  window.copyCode = function(btn) {
+    const code = btn.nextElementSibling?.textContent || '';
+    navigator.clipboard.writeText(code).then(() => {
+      btn.textContent = '✓';
+      setTimeout(() => btn.textContent = 'copiar', 1500);
+    });
+  };
+
+  function applyHighlighting(bubble) {
+    if (typeof hljs === 'undefined') return;
+    bubble.querySelectorAll('pre code').forEach(block => {
+      hljs.highlightElement(block);
+    });
+  }
+
   function addMessage(role, text) {
     hideWelcome();
     const container = document.getElementById('messages');
@@ -513,8 +724,16 @@
     label.textContent = role === 'user' ? 'TÚ' : 'JARVIS';
 
     const bubble = document.createElement('div');
-    bubble.className = 'bubble';
-    bubble.textContent = text;
+    if (role === 'ai') {
+      bubble.className = 'bubble markdown';
+      if (text) {
+        bubble.innerHTML = renderMarkdown(text);
+        applyHighlighting(bubble);
+      }
+    } else {
+      bubble.className = 'bubble';
+      bubble.textContent = text;
+    }
 
     div.appendChild(label);
     div.appendChild(bubble);
@@ -1357,7 +1576,8 @@
                   aiBubble = addMessage('ai', '');
                 }
                 aiText += event.text;
-                aiBubble.textContent = aiText;
+                aiBubble.innerHTML = renderMarkdown(aiText);
+                applyHighlighting(aiBubble);
                 scrollToBottom();
 
               } else if (event.type === 'local_request') {
@@ -1697,18 +1917,156 @@
   setInterval(updateCostBadge, 30000);
 
   // Inicialización
+  // ── Panel lateral de estado ──────────────────────────────────────────────────
+  let statusPanelVisible = localStorage.getItem('jarvis_status_panel') !== 'false';
+
+  function toggleStatusPanel() {
+    statusPanelVisible = !statusPanelVisible;
+    localStorage.setItem('jarvis_status_panel', statusPanelVisible);
+    document.getElementById('status-panel').classList.toggle('collapsed', !statusPanelVisible);
+  }
+
+  async function loadStatusPanel() {
+    const content = document.getElementById('sp-content');
+    if (!content || !statusPanelVisible) return;
+    try {
+      const res = await fetch('api/status');
+      if (!res.ok) return;
+      const d = await res.json();
+      if (d.error) return;
+
+      let html = '';
+
+      // Luces
+      html += `<div class="sp-card">
+        <div class="sp-card-title">💡 Luces</div>
+        <div class="sp-row">
+          <span>Encendidas</span>
+          <span class="sp-badge ${d.lights.on > 0 ? 'on' : 'off'}">${d.lights.on} / ${d.lights.total}</span>
+        </div>
+        ${d.lights.names.length ? `<div style="margin-top:5px;">${d.lights.names.map(n=>`<div style="font-size:11px;color:var(--text2);padding:1px 0;">· ${n}</div>`).join('')}</div>` : ''}
+      </div>`;
+
+      // Temperaturas
+      if (d.temperature.length) {
+        html += `<div class="sp-card">
+          <div class="sp-card-title">🌡️ Temperatura</div>
+          ${d.temperature.map(t => `<div class="sp-row"><span>${t.name}</span><span>${t.value}${t.unit}</span></div>`).join('')}
+        </div>`;
+      }
+
+      // Presencia
+      if (d.persons.length) {
+        html += `<div class="sp-card">
+          <div class="sp-card-title">👤 Personas</div>
+          ${d.persons.map(p => `<div class="sp-row"><span>${p.name}</span><span class="sp-badge ${p.state === 'home' ? 'home' : 'away'}">${p.state === 'home' ? 'En casa' : 'Fuera'}</span></div>`).join('')}
+        </div>`;
+      }
+
+      // Media
+      if (d.media.length) {
+        html += `<div class="sp-card">
+          <div class="sp-card-title">🎵 Reproduciendo</div>
+          ${d.media.map(m => `<div class="sp-row" style="flex-direction:column;align-items:flex-start;gap:1px;"><span>${m.name}</span>${m.media ? `<span style="font-size:10px;color:var(--text3);">${m.media}</span>` : ''}</div>`).join('')}
+        </div>`;
+      }
+
+      // Alertas
+      if (d.unavailable > 0 || d.active_emergencies > 0) {
+        html += `<div class="sp-card" style="border-color:#3d1a1a;">
+          <div class="sp-card-title">⚠️ Alertas</div>
+          ${d.unavailable > 0 ? `<div class="sp-row"><span>No disponibles</span><span class="sp-badge alert">${d.unavailable}</span></div>` : ''}
+          ${d.active_emergencies > 0 ? `<div class="sp-row"><span>Emergencias</span><span class="sp-badge alert">${d.active_emergencies}</span></div>` : ''}
+        </div>`;
+      }
+
+      // Pensamientos pendientes
+      if (d.pending_thoughts.length) {
+        html += `<div class="sp-card" style="border-color:#2a1f4d;">
+          <div class="sp-card-title">💭 Sugerencias de Jarvis</div>
+          ${d.pending_thoughts.map(t => `<div class="sp-thought" onclick="sendDirectMessage('Cuéntame sobre tu sugerencia: ${t.title}')" title="Haz clic para preguntar a Jarvis">
+            <span style="font-size:10px;color:var(--accent2);">${t.priority === 'high' ? '🔴' : t.priority === 'medium' ? '🟡' : '⚪'} ${t.type}</span><br>${t.title}
+          </div>`).join('')}
+        </div>`;
+      }
+
+      // Timestamp
+      html += `<div style="font-size:10px;color:var(--text3);text-align:center;padding:4px;font-family:'DM Mono',monospace;">${new Date(d.ts).toLocaleTimeString('es-ES')}</div>`;
+
+      content.innerHTML = html;
+    } catch {}
+  }
+
+  // Aplicar estado inicial del panel
+  if (!statusPanelVisible) document.getElementById('status-panel').classList.add('collapsed');
+  // Actualizar cada 30 segundos
+  loadStatusPanel();
+  setInterval(loadStatusPanel, 30000);
+
+  // ── Sugerencias contextuales ─────────────────────────────────────────────────
+  async function loadContextualSuggestions() {
+    try {
+      const res = await fetch('api/suggestions');
+      if (!res.ok) return;
+      const d = await res.json();
+      if (!d.suggestions?.length) return;
+      const container = document.querySelector('.suggestions');
+      if (!container) return;
+      container.innerHTML = d.suggestions.map(s =>
+        `<div class="suggestion" onclick="sendSuggestion(this)">${s}</div>`
+      ).join('');
+    } catch {}
+  }
+
+  // ── Búsqueda en historial ────────────────────────────────────────────────────
+  let searchVisible = false;
+
+  function toggleSearch() {
+    searchVisible = !searchVisible;
+    const bar = document.getElementById('search-bar');
+    bar.classList.toggle('visible', searchVisible);
+    if (searchVisible) {
+      document.getElementById('search-input').focus();
+    } else {
+      closeSearch();
+    }
+  }
+
+  function closeSearch() {
+    searchVisible = false;
+    document.getElementById('search-bar').classList.remove('visible');
+    document.getElementById('search-input').value = '';
+    document.querySelectorAll('.message').forEach(m => {
+      m.classList.remove('search-hidden');
+      m.querySelectorAll('.search-highlight').forEach(h => {
+        h.outerHTML = h.textContent;
+      });
+    });
+  }
+
+  function searchHistory(query) {
+    const q = query.trim().toLowerCase();
+    document.querySelectorAll('.message').forEach(m => {
+      if (!q) {
+        m.classList.remove('search-hidden');
+        return;
+      }
+      const text = m.textContent.toLowerCase();
+      m.classList.toggle('search-hidden', !text.includes(q));
+    });
+  }
+
   async function init() {
     await loadHistory();
-    // Si no hay historial previo, mostrar saludo completo
     if (conversationHistory.length === 0) {
       await loadGreeting();
+      loadContextualSuggestions();
     } else {
-      // Si hay historial, solo mostrar pensamientos pendientes
       await loadPendingThoughts();
     }
     document.getElementById('input').focus();
-    updateCostBadge(); // Cargar coste inicial
-    connectPushEvents(); // Canal SSE persistente para mensajes en tiempo real
+    updateCostBadge();
+    connectPushEvents();
   }
   init();
 
