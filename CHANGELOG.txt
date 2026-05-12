@@ -3,6 +3,28 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.20.1 (2026-05-12) — NEXUS: expertos dinámicos auto-creados por Jarvis
+────────────────────────────────────────────────────────────────────────────────
+
+TOOL: nexus_manage — Jarvis crea/edita/elimina expertos y módulos en runtime:
+  - create_expert: nuevo experto con modelo, tokens, iters, módulos y keywords
+  - create_module: nuevo módulo temático de prompt con contenido libre
+  - edit_expert / edit_module: modificar existentes (solo dinámicos, no los 7 base)
+  - delete_expert / delete_module: eliminar dinámicos
+  - list: ver todos los expertos (base + dinámicos) con health scores
+  - get_health: health scores detallados
+
+DYNAMIC ROUTING:
+  - Expertos dinámicos registran keywords → se usan como capa 1.5 regex sin coste
+  - Router LLM incluye automáticamente los nombres de expertos dinámicos
+  - nexusAssemblePrompt lee módulos dinámicos de /data/nexus/dynamic_modules.json
+  - Persistencia: /data/nexus/dynamic_experts.json + /data/nexus/dynamic_modules.json
+
+EJEMPLO: Si Adrián pregunta mucho de energía, Jarvis puede:
+  nexus_manage(create_module, "energia", "contenido sobre PVPC, tarifas, solar...")
+  nexus_manage(create_expert, "energia", {modules:["base","energia","ha_control"], keywords:["pvpc","tarifa","solar","consumo","factura"]})
+
+────────────────────────────────────────────────────────────────────────────────
 v3.20.0 (2026-05-12) — NEXUS: sistema dinámico de routing y prompts
 ────────────────────────────────────────────────────────────────────────────────
 

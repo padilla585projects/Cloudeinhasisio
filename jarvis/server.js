@@ -1161,6 +1161,33 @@ const tools = [
     }
   },
 
+  // ─── NEXUS: gestión dinámica de expertos y módulos ───
+  {
+    name: 'nexus_manage',
+    description: 'Gestiona el sistema NEXUS: crea/edita/elimina expertos y módulos de prompt dinámicamente. Los cambios se persisten y sobreviven reinicios. Usa esto cuando detectes que necesitas un especialista nuevo (energía, zigbee, multimedia...) o quieras ajustar uno existente.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['list', 'create_expert', 'edit_expert', 'delete_expert', 'create_module', 'edit_module', 'delete_module', 'get_health'], description: 'Acción a realizar.' },
+        name: { type: 'string', description: 'Nombre del experto o módulo (slug sin espacios, ej: energia, zigbee, multimedia).' },
+        config: {
+          type: 'object',
+          description: 'Config del experto: { model: "MODEL"|"BG_MODEL", maxTokens: number, maxIter: number, modules: ["base","..."], label: "Nombre visible", keywords: ["palabra1","palabra2"] }. keywords se usan para routing regex automático.',
+          properties: {
+            model: { type: 'string' },
+            maxTokens: { type: 'number' },
+            maxIter: { type: 'number' },
+            modules: { type: 'array', items: { type: 'string' } },
+            label: { type: 'string' },
+            keywords: { type: 'array', items: { type: 'string' } }
+          }
+        },
+        content: { type: 'string', description: 'Contenido del módulo de prompt (para create_module/edit_module).' }
+      },
+      required: ['action']
+    }
+  },
+
   // ─── Emergencias autónomas ───
   {
     name: 'emergency_config',
@@ -3810,6 +3837,103 @@ ${dots}`;
         };
       }
 
+      case 'nexus_manage': {
+        const DYNAMIC_EXPERTS_FILE = path.join(DATA_DIR, 'nexus/dynamic_experts.json');
+        const DYNAMIC_MODULES_FILE = path.join(DATA_DIR, 'nexus/dynamic_modules.json');
+        const dynExperts = loadJSON(DYNAMIC_EXPERTS_FILE, {});
+        const dynModules = loadJSON(DYNAMIC_MODULES_FILE, {});
+
+        switch (input.action) {
+          case 'list': {
+            const allExperts = { ...EXPERTS, ...dynExperts };
+            const allModules = Object.keys(NEXUS_MODULES).concat(Object.keys(dynModules));
+            const healthSummary = {};
+            for (const [k, v] of Object.entries(allExperts)) {
+              healthSummary[k] = { label: v.label, model: v.model === MODEL ? 'MODEL' : 'BG_MODEL', modules: v.modules, health: nexusGetScore(k), dynamic: !!dynExperts[k] };
+            }
+            return { experts: healthSummary, modules: allModules, dynamic_modules: Object.keys(dynModules) };
+          }
+
+          case 'create_expert': {
+            if (!input.name || !input.config) return { error: 'Necesito name y config.' };
+            if (EXPERTS[input.name]) return { error: `"${input.name}" es un experto base — usa edit_expert para modificar dinámicos o elige otro nombre.` };
+            const cfg = input.config;
+            dynExperts[input.name] = {
+              model: cfg.model === 'BG_MODEL' ? BG_MODEL : MODEL,
+              maxTokens: cfg.maxTokens || 6144,
+              maxIter: cfg.maxIter || 15,
+              modules: cfg.modules || ['base', 'autonomy'],
+              label: cfg.label || input.name,
+              keywords: cfg.keywords || []
+            };
+            saveJSON(DYNAMIC_EXPERTS_FILE, dynExperts);
+            nexusReloadDynamic();
+            return { success: true, expert: input.name, config: dynExperts[input.name], note: 'Experto creado y activo. El router lo usará automáticamente si las keywords coinciden.' };
+          }
+
+          case 'edit_expert': {
+            if (!input.name || !input.config) return { error: 'Necesito name y config.' };
+            if (!dynExperts[input.name]) return { error: `"${input.name}" no es un experto dinámico. Solo puedes editar los que hayas creado.` };
+            const cfg = input.config;
+            if (cfg.model) dynExperts[input.name].model = cfg.model === 'BG_MODEL' ? BG_MODEL : MODEL;
+            if (cfg.maxTokens) dynExperts[input.name].maxTokens = cfg.maxTokens;
+            if (cfg.maxIter) dynExperts[input.name].maxIter = cfg.maxIter;
+            if (cfg.modules) dynExperts[input.name].modules = cfg.modules;
+            if (cfg.label) dynExperts[input.name].label = cfg.label;
+            if (cfg.keywords) dynExperts[input.name].keywords = cfg.keywords;
+            saveJSON(DYNAMIC_EXPERTS_FILE, dynExperts);
+            nexusReloadDynamic();
+            return { success: true, expert: input.name, config: dynExperts[input.name] };
+          }
+
+          case 'delete_expert': {
+            if (!input.name) return { error: 'Necesito name.' };
+            if (EXPERTS[input.name]) return { error: `"${input.name}" es un experto base — no se puede eliminar.` };
+            if (!dynExperts[input.name]) return { error: `No existe el experto dinámico "${input.name}".` };
+            delete dynExperts[input.name];
+            saveJSON(DYNAMIC_EXPERTS_FILE, dynExperts);
+            nexusReloadDynamic();
+            return { success: true, deleted: input.name };
+          }
+
+          case 'create_module': {
+            if (!input.name || !input.content) return { error: 'Necesito name y content.' };
+            if (NEXUS_MODULES[input.name]) return { error: `"${input.name}" es un módulo base — elige otro nombre.` };
+            dynModules[input.name] = input.content;
+            saveJSON(DYNAMIC_MODULES_FILE, dynModules);
+            nexusReloadDynamic();
+            return { success: true, module: input.name, length: input.content.length, note: 'Módulo creado. Ahora asígnalo a un experto con create_expert o edit_expert.' };
+          }
+
+          case 'edit_module': {
+            if (!input.name || !input.content) return { error: 'Necesito name y content.' };
+            if (NEXUS_MODULES[input.name]) return { error: `"${input.name}" es un módulo base — no se puede editar. Crea uno nuevo con otro nombre.` };
+            if (!dynModules[input.name]) return { error: `No existe el módulo dinámico "${input.name}".` };
+            dynModules[input.name] = input.content;
+            saveJSON(DYNAMIC_MODULES_FILE, dynModules);
+            nexusReloadDynamic();
+            return { success: true, module: input.name, length: input.content.length };
+          }
+
+          case 'delete_module': {
+            if (!input.name) return { error: 'Necesito name.' };
+            if (NEXUS_MODULES[input.name]) return { error: `"${input.name}" es un módulo base — no se puede eliminar.` };
+            if (!dynModules[input.name]) return { error: `No existe el módulo dinámico "${input.name}".` };
+            delete dynModules[input.name];
+            saveJSON(DYNAMIC_MODULES_FILE, dynModules);
+            nexusReloadDynamic();
+            return { success: true, deleted: input.name };
+          }
+
+          case 'get_health': {
+            return { health: nexusHealth, version: 'NEXUS v1.0' };
+          }
+
+          default:
+            return { error: `Acción desconocida: ${input.action}. Usa: list, create_expert, edit_expert, delete_expert, create_module, edit_module, delete_module, get_health.` };
+        }
+      }
+
       default:
         return { error: `Tool desconocida: ${name}` };
     }
@@ -4168,6 +4292,24 @@ function nexusSaveHealth(health) {
 
 let nexusHealth = nexusLoadHealth();
 
+// Expertos y módulos dinámicos (creados por Jarvis en runtime)
+let dynamicExperts = loadJSON(path.join(DATA_DIR, 'nexus/dynamic_experts.json'), {});
+let dynamicModules = loadJSON(path.join(DATA_DIR, 'nexus/dynamic_modules.json'), {});
+
+function nexusReloadDynamic() {
+  dynamicExperts = loadJSON(path.join(DATA_DIR, 'nexus/dynamic_experts.json'), {});
+  dynamicModules = loadJSON(path.join(DATA_DIR, 'nexus/dynamic_modules.json'), {});
+  console.log(`[nexus] Recargado: ${Object.keys(dynamicExperts).length} expertos dinámicos, ${Object.keys(dynamicModules).length} módulos dinámicos`);
+}
+
+function nexusGetAllExperts() {
+  return { ...EXPERTS, ...dynamicExperts };
+}
+
+function nexusGetModule(name) {
+  return NEXUS_MODULES[name] || dynamicModules[name] || '';
+}
+
 function nexusGetScore(expertName) {
   return nexusHealth[expertName]?.score ?? 75;
 }
@@ -4184,7 +4326,8 @@ function nexusUpdateHealth(expertName, success, hadCorrection) {
 }
 
 function nexusPickExpert(name) {
-  if (!EXPERTS[name]) return 'ha_control';
+  const all = nexusGetAllExperts();
+  if (!all[name]) return 'ha_control';
   if (nexusGetScore(name) < 20) {
     console.log(`[nexus] Expert ${name} health=${nexusGetScore(name)} bajo umbral → ha_control`);
     return 'ha_control';
@@ -4212,17 +4355,26 @@ async function nexusRoute(message) {
   if (text.length < 80 && /enciende|apaga|sube|baja|activa|desactiva|pon|quita|temperatura|humedad|estado de|qu[eé] hay/.test(text))
     return { expert: 'rapido', source: 'regex', confidence: 0.85 };
 
+  // CAPA 1.5: keywords de expertos dinámicos (0 tokens)
+  for (const [eName, eCfg] of Object.entries(dynamicExperts)) {
+    if (eCfg.keywords && eCfg.keywords.length > 0) {
+      const kw = eCfg.keywords.join('|');
+      if (new RegExp(kw, 'i').test(text)) return { expert: eName, source: 'dynamic_kw', confidence: 0.85 };
+    }
+  }
+
   // CAPA 2: LLM barato (~10 tokens de output)
   try {
+    const allNames = Object.keys(nexusGetAllExperts()).join('|');
     const result = await callOpenAI(
       BG_MODEL,
-      'Clasifica en UNA palabra: rapido|ha_control|diagnostico|automatizacion|archivo|emergencia|dev. Solo la palabra.',
+      `Clasifica en UNA palabra: ${allNames}. Solo la palabra.`,
       [{ role: 'user', content: text.slice(0, 300) }],
       [],
       10
     );
     const expert = result.text.trim().toLowerCase().split(/[\s\n]/)[0];
-    if (EXPERTS[expert]) return { expert, source: 'llm', confidence: 0.8 };
+    if (nexusGetAllExperts()[expert]) return { expert, source: 'llm', confidence: 0.8 };
   } catch (e) {
     console.log('[nexus] Router LLM error:', e.message);
   }
@@ -4232,11 +4384,13 @@ async function nexusRoute(message) {
 
 // ── NEXUS Ensamblador de prompts ──────────────────────────────────────────────
 function nexusAssemblePrompt(expertName) {
-  const expert = EXPERTS[expertName] || EXPERTS.ha_control;
-  const parts = expert.modules.map(m => NEXUS_MODULES[m] || '').filter(Boolean);
+  const all = nexusGetAllExperts();
+  const expert = all[expertName] || EXPERTS.ha_control;
+  const parts = expert.modules.map(m => nexusGetModule(m)).filter(Boolean);
   let prompt = parts.join('\n\n') + '\n\n';
   prompt += `HERRAMIENTAS (${tools.length} disponibles):\n`;
   prompt += tools.map(t => '- ' + t.name + ': ' + t.description.split('.')[0]).join('\n') + '\n';
+  if (dynamicExperts[expertName]) prompt += `\n[Experto dinámico: ${expert.label}]\n`;
   return prompt;
 }
 
@@ -5297,7 +5451,7 @@ app.post('/api/chat', async (req, res) => {
     } else {
       nexusExpertName = 'rapido';
     }
-    const nexusExpert = EXPERTS[nexusExpertName] || EXPERTS.ha_control;
+    const nexusExpert = nexusGetAllExperts()[nexusExpertName] || EXPERTS.ha_control;
     const activeModel = nexusExpert.model;
     const activeMaxTokens = nexusExpert.maxTokens;
     const activeMaxIter = nexusExpert.maxIter;
