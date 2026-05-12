@@ -3,6 +3,37 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.16.0 (2026-05-12) — Roadmap completo: rollback, patrones, voz, multiusuario, emergencias
+────────────────────────────────────────────────────────────────────────────────
+
+5 features nuevas con límites explícitos:
+
+ROLLBACK AUTOMÁTICO:
+  - autoBackup() antes de cada write_file y create_automation (máx 10 por archivo)
+  - Tool rollback: list (ver backups) y restore (requiere adrian_confirmed)
+
+ANÁLISIS DE PATRONES (tool manual):
+  - analyze_patterns: show_routines (ver detectadas) y force_analysis (lanzar ahora)
+  - El job de background ya existía; ahora Jarvis puede invocarlo y consultarlo
+
+VOZ BIDIRECCIONAL ALEXA:
+  - Endpoint POST /api/alexa-voice recibe comandos de HA
+  - Tool alexa_bidirectional: setup (crea automatización), check, respond, status
+  - Setup genera automations.yaml + rest_command.yaml; pasos manuales en Alexa documentados
+
+MULTIUSUARIO:
+  - Tool manage_users: list, add, remove, set_permissions, get_profile
+  - Adrián es admin por defecto; nuevos usuarios arrancan en read
+  - add/remove/set_permissions requieren adrian_confirmed
+
+EMERGENCIAS AUTÓNOMAS:
+  - Tool emergency_config: set_triggers, set_actions, enable, disable, test
+  - Monitor checkEmergencies() corre cada 30s cuando está habilitado
+  - Solo actúa ante triggers pre-definidos con acciones pre-autorizadas
+  - Notificación Telegram + push al chat en cada emergencia
+  - set_triggers/set_actions/enable requieren adrian_confirmed
+
+────────────────────────────────────────────────────────────────────────────────
 v3.15.12 (2026-05-12) — Restricciones de seguridad reforzadas a nivel de código
 ────────────────────────────────────────────────────────────────────────────────
 

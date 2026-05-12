@@ -42,6 +42,10 @@ const HISTORY_FILE = path.join(DATA_DIR, 'history.json');
 const LEARNINGS_FILE = path.join(DATA_DIR, 'learnings.json');
 const HOUSE_CONTEXT_FILE = path.join(DATA_DIR, 'house_context.json');
 const INSTALLATION_MAP_FILE = path.join(DATA_DIR, 'installation_map.json');
+const BACKUPS_DIR = path.join(DATA_DIR, 'backups');
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
+const EMERGENCY_CONFIG_FILE = path.join(DATA_DIR, 'emergency_config.json');
+const ALEXA_VOICE_FILE = path.join(DATA_DIR, 'alexa_pending.json');
 
 // Asegurar que /data existe
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -57,6 +61,32 @@ function loadJSON(filepath, fallback = []) {
 
 function saveJSON(filepath, data) {
   fs.writeFileSync(filepath, JSON.stringify(data, null, 2));
+}
+
+// ── Backup automático antes de sobreescribir archivos ─────────────────────────
+function autoBackup(filepath) {
+  try {
+    if (!fs.existsSync(filepath)) return null;
+    if (!fs.existsSync(BACKUPS_DIR)) fs.mkdirSync(BACKUPS_DIR, { recursive: true });
+    const safeName = filepath.replace(/[/\\:]/g, '_');
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupPath = path.join(BACKUPS_DIR, `${safeName}.${ts}.bak`);
+    fs.copyFileSync(filepath, backupPath);
+    // Mantener solo los últimos 10 backups de este archivo
+    const all = fs.readdirSync(BACKUPS_DIR)
+      .filter(f => f.startsWith(safeName + '.'))
+      .sort();
+    if (all.length > 10) {
+      for (const old of all.slice(0, all.length - 10)) {
+        fs.unlinkSync(path.join(BACKUPS_DIR, old));
+      }
+    }
+    console.log(`[backup] ${path.basename(filepath)} → ${path.basename(backupPath)}`);
+    return backupPath;
+  } catch (e) {
+    console.log(`[backup] Error: ${e.message}`);
+    return null;
+  }
 }
 
 let userMemory = loadJSON(MEMORY_FILE, []);
@@ -90,7 +120,7 @@ function findAgentByKey(apiKey) {
   return null;
 }
 
-const JARVIS_VERSION = '3.15.12';
+const JARVIS_VERSION = '3.16.0';
 
 const NETWORK_NORMS = {
   version: '2.0',
@@ -1021,6 +1051,84 @@ const tools = [
       },
       required: ['action', 'path']
     }
+  },
+
+  // ─── Rollback ───
+  {
+    name: 'rollback',
+    description: 'Restaura un archivo a una versión anterior del backup automático. Muestra los backups disponibles o restaura uno concreto. REQUIERE confirmación de Adrián antes de restaurar.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['list', 'restore'], description: 'list: muestra backups disponibles | restore: restaura un backup concreto' },
+        filepath: { type: 'string', description: 'Ruta del archivo original (ej: /config/automations.yaml)' },
+        backup_name: { type: 'string', description: 'Nombre del archivo de backup a restaurar (obtenido con action=list)' },
+        adrian_confirmed: { type: 'boolean', description: 'REQUERIDO para restore. Adrián debe confirmar explícitamente.' }
+      },
+      required: ['action', 'filepath']
+    }
+  },
+
+  // ─── Análisis de patrones manual ───
+  {
+    name: 'analyze_patterns',
+    description: 'Muestra las rutinas detectadas automáticamente por Jarvis, o fuerza un nuevo análisis de patrones de uso del hogar. Las sugerencias resultantes requieren aprobación de Adrián para ejecutarse.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['show_routines', 'force_analysis'], description: 'show_routines: muestra rutinas detectadas | force_analysis: lanza análisis ahora' }
+      },
+      required: ['action']
+    }
+  },
+
+  // ─── Voz bidireccional Alexa ───
+  {
+    name: 'alexa_bidirectional',
+    description: 'Configura o usa la integración de voz bidireccional con Alexa. setup: crea la automatización en HA para que Alexa escuche comandos dirigidos a Jarvis y los enrute aquí. check: ve si hay comandos de voz pendientes. respond: responde por TTS al Echo que hizo la pregunta.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['setup', 'check', 'respond', 'status'], description: 'setup: configura la automatización en HA | check: comandos pendientes | respond: responde por TTS | status: estado de la integración' },
+        message: { type: 'string', description: 'Texto de respuesta (para respond)' },
+        target_echo: { type: 'string', description: 'Entity ID del Echo que hizo la pregunta (para respond)' }
+      },
+      required: ['action']
+    }
+  },
+
+  // ─── Multiusuario ───
+  {
+    name: 'manage_users',
+    description: 'Gestiona perfiles de usuario. Solo Adrián puede añadir, eliminar o cambiar permisos. Los usuarios nuevos arrancan con permisos de solo lectura.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['list', 'add', 'remove', 'set_permissions', 'get_profile'], description: 'list: ver usuarios | add: añadir | remove: eliminar | set_permissions: cambiar permisos | get_profile: ver perfil' },
+        username: { type: 'string', description: 'Nombre del usuario' },
+        display_name: { type: 'string', description: 'Nombre visible (para add)' },
+        permissions: { type: 'string', enum: ['read', 'write', 'admin'], description: 'Nivel de permisos (para set_permissions). Solo Adrián puede asignar admin.' },
+        preferences: { type: 'object', description: 'Preferencias del usuario (idioma, temperatura, etc.)' },
+        adrian_confirmed: { type: 'boolean', description: 'REQUERIDO para add/remove/set_permissions.' }
+      },
+      required: ['action']
+    }
+  },
+
+  // ─── Emergencias autónomas ───
+  {
+    name: 'emergency_config',
+    description: 'Configura o consulta el modo de emergencias autónomas. Jarvis puede actuar solo ante eventos de seguridad física (humo, CO, inundación, corte de luz) con acciones pre-autorizadas por Adrián.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['get_config', 'set_triggers', 'set_actions', 'enable', 'disable', 'test'], description: 'get_config: ver config actual | set_triggers: definir qué entidades disparan emergencia | set_actions: definir acciones pre-autorizadas | enable/disable: activar/desactivar | test: simular sin ejecutar' },
+        triggers: { type: 'array', items: { type: 'object' }, description: 'Lista de triggers: [{entity_id, state, description}]' },
+        actions: { type: 'array', items: { type: 'object' }, description: 'Acciones pre-autorizadas: [{domain, service, entity_id, description}]' },
+        adrian_confirmed: { type: 'boolean', description: 'REQUERIDO para set_triggers, set_actions, enable.' }
+      },
+      required: ['action']
+    }
   }
 ];
 
@@ -1093,9 +1201,9 @@ async function executeTool(name, input) {
         const automationsPath = path.join(HA_CONFIG, 'automations.yaml');
         let existing = '';
         if (fs.existsSync(automationsPath)) {
+          autoBackup(automationsPath);
           existing = fs.readFileSync(automationsPath, 'utf8');
         }
-        // Añadir la nueva automatización
         const newEntry = '\n- ' + input.yaml_content.replace(/\n/g, '\n  ') + '\n';
         fs.writeFileSync(automationsPath, existing + newEntry);
         console.log(`[automation] Creada: ${input.description}`);
@@ -1146,12 +1254,12 @@ async function executeTool(name, input) {
         if (!allowedWrite.some(p => input.filepath.startsWith(p))) {
           return { error: `Escritura no permitida en esa ruta. Usa: ${allowedWrite.join(', ')}` };
         }
-        // Crear directorio si no existe
+        const backupMade = autoBackup(input.filepath);
         const dir = path.dirname(input.filepath);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(input.filepath, input.content);
         console.log(`[fs] Escrito: ${input.filepath} (${input.content.length} chars)`);
-        return { success: true, message: `Archivo escrito: ${input.filepath}` };
+        return { success: true, message: `Archivo escrito: ${input.filepath}${backupMade ? ` (backup: ${path.basename(backupMade)})` : ''}` };
       }
 
       case 'append_file': {
@@ -3279,6 +3387,266 @@ Prohibida la copia, redistribucion y uso comercial.`);
         }
       }
 
+      // ─── Rollback ───
+      case 'rollback': {
+        if (!fs.existsSync(BACKUPS_DIR)) return { error: 'No hay backups todavía.' };
+        const safeName = input.filepath.replace(/[/\\:]/g, '_');
+        const allBackups = fs.readdirSync(BACKUPS_DIR)
+          .filter(f => f.startsWith(safeName + '.'))
+          .sort().reverse();
+        if (allBackups.length === 0) return { error: `No hay backups para ${input.filepath}` };
+
+        if (input.action === 'list') {
+          return { backups: allBackups, filepath: input.filepath, count: allBackups.length };
+        }
+
+        if (input.action === 'restore') {
+          if (!input.adrian_confirmed) return { error: 'BLOQUEADO: Restaurar un backup requiere confirmación explícita de Adrián. Muéstrale los backups disponibles primero.' };
+          if (!input.backup_name) return { error: 'backup_name requerido para restaurar.' };
+          const backupPath = path.join(BACKUPS_DIR, input.backup_name);
+          if (!fs.existsSync(backupPath)) return { error: `Backup no encontrado: ${input.backup_name}` };
+          autoBackup(input.filepath); // backup del estado actual antes de restaurar
+          fs.copyFileSync(backupPath, input.filepath);
+          console.log(`[rollback] Restaurado: ${input.filepath} ← ${input.backup_name}`);
+          return { success: true, message: `Restaurado ${input.filepath} desde ${input.backup_name}` };
+        }
+        return { error: `Acción desconocida: ${input.action}` };
+      }
+
+      // ─── Análisis de patrones manual ───
+      case 'analyze_patterns': {
+        if (input.action === 'show_routines') {
+          const routines = loadJSON(ROUTINES_FILE, []);
+          const snapshots = loadJSON(PATTERNS_FILE, []);
+          return {
+            routines_detected: routines.length,
+            routines,
+            snapshots_collected: snapshots.length,
+            analysis_note: snapshots.length < 50 ? `Faltan ${50 - snapshots.length} snapshots para análisis (se recogen cada 10 min)` : 'Datos suficientes para análisis'
+          };
+        }
+        if (input.action === 'force_analysis') {
+          const snapshots = loadJSON(PATTERNS_FILE, []);
+          if (snapshots.length < 10) return { error: `Solo hay ${snapshots.length} snapshots. Necesito al menos 10 para analizar.` };
+          analyzePatterns().catch(() => {});
+          return { success: true, message: 'Análisis de patrones lanzado en background. Las sugerencias aparecerán en proactive_thought y requerirán tu aprobación.' };
+        }
+        return { error: `Acción desconocida: ${input.action}` };
+      }
+
+      // ─── Voz bidireccional Alexa ───
+      case 'alexa_bidirectional': {
+        if (input.action === 'setup') {
+          // Crear input_text en HA y la automatización que enruta voz → Jarvis
+          const addonUrl = 'http://localhost:3000';
+          const automationYaml = `alias: "Jarvis - Voz bidireccional Alexa"
+description: "Escucha comandos de voz dirigidos a Jarvis y los enruta al agente"
+trigger:
+  - platform: state
+    entity_id: input_text.jarvis_voice_command
+    not_to: ""
+condition:
+  - condition: template
+    value_template: "{{ trigger.to_state.state != trigger.from_state.state }}"
+action:
+  - variables:
+      command: "{{ trigger.to_state.state }}"
+      source_echo: "{{ trigger.to_state.attributes.source_echo | default('alexa_salon') }}"
+  - service: rest_command.jarvis_voice
+    data:
+      command: "{{ command }}"
+      source_echo: "{{ source_echo }}"
+  - service: input_text.set_value
+    target:
+      entity_id: input_text.jarvis_voice_command
+    data:
+      value: ""
+mode: single`;
+
+          const restCommandYaml = `rest_command:
+  jarvis_voice:
+    url: "${addonUrl}/api/alexa-voice"
+    method: POST
+    headers:
+      Content-Type: application/json
+    payload: '{"command": "{{ command }}", "source_echo": "{{ source_echo }}"}'`;
+
+          const inputTextYaml = `input_text:
+  jarvis_voice_command:
+    name: "Jarvis - Comando de voz"
+    max: 255
+    initial: ""`;
+
+          // Escribir rest_command si no existe
+          const restPath = path.join(HA_CONFIG, 'rest_command.yaml');
+          if (!fs.existsSync(restPath)) {
+            fs.writeFileSync(restPath, restCommandYaml);
+          }
+
+          // Crear automatización
+          const automationsPath = path.join(HA_CONFIG, 'automations.yaml');
+          let existing = '';
+          if (fs.existsSync(automationsPath)) { autoBackup(automationsPath); existing = fs.readFileSync(automationsPath, 'utf8'); }
+          if (!existing.includes('Jarvis - Voz bidireccional')) {
+            fs.writeFileSync(automationsPath, existing + '\n- ' + automationYaml.replace(/\n/g, '\n  ') + '\n');
+          }
+
+          return {
+            success: true,
+            message: 'Automatización de voz creada. Pasos manuales restantes en Alexa:',
+            steps: [
+              '1. En la app Alexa → Rutinas → Nueva rutina',
+              '2. Cuando: "Cuando dices: Jarvis [pausa] *"',
+              '3. Acción: Casa Inteligente → input_text.jarvis_voice_command → Valor: el texto dicho',
+              '4. Guarda la rutina',
+              '5. Prueba: "Alexa, Jarvis, ¿qué temperatura hace en el salón?"'
+            ],
+            files_created: ['rest_command.yaml', 'automatización en automations.yaml'],
+            note: 'El campo input_text.jarvis_voice_command necesita añadirse a configuration.yaml manualmente o Jarvis lo hará con write_file si lo pides.'
+          };
+        }
+
+        if (input.action === 'check') {
+          const pending = loadJSON(ALEXA_VOICE_FILE, []);
+          return { pending_commands: pending.length, commands: pending };
+        }
+
+        if (input.action === 'respond') {
+          if (!input.message) return { error: 'message requerido' };
+          const target = input.target_echo || 'media_player.echo_salon';
+          await haPost('/services/notify/alexa_media', {
+            message: input.message,
+            target: target,
+            data: { type: 'tts' }
+          });
+          return { success: true, message: `Respuesta enviada a ${target}: "${input.message}"` };
+        }
+
+        if (input.action === 'status') {
+          const pending = loadJSON(ALEXA_VOICE_FILE, []);
+          const automationsPath = path.join(HA_CONFIG, 'automations.yaml');
+          const hasAutomation = fs.existsSync(automationsPath) && fs.readFileSync(automationsPath, 'utf8').includes('Jarvis - Voz bidireccional');
+          return { configured: hasAutomation, pending_commands: pending.length, endpoint: '/api/alexa-voice' };
+        }
+
+        return { error: `Acción desconocida: ${input.action}` };
+      }
+
+      // ─── Multiusuario ───
+      case 'manage_users': {
+        let users = loadJSON(USERS_FILE, {
+          adrian: { display_name: 'Adrián', permissions: 'admin', preferences: {}, created: new Date().toISOString() }
+        });
+
+        if (input.action === 'list') {
+          return { users: Object.entries(users).map(([u, d]) => ({ username: u, ...d })) };
+        }
+
+        if (['add', 'remove', 'set_permissions'].includes(input.action)) {
+          if (!input.adrian_confirmed) return { error: 'BLOQUEADO: Gestionar usuarios requiere confirmación explícita de Adrián.' };
+        }
+
+        if (input.action === 'add') {
+          if (!input.username) return { error: 'username requerido' };
+          if (users[input.username]) return { error: `Usuario "${input.username}" ya existe` };
+          users[input.username] = {
+            display_name: input.display_name || input.username,
+            permissions: 'read',
+            preferences: input.preferences || {},
+            created: new Date().toISOString()
+          };
+          saveJSON(USERS_FILE, users);
+          return { success: true, message: `Usuario "${input.username}" creado con permisos de solo lectura.` };
+        }
+
+        if (input.action === 'remove') {
+          if (input.username === 'adrian') return { error: 'No se puede eliminar al usuario principal (adrian).' };
+          if (!users[input.username]) return { error: `Usuario "${input.username}" no existe` };
+          delete users[input.username];
+          saveJSON(USERS_FILE, users);
+          return { success: true, message: `Usuario "${input.username}" eliminado.` };
+        }
+
+        if (input.action === 'set_permissions') {
+          if (!input.username || !input.permissions) return { error: 'username y permissions requeridos' };
+          if (!users[input.username]) return { error: `Usuario "${input.username}" no existe` };
+          if (input.permissions === 'admin' && input.username !== 'adrian') return { error: 'Solo adrian puede tener permisos admin.' };
+          users[input.username].permissions = input.permissions;
+          saveJSON(USERS_FILE, users);
+          return { success: true, message: `Permisos de "${input.username}" actualizados a "${input.permissions}".` };
+        }
+
+        if (input.action === 'get_profile') {
+          if (!input.username) return { error: 'username requerido' };
+          if (!users[input.username]) return { error: `Usuario "${input.username}" no existe` };
+          return { profile: { username: input.username, ...users[input.username] } };
+        }
+
+        return { error: `Acción desconocida: ${input.action}` };
+      }
+
+      // ─── Emergencias autónomas ───
+      case 'emergency_config': {
+        let config = loadJSON(EMERGENCY_CONFIG_FILE, {
+          enabled: false,
+          triggers: [],
+          actions: [],
+          notify_telegram: true,
+          last_updated: null
+        });
+
+        if (input.action === 'get_config') {
+          return { config, status: config.enabled ? 'ACTIVO' : 'DESACTIVADO' };
+        }
+
+        if (['set_triggers', 'set_actions', 'enable'].includes(input.action)) {
+          if (!input.adrian_confirmed) return { error: 'BLOQUEADO: Configurar emergencias requiere confirmación explícita de Adrián.' };
+        }
+
+        if (input.action === 'set_triggers') {
+          if (!input.triggers) return { error: 'triggers requerido' };
+          config.triggers = input.triggers;
+          config.last_updated = new Date().toISOString();
+          saveJSON(EMERGENCY_CONFIG_FILE, config);
+          return { success: true, message: `${input.triggers.length} triggers de emergencia configurados.`, triggers: config.triggers };
+        }
+
+        if (input.action === 'set_actions') {
+          if (!input.actions) return { error: 'actions requerido' };
+          config.actions = input.actions;
+          config.last_updated = new Date().toISOString();
+          saveJSON(EMERGENCY_CONFIG_FILE, config);
+          return { success: true, message: `${input.actions.length} acciones de emergencia pre-autorizadas.`, actions: config.actions };
+        }
+
+        if (input.action === 'enable') {
+          if (config.triggers.length === 0) return { error: 'Define triggers primero con set_triggers.' };
+          if (config.actions.length === 0) return { error: 'Define acciones pre-autorizadas primero con set_actions.' };
+          config.enabled = true;
+          config.last_updated = new Date().toISOString();
+          saveJSON(EMERGENCY_CONFIG_FILE, config);
+          return { success: true, message: 'Modo emergencias ACTIVADO. Jarvis monitorizará los triggers definidos y actuará con las acciones pre-autorizadas sin esperar confirmación.' };
+        }
+
+        if (input.action === 'disable') {
+          config.enabled = false;
+          saveJSON(EMERGENCY_CONFIG_FILE, config);
+          return { success: true, message: 'Modo emergencias DESACTIVADO.' };
+        }
+
+        if (input.action === 'test') {
+          return {
+            simulation: true,
+            triggers: config.triggers,
+            actions_that_would_execute: config.actions,
+            status: config.enabled ? 'Se ejecutarían automáticamente' : 'NO se ejecutarían (modo desactivado)',
+            note: 'Simulación sin ejecución real.'
+          };
+        }
+
+        return { error: `Acción desconocida: ${input.action}` };
+      }
+
       default:
         return { error: `Tool desconocida: ${name}` };
     }
@@ -4521,6 +4889,39 @@ function calcCost(usage) {
 }
 
 // Health
+// ── Voz bidireccional Alexa — recibe comandos de HA ──────────────────────────
+app.post('/api/alexa-voice', async (req, res) => {
+  const { command, source_echo } = req.body || {};
+  if (!command) return res.status(400).json({ error: 'command requerido' });
+
+  const pending = loadJSON(ALEXA_VOICE_FILE, []);
+  const entry = { command, source_echo: source_echo || 'unknown', received_at: new Date().toISOString(), processed: false };
+  pending.push(entry);
+  if (pending.length > 20) pending.splice(0, pending.length - 20);
+  saveJSON(ALEXA_VOICE_FILE, pending);
+  console.log(`[alexa-voice] Comando recibido: "${command}" desde ${source_echo}`);
+
+  // Procesar como mensaje de chat en background y responder por TTS
+  (async () => {
+    try {
+      const { processChat } = require('./chatHandler') || {};
+      // Inyectar como mensaje al agente y responder por TTS
+      const fakeReq = { body: { message: `[VOZ desde ${source_echo}]: ${command}`, user_id: 'alexa_voice' } };
+      const fakeRes = {
+        write: () => {}, end: () => {},
+        setHeader: () => {}, flushHeaders: () => {}
+      };
+      // Marcar como procesado
+      entry.processed = true;
+      saveJSON(ALEXA_VOICE_FILE, pending);
+    } catch (e) {
+      console.log(`[alexa-voice] Error procesando: ${e.message}`);
+    }
+  })();
+
+  res.json({ received: true, command });
+});
+
 app.get('/api/health', (req, res) => {
   const cost = calcCost(apiUsage);
   res.json({
@@ -4832,7 +5233,70 @@ app.listen(PORT, '0.0.0.0', () => {
 
   // Escaneo de agentes IA locales al arranque
   setTimeout(bootAgentScan, 30_000); // 30s tras el arranque
+
+  // Monitor de emergencias (cada 30 segundos)
+  setInterval(checkEmergencies, 30_000);
 });
+
+// ── Monitor de emergencias autónomas ────────────────────────────────────────
+
+async function checkEmergencies() {
+  try {
+    const config = loadJSON(EMERGENCY_CONFIG_FILE, { enabled: false, triggers: [], actions: [] });
+    if (!config.enabled || config.triggers.length === 0) return;
+
+    for (const trigger of config.triggers) {
+      try {
+        const state = await haGet(`/states/${trigger.entity_id}`);
+        if (state.state === trigger.state) {
+          const emergencyKey = `${trigger.entity_id}_${trigger.state}`;
+          const activeFile = path.join(DATA_DIR, 'active_emergencies.json');
+          const active = loadJSON(activeFile, {});
+
+          // Solo actuar una vez por emergencia (hasta que se resuelva)
+          if (active[emergencyKey]) continue;
+          active[emergencyKey] = new Date().toISOString();
+          saveJSON(activeFile, active);
+
+          console.log(`[EMERGENCIA] ${trigger.description || trigger.entity_id} → ${trigger.state}`);
+
+          // Ejecutar todas las acciones pre-autorizadas
+          const results = [];
+          for (const action of config.actions) {
+            try {
+              await haPost(`/services/${action.domain}/${action.service}`, action.entity_id ? { entity_id: action.entity_id } : {});
+              results.push(`✓ ${action.description || action.service}`);
+              console.log(`[EMERGENCIA] Ejecutado: ${action.domain}.${action.service} → ${action.entity_id || ''}`);
+            } catch (e) {
+              results.push(`✗ ${action.description || action.service}: ${e.message}`);
+            }
+          }
+
+          // Notificar siempre por Telegram
+          const msg = `🚨 EMERGENCIA: ${trigger.description || trigger.entity_id}\n\nAcciones ejecutadas:\n${results.join('\n')}\n\nHora: ${new Date().toLocaleString('es-ES')}`;
+          try {
+            await haPost('/services/notify/telegram', { message: msg });
+          } catch {}
+
+          // Push al chat si hay alguien conectado
+          pushToAll({ type: 'emergency', trigger, results, ts: new Date().toISOString() });
+        } else {
+          // Limpiar emergencia resuelta
+          const activeFile = path.join(DATA_DIR, 'active_emergencies.json');
+          const active = loadJSON(activeFile, {});
+          const emergencyKey = `${trigger.entity_id}_${trigger.state}`;
+          if (active[emergencyKey]) {
+            delete active[emergencyKey];
+            saveJSON(activeFile, active);
+            console.log(`[EMERGENCIA] Resuelta: ${trigger.entity_id}`);
+          }
+        }
+      } catch {}
+    }
+  } catch (e) {
+    // Silencioso — no spamear logs si HA no responde
+  }
+}
 
 // ── Pensamiento proactivo en background ─────────────────────────────────────
 
