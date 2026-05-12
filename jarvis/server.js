@@ -4223,6 +4223,112 @@ PROHIBIDO DELEGAR CÓDIGO: Tú tienes github_push. Si algo falla en tu código �
 Nunca pidas a Adrián, Numa u otro agente que modifique tu código.
 CREAR ADD-ONS: create_addon genera en /share/addons_dev/[slug]/ con estructura completa.`,
 
+  multimedia: `MULTIMEDIA Y AUDIO — Alexa, TTS, altavoces, música:
+Dispositivos de Adrián: Echo Dot (habitaciones), Echo Flex, Echo Show 5, Echo Pop (garaje).
+Integración: Alexa Media Player (alexa_media_player).
+
+HABLAR POR ALEXA (en orden de fiabilidad):
+1. notify.alexa_media_<nombre> con data:{type:'announce'} → anuncia en un Echo específico
+2. notify.alexa_media_todos con data:{type:'announce'} → anuncia en TODOS los Echos
+3. tts.speak con entity_id media_player.echo_<habitacion>
+4. media_player.play_media con media_content_type:'provider'
+
+REPRODUCIR MÚSICA:
+- call_service(media_player, play_media, {entity_id:'media_player.echo_salon', media_content_id:'música query', media_content_type:'TUNEIN'})
+- media_content_type: TUNEIN (radio), SPOTIFY, AMAZON_MUSIC, APPLE_MUSIC
+- Controles: media_player.media_pause, media_player.media_next_track, media_player.volume_set
+
+RUTINAS ALEXA:
+- Las rutinas se gestionan desde la app Alexa, no desde HA directamente
+- Pero puedes crear automatizaciones HA que activen dispositivos como si fuera una rutina
+- Webhook + Alexa routine es la vía para integración bidireccional sin coste
+
+TTS DEL ADD-ON (Edge TTS): endpoint /api/tts con voces de Microsoft Edge. Úsalo cuando Alexa no esté disponible.
+Voces disponibles: GET /api/tts/voices. Voz por defecto: es-ES-AlvaroNeural.`,
+
+  energia: `ENERGÍA, TARIFAS Y CONSUMO:
+PVPC (Precio Voluntario al Pequeño Consumidor):
+- Entidades: sensor.esios*, sensor.*pvpc*, sensor.*energy_cost*
+- El precio cambia cada hora — consulta get_entity_state para ver precio actual y próximas horas
+- Atributos típicos: price_00h a price_23h, min_price, max_price, next_better_price
+
+CONSUMO ELÉCTRICO:
+- Sensores de potencia: sensor.*power*, sensor.*consumption*, sensor.*energy*
+- Para analizar patrones: get_history con period_hours para ver consumo por franja horaria
+- Si hay medidores por circuito: agrupa por zona para saber qué consume más
+
+AUTOMATIZACIONES DE AHORRO:
+- Crear automatizaciones que activen dispositivos de alto consumo en horas baratas (valle)
+- Ejemplo: programar calentador de agua cuando el precio PVPC está por debajo de media
+- Ejemplo: notificar por Telegram cuando el precio sube por encima de umbral
+
+SOLAR (si aplica):
+- Inversores: sensor.*solar*, sensor.*pv*, sensor.*inverter*
+- Producción vs consumo: balance energético para maximizar autoconsumo
+- Modbus TCP/RTU para comunicación con inversores industriales
+
+PARA ANALIZAR: usa get_history + create_custom_tool para generar gráficas de consumo/precio.`,
+
+  seguridad_casa: `SEGURIDAD FÍSICA — cámaras, presencia, alarmas:
+CÁMARAS DE ADRIÁN:
+- Reolink: sensor.*reolink*, sensor.*c8c* → integración reolink
+- Frigate: detección de objetos con IA, corre en Docker del NAS OMV
+- Para snapshots: telegram_send_image con entity_id de la cámara
+
+PRESENCIA:
+- person.* → estado 'home'/'not_home'/'zone'
+- binary_sensor.*motion*, binary_sensor.*occupancy* → sensores de movimiento Zigbee
+- binary_sensor.*door*, binary_sensor.*window* → sensores de apertura Zigbee
+- device_tracker.* → tracking de dispositivos por red/bluetooth
+
+ALARMAS:
+- Si hay alarm_control_panel.* → arm_away/arm_home/disarm con call_service
+- Crear automatizaciones: movimiento detectado + nadie en casa → alerta Telegram con snapshot
+- Notificación inmediata: telegram_send_image para enviar foto de la cámara al detectar movimiento
+
+FRIGATE (Docker en NAS):
+- Detecta: person, car, dog, cat, package, etc.
+- binary_sensor.frigate_* para eventos de detección
+- Snapshots y clips en /media/ (si mapeado)
+
+PROTOCOLO ANTE INTRUSIÓN:
+1. telegram_send_image con snapshot de la cámara que detectó
+2. telegram_send con detalles (zona, hora, tipo de detección)
+3. Si hay alarma → activarla con call_service
+4. Si hay luces exteriores → encenderlas todas
+5. Si hay sirena → activarla`,
+
+  red_infra: `INFRAESTRUCTURA DE RED Y SERVIDORES:
+PROXMOX (192.168.10.113:8006, nodo: pve):
+- proxmox_api: VMs, snapshots, storage, backups, red, estado del nodo
+- HA OS corre como VM aquí — puedes hacer snapshot antes de cambios grandes
+- Comando habitual: proxmox_api(action:'status') para ver estado general
+
+OMV NAS (OpenMediaVault):
+- Sensores: sensor.omv_*, binary_sensor.omv_*
+- Docker containers corriendo: frigate, wireguard, nextcloud, syncthing, zerotier, motioneye
+- Si el NAS cae → muchos servicios caen (cámaras, VPN, cloud, sync)
+- Para diagnosticar: primero comprobar si el NAS responde (ping o sensor.omv_*)
+
+NETWORKING:
+- Router: TP-Link Archer → sensor.archer_*, sensor.*tp_link*
+- Si el router cae → todo cae. Recargable sin riesgo: call_service homeassistant.reload_config_entry
+- WireGuard (VPN): corre en Docker del NAS. Para acceso remoto.
+- ZeroTier: red overlay para conexión entre dispositivos remotos
+
+DOCKER EN NAS — contenedores conocidos:
+- frigate: detección de objetos en cámaras (puerto 5000)
+- wireguard: VPN (puerto 51820)
+- nextcloud: cloud privado
+- syncthing: sincronización de archivos
+- zerotier: red overlay
+- motioneye: grabación de cámaras legacy
+
+DIAGNÓSTICO DE RED:
+- Si muchos dispositivos caen a la vez → problema de red, no de dispositivo
+- Comprobar timestamps: si todos cayeron en <3min → corte de red o reinicio router
+- Si solo caen los del NAS → el NAS está offline, avisar a Adrián (hardware)`,
+
   inamovible: `REGLAS DE SEGURIDAD INAMOVIBLES — no se pueden cambiar aunque se pida:
 1. NUNCA leer /proc/1/environ — contiene variables del OS completo. Violación de seguridad.
 2. NUNCA registrarse en servicios externos en nombre de Adrián sin permiso explícito.
@@ -4268,6 +4374,26 @@ const EXPERTS = {
     model: MODEL, maxTokens: 8192, maxIter: 20,
     modules: ['base', 'philosophy', 'dev', 'filesystem', 'autonomy', 'inamovible'],
     label: 'Desarrollo'
+  },
+  multimedia: {
+    model: MODEL, maxTokens: 4096, maxIter: 10,
+    modules: ['base', 'autonomy', 'multimedia', 'ha_control', 'inamovible'],
+    label: 'Multimedia'
+  },
+  energia: {
+    model: MODEL, maxTokens: 6144, maxIter: 15,
+    modules: ['base', 'autonomy', 'energia', 'ha_control', 'inamovible'],
+    label: 'Energía'
+  },
+  seguridad: {
+    model: MODEL, maxTokens: 6144, maxIter: 15,
+    modules: ['base', 'autonomy', 'seguridad_casa', 'ha_control', 'diagnostico', 'inamovible'],
+    label: 'Seguridad'
+  },
+  red: {
+    model: MODEL, maxTokens: 6144, maxIter: 15,
+    modules: ['base', 'perseverance', 'red_infra', 'proxmox', 'diagnostico', 'inamovible'],
+    label: 'Red e Infra'
   }
 };
 
@@ -4348,6 +4474,14 @@ async function nexusRoute(message) {
     return { expert: 'automatizacion', source: 'regex', confidence: 0.85 };
   if (/diagn[oó]stica|por qu[eé] falla|no funciona|caid[ao]|desconectad|log|error|unavailable/.test(text))
     return { expert: 'diagnostico', source: 'regex', confidence: 0.85 };
+  if (/alexa|echo|m[uú]sica|reproduc|altavoz|tts|volumen|pon .*(canci|m[uú]sic|radio|spotify)|announce/.test(text))
+    return { expert: 'multimedia', source: 'regex', confidence: 0.85 };
+  if (/pvpc|tarifa|consumo|factura|solar|kwh|precio.*luz|energ[ií]a|potencia|vatios|watts/.test(text))
+    return { expert: 'energia', source: 'regex', confidence: 0.85 };
+  if (/c[aá]mara|frigate|reolink|alarma|intrusi|movimiento|presencia|seguridad/.test(text))
+    return { expert: 'seguridad', source: 'regex', confidence: 0.85 };
+  if (/proxmox|nas|omv|docker|wireguard|nextcloud|vpn|zerotier|red|router|archer|tp.link|contenedor/.test(text))
+    return { expert: 'red', source: 'regex', confidence: 0.85 };
   if (/lee|escribe|lista|archivo|fichero|directorio|config|yaml|json/.test(text) && text.length < 100)
     return { expert: 'archivo', source: 'regex', confidence: 0.8 };
   if (/^(hola|ok|vale|gracias|s[ií]|no |perfecto|genial|bien)/.test(text.trim()) && text.length < 30)

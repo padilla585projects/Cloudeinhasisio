@@ -3,6 +3,28 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.20.2 (2026-05-12) — NEXUS: 4 expertos especializados + módulos temáticos
+────────────────────────────────────────────────────────────────────────────────
+
+4 MÓDULOS NUEVOS (contenido real de la instalación de Adrián):
+  - multimedia: Alexa/Echo (5 dispositivos), TTS Edge, notify, play_media, Spotify/TuneIn, rutinas
+  - energia: PVPC tarifas horarias, consumo eléctrico, patrones, automatizaciones ahorro, solar/Modbus
+  - seguridad_casa: Reolink/Frigate, presencia, sensores puerta/movimiento Zigbee, protocolo intrusión
+  - red_infra: Proxmox, OMV NAS, Docker containers (frigate/wireguard/nextcloud/syncthing/zerotier), TP-Link
+
+4 EXPERTOS NUEVOS (total: 11 base):
+  - multimedia (MODEL, 10 iters): módulos [base, autonomy, multimedia, ha_control]
+  - energia (MODEL, 15 iters): módulos [base, autonomy, energia, ha_control]
+  - seguridad (MODEL, 15 iters): módulos [base, autonomy, seguridad_casa, ha_control, diagnostico]
+  - red (MODEL, 15 iters): módulos [base, perseverance, red_infra, proxmox, diagnostico]
+
+ROUTER: 4 regexes nuevas para routing instantáneo (0 tokens):
+  - multimedia: alexa|echo|música|reproduc|altavoz|tts|volumen|spotify|announce
+  - energia: pvpc|tarifa|consumo|factura|solar|kwh|precio luz|energía|potencia
+  - seguridad: cámara|frigate|reolink|alarma|intrusión|movimiento|presencia|seguridad
+  - red: proxmox|nas|omv|docker|wireguard|nextcloud|vpn|zerotier|router|archer
+
+────────────────────────────────────────────────────────────────────────────────
 v3.20.1 (2026-05-12) — NEXUS: expertos dinámicos auto-creados por Jarvis
 ────────────────────────────────────────────────────────────────────────────────
 
