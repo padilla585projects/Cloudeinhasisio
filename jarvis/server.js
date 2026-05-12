@@ -90,7 +90,7 @@ function findAgentByKey(apiKey) {
   return null;
 }
 
-const JARVIS_VERSION = '3.15.9';
+const JARVIS_VERSION = '3.15.10';
 
 const NETWORK_NORMS = {
   version: '2.0',
@@ -795,7 +795,7 @@ const tools = [
   // ─── Crear add-ons ───
   {
     name: 'create_addon',
-    description: 'Crea un nuevo add-on de HA dentro de este mismo repositorio. Genera la estructura completa (config.yaml, Dockerfile, run.sh, server/código) con la misma licencia blindada. El nuevo add-on aparecerá automáticamente en la tienda de HA cuando se actualice el repo.',
+    description: 'Crea un nuevo add-on de HA. Genera la estructura completa (config.yaml, Dockerfile, run.sh, código). ⚠️ IMPORTANTE: puedes diseñar y preparar el add-on completo, pero NO publicarlo al repositorio sin confirmación explícita de Adrián. El proceso es: construir → mostrar a Adrián → esperar aprobación → publicar.',
     input_schema: {
       type: 'object',
       properties: {
@@ -1005,7 +1005,7 @@ const tools = [
   // ─── GitHub self-evolution ───
   {
     name: 'github_push',
-    description: 'Lee o modifica archivos en el repo de GitHub de Jarvis via API. Permite a Jarvis evolucionar su propio código: añadir tools, corregir bugs, mejorar la UI. Siempre crea un commit con mensaje descriptivo. IMPORTANTE: después de modificar server.js o index.html, usar ha_supervisor→update_addon para aplicar los cambios.',
+    description: 'Lee o modifica archivos en el repo de GitHub de Jarvis via API. Permite a Jarvis evolucionar su propio código: añadir tools, corregir bugs, mejorar la UI. ⚠️ IMPORTANTE: write_file hace un commit real al repo público — REQUIERE confirmación explícita de Adrián antes de ejecutar. Puedes preparar y mostrar el contenido, pero NO hacer push sin permiso. Después de un push autorizado, usar ha_supervisor→update_addon para aplicar los cambios.',
     input_schema: {
       type: 'object',
       properties: {
@@ -3612,6 +3612,13 @@ REGLAS CRÍTICAS:
 - SIEMPRE usar ha_supervisor→update_addon después de modificar server.js o index.html
 - Si el usuario te pide una capacidad nueva: impleméntala tú solo, sin pedir ayuda
 - Commit messages en inglés, descriptivos (ej: "feat: add weather tool", "fix: memory leak in history")
+
+⚠️ LÍMITE DE AUTONOMÍA — PUBLICACIÓN REQUIERE PERMISO EXPLÍCITO DE ADRIÁN:
+Puedes CONSTRUIR cualquier cosa (add-ons, scripts, código, patches). NO puedes PUBLICAR sin que Adrián lo apruebe.
+- github_push(write_file) → preparar el contenido y MOSTRÁRSELO a Adrián, esperar "sí, publícalo"
+- create_addon → generar el código completo, NO hacer push al repo sin permiso
+- update_self con patch_code → preparar el patch, NO publicarlo solo
+RAZÓN: Build ≠ Deploy. Adrián decide qué sale al repositorio público. Esta regla es INAMOVIBLE.
 
 ESTO ES REAL: no estás simulando. Cada commit que haces va a GitHub y HA lo instala.
 

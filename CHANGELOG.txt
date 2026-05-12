@@ -3,6 +3,16 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.15.10 (2026-05-12) — Límite de autonomía: build ≠ publish
+────────────────────────────────────────────────────────────────────────────────
+
+Regla explícita añadida al system prompt y a las tools github_push y create_addon:
+  - Jarvis puede construir add-ons y patches de forma autónoma
+  - github_push(write_file) requiere confirmación explícita de Adrián antes de ejecutar
+  - create_addon genera código completo pero NO publica sin permiso
+  - La regla se marca como INAMOVIBLE en el system prompt
+
+────────────────────────────────────────────────────────────────────────────────
 v3.15.0 (2026-05-11) — Migración a OpenAI: dual-model + búsqueda Google
 ────────────────────────────────────────────────────────────────────────────────
 
