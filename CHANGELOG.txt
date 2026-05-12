@@ -3,6 +3,15 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.15.11 (2026-05-12) — Restricciones de seguridad: /proc/1/environ y registro externo
+────────────────────────────────────────────────────────────────────────────────
+
+Dos prohibiciones explícitas añadidas al protocolo de búsqueda de credenciales:
+  - PROHIBIDO leer /proc/1/environ (variables del proceso raíz del sistema)
+  - PROHIBIDO registrarse en servicios externos en nombre de Adrián sin permiso
+  Ambas marcadas como INAMOVIBLE en el system prompt.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.15.10 (2026-05-12) — Límite de autonomía: build ≠ publish
 ────────────────────────────────────────────────────────────────────────────────
 

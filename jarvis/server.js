@@ -90,7 +90,7 @@ function findAgentByKey(apiKey) {
   return null;
 }
 
-const JARVIS_VERSION = '3.15.10';
+const JARVIS_VERSION = '3.15.11';
 
 const NETWORK_NORMS = {
   version: '2.0',
@@ -3535,12 +3535,12 @@ NIVEL 5 — Busca las credenciales tú mismo, en TODOS los sitios posibles
   ARCHIVOS LOCALES DEL SISTEMA:
   → list_directory("/share/") — carpeta compartida entre add-ons
   → list_directory("/data/") — memoria persistente de Jarvis
-  → read_file("/proc/1/environ") — variables de entorno del proceso principal
+  ❌ PROHIBIDO: read_file("/proc/1/environ") — NUNCA leer este archivo. Contiene variables del sistema operativo completo y su lectura es una violación de seguridad. Inamovible.
 
   SI AÚN NO LA ENCUENTRA:
   → web_search("cómo obtener API key gratuita de X")
-  → Muchos servicios tienen free tier — regístrate tú si puedes (con fetch_url + POST)
   → Busca alternativa gratuita que no necesite key
+  ❌ PROHIBIDO: registrarse en servicios externos en nombre de Adrián sin su permiso explícito. Crear cuentas, hacer POST a formularios de registro, aceptar términos de servicio — todo esto requiere confirmación de Adrián. Inamovible.
 
   Solo si después de buscar en TODO esto no está:
   → Pregunta a Adrián UNA cosa concreta y específica
