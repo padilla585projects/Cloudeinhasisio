@@ -541,6 +541,50 @@
   .bubble.markdown a:hover { text-decoration: underline; }
   .bubble.markdown strong { color: var(--text); font-weight: 600; }
   .bubble.markdown hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
+
+  /* ── MODO VOZ ─────────────────────────────────────────────────── */
+  #voice-mode-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(8, 8, 18, 0.97);
+    z-index: 2000; flex-direction: column;
+    align-items: center; justify-content: center; gap: 28px;
+    backdrop-filter: blur(4px);
+  }
+  #vm-head-wrap {
+    width: 220px; height: 220px; border-radius: 50%; overflow: hidden;
+    border: 2px solid rgba(0, 212, 255, 0.25);
+    box-shadow: 0 0 60px rgba(0, 212, 255, 0.15), 0 0 120px rgba(0, 212, 255, 0.06);
+  }
+  #vm-head-wrap canvas { width: 100% !important; height: 100% !important; }
+  #vm-status {
+    font-family: 'DM Mono', monospace; font-size: 12px; letter-spacing: 0.15em;
+    text-transform: uppercase; color: var(--accent); opacity: 0.8;
+  }
+  #vm-transcript {
+    font-size: 20px; color: rgba(255,255,255,0.65); max-width: 520px;
+    text-align: center; min-height: 64px; line-height: 1.5; padding: 0 24px;
+    font-style: italic;
+  }
+  #vm-controls { display: flex; gap: 14px; align-items: center; }
+  #vm-mic-btn {
+    background: rgba(0,212,255,0.08); border: 1px solid rgba(0,212,255,0.4);
+    color: #00d4ff; border-radius: 50px; padding: 11px 28px; font-size: 14px;
+    cursor: pointer; transition: all 0.3s; font-family: 'DM Mono', monospace;
+  }
+  #vm-mic-btn.listening {
+    background: rgba(248,113,113,0.12); border-color: rgba(248,113,113,0.6);
+    color: var(--error); animation: vmPulse 1.4s ease-in-out infinite;
+  }
+  #vm-exit-btn {
+    background: transparent; border: 1px solid var(--border); color: var(--text2);
+    border-radius: 50px; padding: 11px 22px; font-size: 13px; cursor: pointer;
+    transition: all 0.2s; font-family: 'DM Mono', monospace;
+  }
+  #vm-exit-btn:hover { border-color: var(--error); color: var(--error); }
+  @keyframes vmPulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(248,113,113,0.4); }
+    50% { box-shadow: 0 0 0 12px rgba(248,113,113,0); }
+  }
 </style>
 </head>
 <body>
@@ -583,8 +627,22 @@
   <button onclick="toggleStatusPanel()" title="Panel de estado de la casa" id="status-panel-btn" style="background:transparent;border:1px solid var(--border);border-radius:10px;padding:6px 10px;color:var(--text2);cursor:pointer;font-size:11px;font-family:'DM Mono',monospace;display:flex;align-items:center;gap:5px;transition:all 0.2s;flex-shrink:0;" onmouseover="this.style.borderColor='var(--success)';this.style.color='var(--success)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text2)'">
     <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
   </button>
+  <button onclick="enterVoiceMode()" title="Modo voz — habla con Jarvis sin teclado" style="background:transparent;border:1px solid var(--border);border-radius:10px;padding:6px 10px;color:var(--text2);cursor:pointer;font-size:11px;font-family:'DM Mono',monospace;display:flex;align-items:center;gap:5px;transition:all 0.2s;flex-shrink:0;" onmouseover="this.style.borderColor='#00d4ff';this.style.color='#00d4ff'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text2)'">
+    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+  </button>
   <div class="status-dot" id="status-dot" title="Conectado"></div>
 </header>
+
+<!-- Modo Voz — overlay fullscreen -->
+<div id="voice-mode-overlay">
+  <div id="vm-head-wrap"></div>
+  <div id="vm-status">Listo · Home Assistant</div>
+  <div id="vm-transcript"></div>
+  <div id="vm-controls">
+    <button id="vm-mic-btn" onclick="vmToggleMic()">🎤 Hablar</button>
+    <button id="vm-exit-btn" onclick="exitVoiceMode()">✕ Salir</button>
+  </div>
+</div>
 
 <!-- Panel de red de agentes -->
 <div id="network-panel" style="display:none;position:fixed;top:60px;right:16px;width:360px;max-height:80vh;background:var(--bg2);border:1px solid var(--border);border-radius:14px;z-index:1000;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.4);flex-direction:column;">
@@ -1168,7 +1226,7 @@
         const blob = await r.blob();
         const url = URL.createObjectURL(blob);
         currentAudio = new Audio(url);
-        currentAudio.onended = () => { URL.revokeObjectURL(url); currentAudio = null; };
+        currentAudio.onended = () => { URL.revokeObjectURL(url); currentAudio = null; if (voiceModeActive && vmAutoListen) setTimeout(vmStartListen, 700); };
         currentAudio.play();
         return;
       } catch (e) { console.warn('[tts] Edge TTS fallback:', e); }
@@ -1181,6 +1239,7 @@
     const voices = speechSynthesis.getVoices();
     const esVoice = voices.find(v => v.lang === 'es-ES') || voices.find(v => v.lang.startsWith('es'));
     if (esVoice) utt.voice = esVoice;
+    utt.onend = () => { if (voiceModeActive && vmAutoListen) setTimeout(vmStartListen, 700); };
     speechSynthesis.speak(utt);
   }
 
@@ -1230,6 +1289,10 @@
       updateMicBtn(true);
       const input = document.getElementById('input');
       input.placeholder = '🎤 Escuchando...';
+      if (voiceModeActive) {
+        const vmBtn = document.getElementById('vm-mic-btn');
+        if (vmBtn) { vmBtn.classList.add('listening'); vmBtn.textContent = '⏹ Escuchando...'; }
+      }
     };
 
     r.onresult = (e) => {
@@ -1241,6 +1304,10 @@
       }
       input.value = (final || interim).trim();
       autoResize(input);
+      if (voiceModeActive) {
+        const vmTrans = document.getElementById('vm-transcript');
+        if (vmTrans) vmTrans.textContent = (final || interim).trim();
+      }
       if (final) {
         setTimeout(() => {
           if (input.value.trim()) sendMessage();
@@ -1279,6 +1346,8 @@
     updateMicBtn(false);
     const input = document.getElementById('input');
     if (input) input.placeholder = 'Escribe o pulsa el micrófono...';
+    const vmBtn = document.getElementById('vm-mic-btn');
+    if (vmBtn) { vmBtn.classList.remove('listening'); vmBtn.textContent = '🎤 Hablar'; }
   }
 
   function updateMicBtn(listening) {
@@ -2096,53 +2165,196 @@
     Notification.requestPermission();
   }
 
-  // ── Jarvis 3D Holographic Face (Three.js) ─────────────────────────────────
+  // ── MODO VOZ ──────────────────────────────────────────────────────────────
+  let voiceModeActive = false;
+  let vmAutoListen = false;
+
+  window.enterVoiceMode = function() {
+    voiceModeActive = true;
+    vmAutoListen = true;
+    const overlay = document.getElementById('voice-mode-overlay');
+    if (overlay) overlay.style.display = 'flex';
+    if (!ttsEnabled) { ttsEnabled = true; updateTTSBtn(); }
+    if (typeof ensureVMHead === 'function') ensureVMHead();
+    const vmTrans = document.getElementById('vm-transcript');
+    if (vmTrans) vmTrans.textContent = '';
+    setTimeout(vmStartListen, 700);
+  };
+
+  window.exitVoiceMode = function() {
+    voiceModeActive = false;
+    vmAutoListen = false;
+    if (recognition) { recognition.stop(); stopListening(); }
+    const overlay = document.getElementById('voice-mode-overlay');
+    if (overlay) overlay.style.display = 'none';
+  };
+
+  function vmStartListen() {
+    if (!vmAutoListen || isListening) return;
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+    recognition = initSTT();
+    if (recognition) recognition.start();
+  }
+
+  window.vmToggleMic = function() {
+    if (isListening) {
+      vmAutoListen = false;
+      if (recognition) recognition.stop();
+      stopListening();
+    } else {
+      vmAutoListen = true;
+      vmStartListen();
+    }
+  };
+
+  // ── Jarvis 3D Holographic Head (Three.js) ─────────────────────────────────
   let jarvisState = 'idle'; // idle, thinking, speaking
 
   function setJarvisState(state) {
     jarvisState = state;
+    const labels = { idle: 'Listo · Home Assistant', thinking: 'Pensando...', speaking: 'Respondiendo...' };
     const statusText = document.getElementById('jarvis-status-text');
-    if (state === 'thinking') statusText.textContent = 'Pensando...';
-    else if (state === 'speaking') statusText.textContent = 'Respondiendo...';
-    else statusText.textContent = 'Listo · Home Assistant';
+    const vmStatus = document.getElementById('vm-status');
+    if (statusText) statusText.textContent = labels[state] || 'Listo';
+    if (vmStatus) vmStatus.textContent = labels[state] || 'Listo';
   }
 
   (function initJarvis3D() {
     if (typeof THREE === 'undefined') return;
 
-    // ─── Mini orb for header ───
-    const headerContainer = document.getElementById('jarvis-header-orb');
-    if (headerContainer) {
-      const hs = new THREE.Scene();
-      const hc = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
-      hc.position.z = 2.5;
-      const hr = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-      hr.setSize(80, 80);
-      hr.setPixelRatio(2);
-      headerContainer.appendChild(hr.domElement);
+    const VERT = `
+      varying vec3 vNormal; varying vec3 vViewDir; varying vec3 vPos;
+      void main() {
+        vNormal = normalize(normalMatrix * normal);
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vViewDir = normalize(-mv.xyz);
+        vPos = position;
+        gl_Position = projectionMatrix * mv;
+      }
+    `;
+    const FRAG = `
+      varying vec3 vNormal; varying vec3 vViewDir; varying vec3 vPos;
+      uniform float uTime; uniform vec3 uColor;
+      void main() {
+        float f = pow(1.0 - abs(dot(normalize(vNormal), normalize(vViewDir))), 1.8);
+        float scan = 0.5 + 0.5 * sin(vPos.y * 18.0 - uTime * 4.0);
+        float alpha = clamp(f * 0.75 + scan * 0.18 + 0.12, 0.0, 1.0);
+        gl_FragColor = vec4(uColor, alpha);
+      }
+    `;
 
-      const hCore = new THREE.Mesh(
-        new THREE.SphereGeometry(0.7, 24, 24),
-        new THREE.MeshBasicMaterial({ color: 0x4a90e2, wireframe: true, transparent: true, opacity: 0.7 })
-      );
-      hs.add(hCore);
-      const hGlow = new THREE.Mesh(
-        new THREE.SphereGeometry(0.5, 16, 16),
-        new THREE.MeshBasicMaterial({ color: 0x6cb4f7, transparent: true, opacity: 0.4 })
-      );
-      hs.add(hGlow);
+    function makeHead(size) {
+      const scene = new THREE.Scene();
+      const cam = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+      cam.position.z = 3.2;
+      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+      renderer.setSize(size, size);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-      (function animHeader() {
-        requestAnimationFrame(animHeader);
-        hCore.rotation.y += 0.01;
-        hCore.rotation.x += 0.005;
-        const s = jarvisState === 'thinking' ? 2.5 : jarvisState === 'speaking' ? 1.8 : 1;
-        hCore.rotation.y += 0.005 * s;
-        hGlow.material.opacity = 0.3 + Math.sin(Date.now() * 0.003 * s) * 0.2;
-        hr.render(hs, hc);
-      })();
+      const mat = new THREE.ShaderMaterial({
+        vertexShader: VERT, fragmentShader: FRAG,
+        uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color(0x00d4ff) } },
+        transparent: true, depthWrite: false, side: THREE.FrontSide
+      });
+
+      const group = new THREE.Group();
+
+      // Skull
+      const skullGeo = new THREE.SphereGeometry(0.55, 20, 16);
+      skullGeo.applyMatrix4(new THREE.Matrix4().makeScale(0.9, 1.05, 0.85));
+      group.add(new THREE.Mesh(skullGeo, mat));
+
+      // Jaw
+      const jawGeo = new THREE.SphereGeometry(0.38, 16, 12);
+      jawGeo.applyMatrix4(new THREE.Matrix4().makeScale(0.85, 0.72, 0.82));
+      const jaw = new THREE.Mesh(jawGeo, mat);
+      jaw.position.y = -0.32;
+      group.add(jaw);
+
+      // Wireframe edges
+      const wGeo = new THREE.SphereGeometry(0.57, 10, 7);
+      wGeo.applyMatrix4(new THREE.Matrix4().makeScale(0.9, 1.05, 0.85));
+      const wireMat = new THREE.LineBasicMaterial({ color: 0x00d4ff, transparent: true, opacity: 0.22 });
+      group.add(new THREE.LineSegments(new THREE.EdgesGeometry(wGeo), wireMat));
+
+      scene.add(group);
+
+      // Eyes
+      const eGeo = new THREE.TorusGeometry(0.085, 0.018, 6, 12);
+      const eMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.95 });
+      const eMatR = eMat.clone();
+      const lEye = new THREE.Mesh(eGeo, eMat);
+      lEye.position.set(-0.18, 0.12, 0.47);
+      const rEye = new THREE.Mesh(eGeo, eMatR);
+      rEye.position.set(0.18, 0.12, 0.47);
+      scene.add(lEye, rEye);
+
+      // Outer glow shell
+      const glowMat = new THREE.MeshBasicMaterial({ color: 0x00d4ff, transparent: true, opacity: 0.06, side: THREE.BackSide });
+      scene.add(new THREE.Mesh(new THREE.SphereGeometry(0.9, 16, 16), glowMat));
+
+      // Floating particles
+      const pArr = new Float32Array(90);
+      for (let i = 0; i < 30; i++) {
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        const r = 0.9 + Math.random() * 0.35;
+        pArr[i*3]   = r * Math.sin(phi) * Math.cos(theta);
+        pArr[i*3+1] = r * Math.cos(phi);
+        pArr[i*3+2] = r * Math.sin(phi) * Math.sin(theta);
+      }
+      const pGeo = new THREE.BufferGeometry();
+      pGeo.setAttribute('position', new THREE.BufferAttribute(pArr, 3));
+      const pMat = new THREE.PointsMaterial({ color: 0x00d4ff, size: 0.045, transparent: true, opacity: 0.45 });
+      const pts = new THREE.Points(pGeo, pMat);
+      scene.add(pts);
+
+      return { renderer, scene, cam, group, mat, eMat, eMatR, glowMat, pMat, pts, wireMat };
     }
 
+    const headerEl = document.getElementById('jarvis-header-orb');
+    if (!headerEl) return;
+    const hd = makeHead(80);
+    headerEl.appendChild(hd.renderer.domElement);
+
+    let vm = null;
+    window.ensureVMHead = function() {
+      if (vm) return;
+      const vmEl = document.getElementById('vm-head-wrap');
+      if (!vmEl) return;
+      vm = makeHead(220);
+      vmEl.appendChild(vm.renderer.domElement);
+    };
+
+    let t = 0;
+    (function loop() {
+      requestAnimationFrame(loop);
+      t += 0.016;
+      const speed = jarvisState === 'thinking' ? 2.2 : jarvisState === 'speaking' ? 1.4 : 0.5;
+      const targetCol = jarvisState === 'thinking'
+        ? new THREE.Color(0x9b59b6)
+        : jarvisState === 'speaking'
+          ? new THREE.Color(0x00ff88)
+          : new THREE.Color(0x00d4ff);
+
+      [hd, vm].filter(Boolean).forEach(h => {
+        h.mat.uniforms.uTime.value = t * speed;
+        h.mat.uniforms.uColor.value.lerp(targetCol, 0.05);
+        h.wireMat.color.lerp(targetCol, 0.05);
+        h.group.rotation.y += 0.004 * speed;
+        h.group.position.y = Math.sin(t * 0.9) * 0.03;
+        const ea = jarvisState === 'speaking' ? 0.6 + Math.sin(t * 10) * 0.4
+                 : jarvisState === 'thinking' ? 0.5 + Math.sin(t * 4) * 0.45 : 0.95;
+        h.eMat.opacity = ea;
+        h.eMatR.opacity = ea;
+        h.glowMat.color.lerp(targetCol, 0.05);
+        h.glowMat.opacity = 0.04 + Math.sin(t * 1.6) * 0.025 + (jarvisState !== 'idle' ? 0.04 : 0);
+        h.pMat.opacity = jarvisState !== 'idle' ? 0.7 : 0.25;
+        h.pts.rotation.y += 0.002 * speed;
+        h.renderer.render(h.scene, h.cam);
+      });
+    })();
   })();
 </script>
 </body>

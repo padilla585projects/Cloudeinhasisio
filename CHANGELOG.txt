@@ -3,6 +3,31 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.18.0 (2026-05-12) — Cabeza holográfica 3D + Modo Voz fullscreen
+────────────────────────────────────────────────────────────────────────────────
+
+CABEZA HOLOGRÁFICA (Three.js):
+  - Reemplaza el orbe por una cabeza humana holográfica estilo Iron Man JARVIS
+  - Geometría: cráneo (SphereGeometry escalado) + mandíbula + wireframe EdgesGeometry
+  - Ojos: dos toros cian con glow pulsante
+  - Material ShaderMaterial custom: efecto fresnel + scan lines animadas
+  - Partículas flotantes alrededor de la cabeza
+  - Estados animados: idle (azul cian, rotación lenta), thinking (morado, rápido),
+    speaking (verde, scan lines pulsando, ojos parpadeando)
+  - Color transiciona suavemente entre estados con lerp
+  - La misma cabeza se usa en el header (80px) y en el modo voz (220px)
+
+MODO VOZ FULLSCREEN:
+  - Botón "persona" en el header abre overlay a pantalla completa
+  - Cabeza holográfica grande (220px) centrada en pantalla oscura
+  - STT automático: cuando Jarvis termina de hablar, empieza a escuchar solo
+  - Transcripción en tiempo real visible debajo de la cabeza
+  - Botón mic toggle (🎤 Hablar / ⏹ Escuchando...) con animación pulse roja
+  - TTS siempre activo al entrar en modo voz
+  - Botón "Salir" vuelve al chat normal
+  - La cabeza en el overlay se crea lazy (solo cuando se abre modo voz)
+
+────────────────────────────────────────────────────────────────────────────────
 v3.17.0 (2026-05-12) — Chat UI mejorado: markdown, sidebar, búsqueda, sugerencias
 ────────────────────────────────────────────────────────────────────────────────
 
