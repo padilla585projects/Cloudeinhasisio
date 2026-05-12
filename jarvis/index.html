@@ -541,6 +541,13 @@
   .bubble.markdown a:hover { text-decoration: underline; }
   .bubble.markdown strong { color: var(--text); font-weight: 600; }
   .bubble.markdown hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
+  .html-render-block {
+    border: 1px solid rgba(0,212,255,0.18); border-radius: 10px;
+    padding: 10px; margin: 8px 0; background: rgba(0,0,0,0.25);
+    overflow-x: auto; max-width: 100%;
+  }
+  .html-render-block img { max-width: 100%; border-radius: 8px; display: block; }
+  .html-render-block svg { max-width: 100%; height: auto; display: block; }
 
   /* ── MODO VOZ ─────────────────────────────────────────────────── */
   #voice-mode-overlay {
@@ -767,7 +774,15 @@
   function applyHighlighting(bubble) {
     if (typeof hljs === 'undefined') return;
     bubble.querySelectorAll('pre code').forEach(block => {
-      hljs.highlightElement(block);
+      if (block.classList.contains('language-html-render')) {
+        const raw = block.textContent;
+        const wrapper = document.createElement('div');
+        wrapper.className = 'html-render-block';
+        wrapper.innerHTML = raw;
+        block.closest('pre').replaceWith(wrapper);
+      } else {
+        hljs.highlightElement(block);
+      }
     });
   }
 

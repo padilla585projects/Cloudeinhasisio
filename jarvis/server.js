@@ -1115,6 +1115,52 @@ const tools = [
     }
   },
 
+  // ─── Generación de imágenes ───
+  {
+    name: 'generate_image',
+    description: 'Genera una imagen con DALL-E 3 (OpenAI). Úsalo para renders de habitaciones, conceptos de diseño, planos artísticos, visualizaciones de cambios o cualquier imagen que ayude a Adrián a ver cómo quedaría algo. Devuelve una URL — inclúyela en tu respuesta como ![descripción](url) para que se muestre en el chat.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string', description: 'Descripción detallada. Para interiores: estilo, colores, muebles, iluminación, perspectiva.' },
+        size: { type: 'string', enum: ['1024x1024', '1792x1024', '1024x1792'], description: '1792x1024 para planos/panorámicas. 1024x1792 para verticales. Default: 1024x1024' },
+        quality: { type: 'string', enum: ['standard', 'hd'], description: 'hd: más detallado y lento. Default: standard' },
+        style: { type: 'string', enum: ['vivid', 'natural'], description: 'natural: más realista. vivid: más dramático. Default: natural' }
+      },
+      required: ['prompt']
+    }
+  },
+
+  // ─── Plano SVG interactivo ───
+  {
+    name: 'render_floorplan',
+    description: 'Genera un plano SVG interactivo de la instalación basado en las áreas de Home Assistant. Muestra habitaciones con dispositivos activos, luces encendidas y presencia. El SVG se puede inyectar en el chat con un bloque ```html-render. Úsalo cuando Adrián quiera ver el estado de la casa visualmente.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['render', 'get_layout', 'save_layout'], description: 'render: genera y devuelve el SVG. get_layout: devuelve el layout guardado. save_layout: guarda posiciones personalizadas.' },
+        include_entities: { type: 'boolean', description: 'Mostrar puntos de dispositivos activos. Default: true' },
+        layout: { type: 'object', description: 'Para save_layout: {area_id: {col, row}} — posición en la cuadrícula.' }
+      },
+      required: ['action']
+    }
+  },
+
+  // ─── Modificar interfaz ───
+  {
+    name: 'update_ui',
+    description: 'Inyecta HTML, SVG o CSS personalizado directamente en el chat. Úsalo para crear visualizaciones, widgets interactivos, dashboards customizados o componentes visuales que no caben en texto. El HTML se renderiza con un bloque ```html-render en tu respuesta.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        html: { type: 'string', description: 'Código HTML/SVG a renderizar. Puede incluir estilos inline. Se inyecta con innerHTML.' },
+        title: { type: 'string', description: 'Título descriptivo del componente.' },
+        save_as: { type: 'string', description: 'Nombre de archivo para guardar en /data/ui_components/ y poder reutilizarlo.' }
+      },
+      required: ['html']
+    }
+  },
+
   // ─── Emergencias autónomas ───
   {
     name: 'emergency_config',
@@ -3645,6 +3691,123 @@ mode: single`;
         }
 
         return { error: `Acción desconocida: ${input.action}` };
+      }
+
+      // ─── Generación de imágenes (DALL-E 3) ───
+      case 'generate_image': {
+        if (!OPENAI_API_KEY) return { error: 'OpenAI API key no configurada. Añade openai_api_key en la configuración del add-on.' };
+        const imgRes = await fetch('https://api.openai.com/v1/images/generations', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'dall-e-3',
+            prompt: input.prompt,
+            n: 1,
+            size: input.size || '1024x1024',
+            quality: input.quality || 'standard',
+            style: input.style || 'natural',
+            response_format: 'url'
+          })
+        });
+        if (!imgRes.ok) {
+          const errText = await imgRes.text();
+          return { error: `DALL-E error ${imgRes.status}: ${errText.slice(0, 300)}` };
+        }
+        const imgData = await imgRes.json();
+        const imageUrl = imgData.data[0].url;
+        const revised = imgData.data[0].revised_prompt;
+        return { success: true, image_url: imageUrl, revised_prompt: revised, note: 'URL válida ~1h. Muestra con: ![descripción](url)' };
+      }
+
+      // ─── Plano SVG de la instalación ───
+      case 'render_floorplan': {
+        const FLOORPLAN_FILE = path.join(DATA_DIR, 'floorplan_layout.json');
+
+        if (input.action === 'get_layout') {
+          return { layout: fs.existsSync(FLOORPLAN_FILE) ? JSON.parse(fs.readFileSync(FLOORPLAN_FILE, 'utf8')) : {} };
+        }
+        if (input.action === 'save_layout') {
+          if (!input.layout) return { error: 'layout requerido' };
+          fs.writeFileSync(FLOORPLAN_FILE, JSON.stringify(input.layout, null, 2));
+          return { success: true };
+        }
+
+        // action === 'render'
+        let areas = [];
+        try {
+          const tmplRes = await fetch(`${HA_URL}/api/template`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${HA_TOKEN}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ template: `{% set ns = namespace(r=[]) %}{% for a in areas() %}{% set ns.r = ns.r + [{'id': a, 'name': area_name(a), 'entities': area_entities(a)|list}] %}{% endfor %}{{ ns.r | tojson }}` })
+          });
+          areas = JSON.parse(await tmplRes.text());
+        } catch (e) {
+          return { error: `No se pudieron obtener las áreas de HA: ${e.message}` };
+        }
+
+        let stateMap = {};
+        try {
+          const states = await haGet('/states');
+          for (const s of states) stateMap[s.entity_id] = s.state;
+        } catch {}
+
+        const includeEntities = input.include_entities !== false;
+        const cols = Math.min(Math.ceil(Math.sqrt(Math.max(areas.length, 1))), 4);
+        const CW = 188, CH = 148, PAD = 14;
+        const svgW = cols * CW + (cols + 1) * PAD;
+        const svgH = Math.ceil(areas.length / cols) * CH + (Math.ceil(areas.length / cols) + 1) * PAD + 28;
+
+        let roomsSVG = '';
+        areas.forEach((area, i) => {
+          const col = i % cols;
+          const row = Math.floor(i / cols);
+          const x = PAD + col * (CW + PAD);
+          const y = PAD + row * (CH + PAD);
+          const entities = area.entities || [];
+          const lights = entities.filter(id => id.startsWith('light.') && stateMap[id] === 'on');
+          const occupied = entities.some(id => (id.startsWith('binary_sensor.') && stateMap[id] === 'on') || (id.startsWith('person.') && stateMap[id] === 'home'));
+          const active = entities.filter(id => ['on', 'home', 'playing', 'open'].includes(stateMap[id])).length;
+          const fill = occupied ? '#0f2744' : '#0d1117';
+          const stroke = lights.length > 0 ? '#fbbf24' : (occupied ? '#3b82f6' : '#21262d');
+          let dots = '';
+          if (includeEntities) {
+            entities.slice(0, 12).forEach((eid, di) => {
+              const dx = x + 10 + (di % 6) * 28;
+              const dy = y + CH - 22 + Math.floor(di / 6) * 15;
+              const isActive = ['on', 'home', 'playing', 'open'].includes(stateMap[eid]);
+              dots += `<circle cx="${dx}" cy="${dy}" r="5" fill="${isActive ? '#34d399' : '#374151'}"><title>${eid}: ${stateMap[eid] || '?'}</title></circle>`;
+            });
+          }
+          roomsSVG += `<rect x="${x}" y="${y}" width="${CW}" height="${CH}" rx="10" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>
+${lights.length > 0 ? `<rect x="${x}" y="${y}" width="${CW}" height="${CH}" rx="10" fill="rgba(251,191,36,0.04)"/>` : ''}
+<text x="${x+10}" y="${y+20}" font-family="ui-monospace,monospace" font-size="13" fill="#e6edf3" font-weight="600">${area.name}</text>
+<text x="${x+10}" y="${y+35}" font-family="ui-monospace,monospace" font-size="9" fill="#8b949e">${entities.length} entidades${active > 0 ? ` · ${active} activas` : ''}</text>
+${lights.length > 0 ? `<text x="${x + CW - 10}" y="${y + 20}" font-family="ui-monospace,monospace" font-size="11" fill="#fbbf24" text-anchor="end">${lights.length}💡</text>` : ''}
+${occupied ? `<text x="${x + CW - 10}" y="${y + 35}" font-family="ui-monospace,monospace" font-size="10" fill="#60a5fa" text-anchor="end">●</text>` : ''}
+${dots}`;
+        });
+
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${svgW} ${svgH}" style="background:#010409;border-radius:12px;border:1px solid #21262d;max-width:100%">${roomsSVG}<text x="${PAD}" y="${svgH - 8}" font-family="ui-monospace,monospace" font-size="9" fill="#30363d">Jarvis Floorplan · ${areas.length} áreas · ${new Date().toLocaleTimeString('es-ES')}</text></svg>`;
+
+        return {
+          success: true, areas_count: areas.length, svg,
+          instruction: `Muestra el plano con este bloque en tu respuesta:\n\`\`\`html-render\n${svg}\n\`\`\``
+        };
+      }
+
+      // ─── Modificar interfaz (update_ui) ───
+      case 'update_ui': {
+        const UI_DIR = path.join(DATA_DIR, 'ui_components');
+        if (input.save_as) {
+          if (!fs.existsSync(UI_DIR)) fs.mkdirSync(UI_DIR, { recursive: true });
+          const fname = input.save_as.replace(/[^a-z0-9_-]/gi, '_') + '.html';
+          fs.writeFileSync(path.join(UI_DIR, fname), input.html);
+        }
+        return {
+          success: true,
+          title: input.title || 'Componente UI',
+          instruction: `Muestra el componente en tu respuesta con este bloque:\n\`\`\`html-render\n${input.html}\n\`\`\``
+        };
       }
 
       default:

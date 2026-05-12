@@ -3,6 +3,34 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.19.0 (2026-05-12) — generate_image, render_floorplan, update_ui
+────────────────────────────────────────────────────────────────────────────────
+
+TOOL: generate_image
+  - DALL-E 3 vía OpenAI API (usa la misma key que el agente)
+  - Parámetros: prompt, size (1024/1792), quality (standard/hd), style (vivid/natural)
+  - Devuelve URL de imagen — Jarvis la incluye como ![desc](url) en el chat
+
+TOOL: render_floorplan
+  - Genera plano SVG interactivo basado en las áreas reales de Home Assistant
+  - Lee areas() + area_entities() vía HA template API
+  - Muestra: nombre de habitación, nº entidades, dispositivos activos (puntos verdes),
+    luces encendidas (borde amarillo), presencia (fondo azul, punto azul)
+  - Acciones: render (genera SVG), get_layout (devuelve layout guardado), save_layout
+  - Layout persistido en /data/floorplan_layout.json
+
+TOOL: update_ui
+  - Jarvis puede inyectar HTML/SVG/CSS personalizado directamente en el chat
+  - Útil para dashboards, widgets, visualizaciones que no caben en texto
+  - Opcional: save_as guarda el componente en /data/ui_components/
+
+FRONTEND: bloque html-render
+  - Nuevo tipo de bloque de código: ```html-render
+  - applyHighlighting detecta language-html-render y reemplaza el <pre> con un <div>
+    que renderiza el contenido como HTML real (innerHTML), no como código coloreado
+  - CSS .html-render-block: borde cian, fondo oscuro, SVG e imágenes con max-width:100%
+
+────────────────────────────────────────────────────────────────────────────────
 v3.18.0 (2026-05-12) — Cabeza holográfica 3D + Modo Voz fullscreen
 ────────────────────────────────────────────────────────────────────────────────
 
