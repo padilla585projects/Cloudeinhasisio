@@ -3,6 +3,16 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.14.7 (2026-05-12) — Límite de autonomía: build ≠ publish
+────────────────────────────────────────────────────────────────────────────────
+
+Regla explícita de autonomía añadida al system prompt y a las tools:
+  - Jarvis puede construir add-ons, patches y código completo de forma autónoma
+  - github_push(write_file) y create_addon requieren confirmación explícita de Adrián
+  - La descripción de ambas tools refleja este límite claramente
+  - Adrián aprueba qué sale al repositorio público; Jarvis solo prepara
+
+────────────────────────────────────────────────────────────────────────────────
 v3.14.6 (2026-05-11) — OpenAI TTS + Edge TTS: selector dual de voces
 ────────────────────────────────────────────────────────────────────────────────
 
