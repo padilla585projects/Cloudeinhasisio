@@ -3,6 +3,101 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.21.2 (2026-05-13) — Inteligencia investigativa UNIVERSAL en módulo base
+────────────────────────────────────────────────────────────────────────────────
+
+MÓDULO base — AMPLIADO con "Inteligencia Investigativa":
+  - Ciclo INTENTAR→ANALIZAR→INVESTIGAR→APRENDER→RESOLVER inyectado en el módulo base
+  - Al estar en base, aplica a TODOS los expertos y TODAS las consultas
+  - Ya no es solo para diagnóstico HA — sirve para TODO: redes, hardware, código,
+    Linux, Docker, Proxmox, IoT, industrial, cualquier dominio
+  - Regla explícita: NUNCA decir "no sé" teniendo web_search + fetch_url + knowledge_db
+  - knowledge_db como cerebro permanente: investigar una vez, recordar para siempre
+  - Cada error resuelto = Jarvis más inteligente
+
+────────────────────────────────────────────────────────────────────────────────
+v3.21.1 (2026-05-13) — Aprendizaje reactivo: investigar → entender → arreglar
+────────────────────────────────────────────────────────────────────────────────
+
+CAMBIO DE MENTALIDAD en 3 módulos NEXUS clave:
+
+MÓDULO perseverance — REESCRITO:
+  - Nuevo "Bucle de resolución": INTENTAR → FALLAR → INVESTIGAR → APRENDER → RESOLVER
+  - Regla: "Si no sabes algo → INVESTIGA. NO preguntes al usuario, NO digas no sé"
+  - Ejemplo real documentado: cómo debería resolver "restored:true" paso a paso
+  - Ejemplo real: cómo investigar errores de integración
+  - web_search OBLIGATORIO antes de rendirse en cualquier problema
+
+MÓDULO diagnostico — REESCRITO COMPLETO:
+  - Nueva mentalidad: "piensa como un ingeniero, no como un manual"
+  - Método científico: OBSERVAR → HIPÓTESIS → PROBAR → SI FALLA cambiar hipótesis → INVESTIGAR → ENTENDER → ARREGLAR → APRENDER
+  - Ejemplo completo paso a paso del diagnóstico de automatizaciones restored:true
+  - Verificación profunda: no fiarse de la superficie (reload "ok" no = arreglado)
+  - Nuevo principio: "check_config dice ok no significa que TODO esté bien"
+
+MÓDULO autonomy — AMPLIADO:
+  - Nueva sección "Investigar antes de rendirte — OBLIGATORIO"
+  - Ciclo de mejora continua explícito
+  - Guardar SIEMPRE lo aprendido en knowledge_db + learn
+
+────────────────────────────────────────────────────────────────────────────────
+v3.21.0 (2026-05-13) — Jarvis aprende HA: conocimiento profundo + auto-estudio
+────────────────────────────────────────────────────────────────────────────────
+
+MÓDULO NEXUS: ha_internals (conocimiento profundo de la arquitectura de HA)
+  - Arranque de HA: configuration.yaml → !include → integraciones → entity registry
+  - .storage: entity_registry, device_registry, area_registry, config_entries, auth
+  - Entity registry vs plataforma: restored:true, unavailable, sufijos _2/_3
+  - Automatizaciones: dos fuentes (YAML + UI), automation.reload, includes obligatorios
+  - Integraciones: lifecycle completo, config_entries, reload
+  - configuration.yaml: estructura, !include, !secret, packages, troubleshooting
+  - YAML: errores comunes, indentación, duplicados, archivos vacíos
+  - Supervisor API: endpoints para add-ons, core, OS, host, network
+  - Lovelace: storage mode vs yaml mode, API endpoints
+  - Templates Jinja2: states, attributes, filtros, funciones de tiempo
+  - Diagnóstico: tabla completa de estados → causas → soluciones
+
+EXPERTOS ACTUALIZADOS con ha_internals:
+  - ha_control, diagnostico, automatizacion, emergencia, dev
+
+BOOTLEARNHA — Jarvis estudia la wiki de HA al arrancar:
+  - 20 páginas clave de docs de HA (configuration, automations, templates, API, etc.)
+  - Fetch → extracción de texto → LLM resume → knowledge_db almacena
+  - 3 páginas por boot, 6h entre rondas, hasta completar las 20
+  - Estado persistido en /data/ha_learn_state.json
+  - Incluye: developers.home-assistant.io (internals: config_entries, entity_registry, services, supervisor)
+
+BOOTLEARNOWNPROJECT — Jarvis estudia su propio código al arrancar:
+  - Lee server.js, index.html, configuration.yaml del usuario
+  - Detecta includes faltantes en configuration.yaml → lo registra en self_knowledge
+  - Se re-ejecuta si la versión cambia (detecta auto-updates)
+
+KNOWLEDGE_TOPICS ampliados con 20 temas de HA internals (prioridad):
+  - configuration.yaml, .storage, automation platform, integration lifecycle
+  - entity registry, Supervisor API, Lovelace, YAML errores, Jinja2
+  - custom_components, event bus, recorder, MQTT discovery, etc.
+
+────────────────────────────────────────────────────────────────────────────────
+v3.20.6 (2026-05-13) — Auto-reparación de configuration.yaml + diagnóstico restored
+────────────────────────────────────────────────────────────────────────────────
+
+FIX CRÍTICO: Automatizaciones "unavailable" con "restored:true"
+  - Causa raíz: faltaba "automation: !include automations.yaml" en configuration.yaml
+  - Sin esa línea HA no carga ninguna automatización del archivo
+
+MEJORAS:
+  - create_automation ahora VERIFICA que configuration.yaml tenga el include de automations.yaml
+    y lo REPARA automáticamente si falta (con backup previo)
+  - Boot de Jarvis comprueba los 3 includes críticos al arrancar:
+    automation: !include automations.yaml
+    script: !include scripts.yaml
+    scene: !include scenes.yaml
+    Si falta alguno → lo añade, hace backup, y recarga config core
+  - Módulo NEXUS 'diagnostico' ampliado con protocolo completo para diagnosticar
+    automatizaciones en estado "restored:true": verificar includes, YAML roto, IDs duplicados
+  - Módulo NEXUS 'automation' ampliado con conocimiento sobre el requisito del include
+
+────────────────────────────────────────────────────────────────────────────────
 v3.20.3 (2026-05-12) — NEXUS: experto de aprendizaje
 ────────────────────────────────────────────────────────────────────────────────
 

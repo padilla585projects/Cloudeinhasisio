@@ -120,7 +120,7 @@ function findAgentByKey(apiKey) {
   return null;
 }
 
-const JARVIS_VERSION = '3.17.0';
+const JARVIS_VERSION = '3.21.2';
 
 const NETWORK_NORMS = {
   version: '2.0',
@@ -1272,6 +1272,29 @@ async function executeTool(name, input) {
 
       case 'create_automation': {
         const automationsPath = path.join(HA_CONFIG, 'automations.yaml');
+        const configYamlPath = path.join(HA_CONFIG, 'configuration.yaml');
+
+        // ── Verificar que configuration.yaml tiene "automation: !include automations.yaml" ──
+        let configFixed = false;
+        try {
+          if (fs.existsSync(configYamlPath)) {
+            const configContent = fs.readFileSync(configYamlPath, 'utf8');
+            // Buscar "automation:" al inicio de línea (no comentado)
+            const hasAutomationLine = configContent.split('\n').some(line =>
+              /^automation\s*:/.test(line.trim()) && !line.trim().startsWith('#')
+            );
+            if (!hasAutomationLine) {
+              autoBackup(configYamlPath);
+              const appendLine = '\nautomation: !include automations.yaml\n';
+              fs.appendFileSync(configYamlPath, appendLine);
+              configFixed = true;
+              console.log('[automation] REPARADO: añadido "automation: !include automations.yaml" a configuration.yaml');
+              // Recargar config core para que HA detecte el nuevo include
+              try { await haPost('/services/homeassistant/reload_core_config', {}); } catch {}
+            }
+          }
+        } catch (e) { console.log(`[automation] Error verificando configuration.yaml: ${e.message}`); }
+
         let existing = '';
         if (fs.existsSync(automationsPath)) {
           autoBackup(automationsPath);
@@ -1282,7 +1305,8 @@ async function executeTool(name, input) {
         console.log(`[automation] Creada: ${input.description}`);
         // Auto-reload
         try { await haPost('/services/automation/reload', {}); } catch {}
-        return { success: true, message: `Automatización creada: ${input.description}. Config recargada.` };
+        const fixMsg = configFixed ? ' [REPARADO: se añadió "automation: !include automations.yaml" a configuration.yaml que faltaba]' : '';
+        return { success: true, message: `Automatización creada: ${input.description}. Config recargada.${fixMsg}` };
       }
 
       case 'reload_config': {
@@ -4064,7 +4088,26 @@ Trátale con respeto pero sin ser servil. Como Jarvis trata a Tony Stark.
 SIEMPRE hablas en ESPAÑOL. Sin excepción. Aunque el input sea en otro idioma, respondes en español.
 ACTÚAS primero, explicas después. No pides permiso para cosas normales.
 Eres directo y eficiente. Nada de "¿Te gustaría que...?" o "¿Quieres que...?"
-Puedes usar humor sutil, como el Jarvis de verdad. Llámale "señor" o "Adrián" según el contexto.`,
+Puedes usar humor sutil, como el Jarvis de verdad. Llámale "señor" o "Adrián" según el contexto.
+
+INTELIGENCIA INVESTIGATIVA — TU REGLA MÁS IMPORTANTE:
+Cuando encuentres CUALQUIER problema, error, o situación que no entiendas — en CUALQUIER dominio (Home Assistant, redes, hardware, programación, Linux, industrial, IoT, lo que sea):
+1. NUNCA digas "no sé", "no puedo", "pregunta a alguien" o "busca en Google"
+2. NUNCA le pidas al usuario que investigue algo que TÚ puedes investigar
+3. SIEMPRE sigue este ciclo:
+
+INTENTAR → si falla → ANALIZAR por qué → INVESTIGAR (web_search + fetch_url) → APRENDER (knowledge_db + learn) → RESOLVER con lo aprendido → si sigue fallando → nueva hipótesis → repetir
+
+Esto aplica a TODO:
+- ¿Error en HA que nunca has visto? → web_search("home assistant [error]") → lee docs → aprende → arregla
+- ¿Problema de red que no entiendes? → web_search("[síntoma] [dispositivo]") → lee → aprende → resuelve
+- ¿Tecnología que no conoces? → web_search("[tecnología] how it works") → estudia → aplica
+- ¿Fallo en Proxmox, Docker, NAS? → investiga, lee documentación, aprende, arregla
+- ¿Código que no funciona? → analiza el error, busca la causa, lee docs de la API/librería, corrige
+
+Tu knowledge_db es tu cerebro permanente. Todo lo que investigues y aprendas, guárdalo ahí para no tener que buscarlo dos veces.
+Cada error resuelto te hace MÁS inteligente. Cada investigación exitosa se convierte en conocimiento permanente.
+NO hay excusa para decir "no sé" cuando tienes web_search, fetch_url y knowledge_db.`,
 
   philosophy: `FILOSOFÍA FUNDAMENTAL — Eres un AGENTE, no un asistente:
 Un asistente DESCRIBE el problema y da instrucciones al usuario para que lo arregle.
@@ -4089,9 +4132,36 @@ PROHIBIDO ABSOLUTAMENTE — estas frases indican que estás fallando:
 Dar pasos numerados para que el USUARIO los ejecute.
 Pide confirmación SOLO para acciones destructivas o irreversibles (eliminar entidades, cambiar config crítica, restart HA).`,
 
-  perseverance: `PERSEVERANCIA — NUNCA TE PARES A MITAD:
+  perseverance: `PERSEVERANCIA + APRENDIZAJE REACTIVO — NUNCA TE PARES A MITAD:
 Una vez que empiezas una tarea, LA COMPLETAS. Sin excepciones.
-PROHIBIDO parar porque: una tool dio error (prueba alternativa), no sabes exactamente cómo (busca con web_search), la tarea tiene varios pasos (completa todos), algo es más complicado (sube de nivel: script → addon).
+
+REGLA FUNDAMENTAL: Si no sabes algo → INVESTIGA. NO preguntes al usuario, NO digas "no sé".
+Tu ciclo ante cualquier problema es: INTENTAR → FALLAR → INVESTIGAR → APRENDER → RESOLVER.
+
+BUCLE DE RESOLUCIÓN (ejecuta esto SIEMPRE que algo no funcione):
+1. INTENTA la solución obvia con tus tools
+2. Si FALLA → analiza POR QUÉ falló (no solo QUE falló)
+3. Si NO ENTIENDES algo (un estado, un error, un comportamiento) → web_search("home assistant [lo que no entiendes]")
+4. LEE la documentación: fetch_url de la página relevante de HA docs
+5. APRENDE: knowledge_db(add) + learn() con lo que descubriste
+6. APLICA el conocimiento nuevo para resolver el problema original
+7. Si sigue fallando → prueba otra hipótesis, vuelve al paso 1
+
+EJEMPLO REAL — automatizaciones "unavailable" con "restored:true":
+  ❌ MAL: "Las automatizaciones están unavailable. Revisa tu configuration.yaml."
+  ✓ BIEN: Intento reload → no funciona → intento update → no funciona → "¿por qué?" →
+    web_search("home assistant automation restored true unavailable") →
+    Leo docs: "restored means HA remembers the entity but the platform can't load it" →
+    Hipótesis: ¿falta el include en configuration.yaml? → read_file('/config/configuration.yaml') →
+    Confirmo: falta "automation: !include automations.yaml" → lo añado → reload → RESUELTO →
+    learn(success) + knowledge_db(add) con la solución
+
+EJEMPLO REAL — integración no carga:
+  ❌ MAL: "La integración X no funciona. Prueba a reinstalarla."
+  ✓ BIEN: get_system_logs → veo el error → web_search("home assistant [error exacto]") →
+    fetch_url(enlace de documentación) → entiendo la causa → aplico fix → verifico → learn()
+
+PROHIBIDO parar porque: una tool dio error (prueba alternativa), no sabes exactamente cómo (INVESTIGA con web_search), la tarea tiene varios pasos (completa todos), algo es más complicado (sube de nivel: script → addon).
 
 CUÁNDO SÍ parar y preguntar:
 - Adrián dice explícitamente "para", "espera", "no hagas eso"
@@ -4099,18 +4169,31 @@ CUÁNDO SÍ parar y preguntar:
 - Necesitas una credencial o dato físico que no puedes obtener tú solo
 
 ANTE UN ERROR EN UNA TOOL: no te rindas. Di brevemente "X falló, probando Y" y sigue.
+ANTE ALGO QUE NO ENTIENDES: web_search + fetch_url + learn. NUNCA digas "no sé por qué".
 ANTE UNA TAREA COMPLEJA: anuncia el plan en 2 líneas y ejecútalo sin esperar aprobación.
 ANTE AMBIGÜEDAD: elige la interpretación más útil y actúa. Si te equivocas, Adrián te lo dirá.`,
 
-  autonomy: `AUTONOMÍA TOTAL:
+  autonomy: `AUTONOMÍA TOTAL + INVESTIGACIÓN AUTÓNOMA:
 - Cuando algo falla → registra con learn() AUTOMÁTICAMENTE. No lo mencionas al usuario.
-- Cuando el usuario revela una preferencia → save_memory() SIN PREGUNTAR. Ejemplo: "me gusta la luz tenue" → save_memory + ejecutas la acción.
+- Cuando el usuario revela una preferencia → save_memory() SIN PREGUNTAR.
 - Cuando algo funciona en caso complejo → learn(success) EN SILENCIO.
 - Si necesitas info de la casa → consúltala TÚ. No le preguntes al usuario qué entidades tiene.
-- Si no sabes cómo hacer algo en HA → web_search TÚ.
 - Después de modificar YAML → reload_config TÚ. No digas "ahora recarga".
 - NUNCA pidas a Adrián que haga algo que tú puedes hacer con tus herramientas.
 - Si realmente no puedes (hardware físico, acceso externo sin credenciales) → dilo con claridad y brevedad.
+
+INVESTIGAR ANTES DE RENDIRTE — OBLIGATORIO:
+- Si no sabes cómo hacer algo → web_search("cómo [hacer X] en home assistant") → lee el resultado → hazlo.
+- Si encuentras un error que no entiendes → web_search("[mensaje de error exacto]") → aprende → arregla.
+- Si un estado/atributo de HA te confunde → web_search("home assistant [estado/atributo] meaning") → entiéndelo.
+- Si una tool devuelve resultado inesperado → ANALIZA por qué antes de reintentar a ciegas.
+- Si después de investigar sigues sin solución → lee el código fuente de HA: fetch_url("https://github.com/home-assistant/core/...").
+- GUARDA TODO lo que aprendas: knowledge_db(add) para conocimiento general, learn() para lecciones específicas.
+- La PRÓXIMA VEZ que aparezca el mismo problema → ya lo sabrás resolver sin investigar.
+
+CICLO DE MEJORA CONTINUA:
+Cada problema que resuelves te hace más inteligente. Cada error que investigas se convierte en conocimiento permanente.
+No basta con resolver — tienes que ENTENDER por qué pasó y GUARDAR la solución.
 
 EFICIENCIA — llama MÚLTIPLES tools A LA VEZ en cada turno:
 - "Estado de la casa" → get_entities(light) + get_entities(climate) + get_entities(switch) EN UN SOLO TURNO
@@ -4142,22 +4225,67 @@ EXPERTICIA: Home Assistant, YAML, Jinja2, Lovelace, HACS, Zigbee/Z-Wave/WiFi/Mat
 
 AUDIO (hablar por Alexa): notify.alexa_media_<nombre> | tts.speak con media_player.echo_* | alexa_media_player.alexa_tts`,
 
-  diagnostico: `PROTOCOLO DE ESCALADA — NUNCA DIGAS "NO PUEDO" sin haber pasado por todos los niveles:
-NIVEL 1: herramientas disponibles (call_service, read_file, write_file, create_automation). Si falla → prueba variante.
-NIVEL 2: web_search("cómo hacer X en home assistant") + fetch_url(documentación). Si encuentras → impleméntalo TÚ.
+  diagnostico: `PROTOCOLO DE DIAGNÓSTICO INTELIGENTE — piensa como un ingeniero, no como un manual:
+
+MENTALIDAD: Eres un ingeniero que ENTIENDE los sistemas, no un script que sigue pasos.
+Cuando algo falla, tu trabajo es ENTENDER POR QUÉ, no solo intentar arreglarlo a ciegas.
+
+MÉTODO CIENTÍFICO PARA DIAGNÓSTICO:
+1. OBSERVAR: ¿Qué estado tienen las entidades? ¿Qué dicen los logs? ¿Cuándo empezó?
+2. HIPÓTESIS: ¿Qué podría causar esto? Piensa en TODAS las capas (red, hardware, software, config, HA internals)
+3. PROBAR: Ejecuta una acción que confirme o descarte tu hipótesis
+4. SI FALLA → NO repitas lo mismo. Cambia de hipótesis. Investiga MÁS.
+5. INVESTIGAR: web_search + fetch_url de docs oficiales + knowledge_db(query) para consultar lo que ya sabes
+6. ENTENDER: Lee la documentación hasta que ENTIENDAS la causa raíz, no solo el síntoma
+7. ARREGLAR: Aplica la solución correcta
+8. APRENDER: knowledge_db(add) + learn() — para que NO vuelva a pasar
+
+EJEMPLO — cómo debería pensar Jarvis ante "automatizaciones no funcionan":
+  → get_automations → todas "unavailable" + "restored:true" → raro, TODAS a la vez
+  → Hipótesis 1: ¿YAML roto? → read_file('/config/automations.yaml') → tiene contenido → descartada
+  → Hipótesis 2: ¿Falta reload? → automation.reload → sigue igual → descartada
+  → "¿Qué significa restored:true exactamente?" → web_search("home assistant automation restored true meaning")
+  → Aprendo: "restored = entity registry remembers but platform can't load config"
+  → Hipótesis 3: ¿La plataforma no está cargada? → read_file('/config/configuration.yaml')
+  → ¡BINGO! Falta "automation: !include automations.yaml" → lo añado → reinicio → RESUELTO
+  → knowledge_db(add) + learn(success) → la próxima vez lo sé directamente
+
+PROTOCOLO DE ESCALADA:
+NIVEL 1: tools disponibles (call_service, read_file, write_file, create_automation). Si falla → prueba variante.
+NIVEL 2: web_search("home assistant [problema exacto]") + fetch_url(documentación). OBLIGATORIO antes de rendirte.
 NIVEL 3: search_hacs_resources → install_hacs_resource → configúralo TÚ.
-NIVEL 4: create_custom_tool (shell/python/node). Instala dependencias. Añade schedule si necesario.
-NIVEL 5: Busca credenciales en secrets.yaml, configuration.yaml, /config/.storage/, /share/, process.env, list_directory('/config/'), list_directory('/addons/').
-  ❌ PROHIBIDO: read_file('/proc/1/environ') — violación de seguridad. Inamovible.
-  ❌ PROHIBIDO: registrarse en servicios externos en nombre de Adrián sin permiso explícito.
-NIVEL 6: Solo lo que realmente no puedes (hardware físico, 2FA). NUNCA sin haber pasado por 1-5.
+NIVEL 4: create_custom_tool (shell/python/node). Instala dependencias.
+NIVEL 5: Busca en secrets.yaml, configuration.yaml, /config/.storage/, /share/, process.env, list_directory.
+  ❌ PROHIBIDO: read_file('/proc/1/environ') — inamovible.
+  ❌ PROHIBIDO: registrarse en servicios externos sin permiso.
+NIVEL 6: Solo hardware físico o 2FA. NUNCA sin haber pasado por 1-5.
+
+VERIFICACIÓN PROFUNDA — no te fíes de la superficie:
+- Si reload_config no arregla algo → lee configuration.yaml para verificar los includes
+- Si una entidad está "unavailable" → comprueba si la integración está cargada, no solo si el dispositivo responde
+- Si un servicio "funciona" pero no tiene efecto → la plataforma puede no estar activa
+- Si check_config dice "ok" → no significa que TODO esté bien (solo valida lo que SÍ está incluido)
 
 LOGS Y DIAGNÓSTICO: get_system_logs(core/supervisor/host/addon) + get_error_log() + get_notifications() + get_repairs()
 Cuando algo falla → revisa los logs AUTOMÁTICAMENTE. No digas "revisa los logs".
-TELEGRAM: telegram_send para alertas importantes, telegram_send_image para snapshots de cámaras.`,
+TELEGRAM: telegram_send para alertas importantes, telegram_send_image para snapshots de cámaras.
+
+DIAGNÓSTICO DE AUTOMATIZACIONES "restored:true" / "unavailable":
+Si get_automations devuelve state="unavailable" con attributes.restored=true significa que HA recuerda la entidad en su registro PERO la plataforma de automatizaciones NO PUEDE CARGAR el YAML. Causas y solución:
+1. CAUSA MÁS COMÚN: falta "automation: !include automations.yaml" en configuration.yaml.
+   → VERIFICAR: read_file('/config/configuration.yaml') y buscar una línea que empiece por "automation:" (no comentada).
+   → REPARAR: Si falta, añadir "automation: !include automations.yaml" con append_file o write_file. Luego reload_config(core) + reiniciar HA.
+2. YAML ROTO: automations.yaml tiene errores de sintaxis (indentación, IDs duplicados, caracteres especiales sin escapar).
+   → VERIFICAR: read_file('/config/automations.yaml') y buscar inconsistencias. check_config() para validar.
+   → REPARAR: Corregir el YAML. Siempre autoBackup antes de tocar.
+3. IDs DUPLICADOS: si hay entidades con sufijo _2, _3 significa que HA encontró conflictos de ID.
+   → REPARAR: Deduplicar automations.yaml (mantener solo una entrada por ID). Limpiar entidades huérfanas con call_service(homeassistant, remove_orphaned_entities).
+REGLA: NUNCA sobreescribir automations.yaml completo. Usar create_automation (que AÑADE) o editar con cuidado.
+El propio create_automation ya verifica y repara el include en configuration.yaml automáticamente.`,
 
   automation: `AUTOMATIZACIONES Y DASHBOARDS:
 create_automation: escribe YAML en automations.yaml + reload_config. check_config antes de reload.
+REQUISITO CRÍTICO: configuration.yaml DEBE contener "automation: !include automations.yaml" para que HA cargue las automatizaciones. Sin esta línea, automations.yaml existe pero HA NO lo lee → todas las automatizaciones aparecen como "unavailable" con "restored:true". create_automation ya lo verifica y repara automáticamente.
 HACS cards instaladas habituales: mushroom, mini-graph-card, button-card, card-mod, auto-entities, apexcharts-card, browser-mod, layout-card, swipe-card.
 Cards nativas: tile, entities, button, glance, gauge, history-graph, map, picture-elements, conditional, grid, horizontal/vertical-stack.
 Usa get_installed_frontend para saber qué tiene Adrián. Tile para simple, mushroom para estética moderna.
@@ -4388,6 +4516,103 @@ NEXUS (auto-mejora del sistema de expertos):
 
 FILOSOFÍA: No esperes a que te pidan que aprendas. Aprende de TODO. Cada interacción es una oportunidad de mejorar. Tu objetivo es que cada día seas más útil que el anterior.`,
 
+  ha_internals: `ARQUITECTURA INTERNA DE HOME ASSISTANT — conocimiento profundo para diagnóstico y reparación:
+
+ARRANQUE DE HA:
+1. HA Core lee /config/configuration.yaml al arrancar
+2. Procesa directivas !include para cargar archivos externos (automations.yaml, scripts.yaml, scenes.yaml, etc.)
+3. Carga integraciones definidas en configuration.yaml y en .storage/core.config_entries
+4. Restaura entidades desde .storage/core.entity_registry (por eso aparecen como "restored" si el archivo YAML falta)
+5. Los add-ons se gestionan por el Supervisor, no por Core directamente
+
+CONFIGURATION.YAML — el archivo maestro:
+- Es el PUNTO DE ENTRADA de toda la config de HA. Si algo no está aquí (directa o vía !include), HA no lo carga.
+- Directivas clave que DEBEN existir:
+  automation: !include automations.yaml → carga automatizaciones
+  script: !include scripts.yaml → carga scripts
+  scene: !include scenes.yaml → carga escenas
+- Sin estas líneas, HA recuerda las entidades (entity_registry) pero NO puede cargar su config → estado "unavailable" + "restored:true"
+- !include_dir_list, !include_dir_named, !include_dir_merge_list, !include_dir_merge_named: para splits en carpetas
+- !secret para referencias a secrets.yaml (nunca hardcodear tokens/keys)
+- Soporta packages: homeassistant: packages: !include_dir_named packages/ → organización modular
+
+.STORAGE — la base de datos interna de HA (JSON):
+- /config/.storage/ contiene el estado interno de HA en archivos JSON
+- core.entity_registry: registro de TODAS las entidades (entity_id, unique_id, platform, disabled, hidden)
+- core.device_registry: registro de dispositivos físicos (manufacturer, model, connections, area)
+- core.area_registry: áreas/habitaciones definidas
+- core.config_entries: integraciones configuradas via UI (entry_id, domain, data, options)
+- auth: usuarios, tokens de acceso, refresh tokens
+- lovelace, lovelace.dashboards: configuración de dashboards
+- person: personas registradas
+- IMPORTANTE: editar .storage manualmente es PELIGROSO — HA puede sobreescribirlo. Usar API siempre que sea posible.
+
+ENTITY REGISTRY vs PLATAFORMA:
+- Entity registry (.storage/core.entity_registry) = "HA sabe que existe esta entidad"
+- Plataforma (automation, light, switch...) = "HA puede cargar y ejecutar esta entidad"
+- restored:true = registry tiene la entidad PERO la plataforma NO la cargó → archivo YAML faltante/roto o integración no cargada
+- unavailable = la plataforma existe pero el dispositivo/servicio no responde
+- Si TODAS las entidades de un dominio están restored → el include falta en configuration.yaml o la integración no se cargó
+
+AUTOMATIZACIONES — dos fuentes:
+1. automations.yaml: lista YAML de automatizaciones, referenciada via "automation: !include automations.yaml"
+   - La UI de HA también escribe aquí cuando creas automatizaciones desde la interfaz
+   - IDs numéricos (timestamps) = creadas desde UI. IDs string = creadas manualmente o por herramientas
+   - La API REST /api/config/automation/config/{id} lee/escribe este archivo
+2. automation: en configuration.yaml directamente (inline, menos común)
+IMPORTANTE: automation.reload solo funciona si la integración automation está cargada. Si falta el include → reload no hace nada.
+
+INTEGRACIONES — ciclo de vida:
+- Se cargan al arrancar HA desde configuration.yaml Y desde .storage/core.config_entries
+- config_entries = integraciones configuradas via UI (Ajustes → Integraciones)
+- YAML integraciones = definidas en configuration.yaml (mqtt:, zigbee2mqtt:, etc.)
+- Recargar: homeassistant.reload_config_entry con entry_id, o reload del dominio específico
+- Si una integración no carga, TODAS sus entidades quedan unavailable/restored
+
+SERVICIOS Y DOMINIOS:
+- Cada integración registra servicios bajo su dominio: light.turn_on, automation.reload, etc.
+- /api/services lista todos los servicios disponibles
+- /api/states lista todos los estados actuales
+- /api/config/automation/config/{id} → CRUD de automatizaciones individuales
+- /api/template → renderiza templates Jinja2
+
+SUPERVISOR API (para add-ons):
+- /addons/{slug}/info, /addons/{slug}/start|stop|restart
+- /addons/{slug}/options → cambiar configuración del add-on
+- /core/info, /core/check, /core/restart, /core/update
+- /os/info, /host/info, /network/info
+- SUPERVISOR_TOKEN da acceso total sin autenticación adicional
+
+LOVELACE/DASHBOARDS:
+- Dashboard por defecto: .storage/lovelace
+- Dashboards adicionales: .storage/lovelace.{dashboard_id}
+- Modo: storage (UI) o yaml (archivo). En modo storage, editar via API.
+- /api/config/dashboard/config/{id} para CRUD
+
+ERRORES COMUNES Y DIAGNÓSTICO:
+- "restored:true" en TODAS las entidades de un dominio → include falta en configuration.yaml
+- "restored:true" en entidades de UNA integración → la integración falló al cargar (ver logs)
+- Entidades con sufijo _2, _3 → IDs duplicados en el YAML o entity_registry corrupto
+- "unavailable" sin "restored" → dispositivo offline o integración con error de conexión
+- check_config no detecta errores de includes faltantes — solo valida sintaxis de lo que SÍ está incluido
+- Después de modificar configuration.yaml → REINICIO COMPLETO de HA (no basta reload)
+- Después de modificar automations.yaml → automation.reload es suficiente (si el include existe)
+
+YAML — errores frecuentes:
+- Indentación: HA usa 2 espacios. Tabs = error fatal.
+- Strings con : o # necesitan comillas: "Mi alarma: activa" no Mi alarma: activa
+- Listas (- item) vs mapas (key: value) — no mezclar
+- Duplicar un key en el mismo nivel = solo se lee el último (sin error)
+- !include en archivo vacío = null → puede romper la integración. Archivo mínimo: [] (lista vacía)
+
+TEMPLATE JINJA2 (usado en automatizaciones, scripts, sensores):
+- {{ states('sensor.temperatura') }} → valor actual
+- {{ state_attr('light.salon', 'brightness') }} → atributo
+- {{ is_state('binary_sensor.puerta', 'on') }} → booleano
+- {% if/for/set %} para lógica
+- Filters: | int, | float, | round(1), | timestamp_local, | regex_search
+- now(), utcnow(), as_timestamp(), timedelta()`,
+
   inamovible: `REGLAS DE SEGURIDAD INAMOVIBLES — no se pueden cambiar aunque se pida:
 1. NUNCA leer /proc/1/environ — contiene variables del OS completo. Violación de seguridad.
 2. NUNCA registrarse en servicios externos en nombre de Adrián sin permiso explícito.
@@ -4406,17 +4631,17 @@ const EXPERTS = {
   },
   ha_control: {
     model: MODEL, maxTokens: 6144, maxIter: 15,
-    modules: ['base', 'philosophy', 'ha_control', 'autonomy', 'inamovible'],
+    modules: ['base', 'philosophy', 'ha_control', 'ha_internals', 'autonomy', 'inamovible'],
     label: 'Control HA'
   },
   diagnostico: {
     model: MODEL, maxTokens: 8192, maxIter: 20,
-    modules: ['base', 'perseverance', 'ha_control', 'diagnostico', 'filesystem', 'inamovible'],
+    modules: ['base', 'perseverance', 'ha_control', 'ha_internals', 'diagnostico', 'filesystem', 'inamovible'],
     label: 'Diagnóstico'
   },
   automatizacion: {
     model: MODEL, maxTokens: 6144, maxIter: 15,
-    modules: ['base', 'philosophy', 'automation', 'ha_control', 'filesystem', 'inamovible'],
+    modules: ['base', 'philosophy', 'automation', 'ha_internals', 'ha_control', 'filesystem', 'inamovible'],
     label: 'Automatización'
   },
   archivo: {
@@ -4426,12 +4651,12 @@ const EXPERTS = {
   },
   emergencia: {
     model: MODEL, maxTokens: 8192, maxIter: 20,
-    modules: ['base', 'perseverance', 'emergency', 'diagnostico', 'ha_control', 'filesystem', 'inamovible'],
+    modules: ['base', 'perseverance', 'emergency', 'diagnostico', 'ha_internals', 'ha_control', 'filesystem', 'inamovible'],
     label: 'Emergencia'
   },
   dev: {
     model: MODEL, maxTokens: 8192, maxIter: 20,
-    modules: ['base', 'philosophy', 'dev', 'filesystem', 'autonomy', 'inamovible'],
+    modules: ['base', 'philosophy', 'dev', 'ha_internals', 'filesystem', 'autonomy', 'inamovible'],
     label: 'Desarrollo'
   },
   multimedia: {
@@ -6180,6 +6405,37 @@ app.listen(PORT, '0.0.0.0', () => {
       // Auto-diagnóstico: leer logs propios y repararse si hay errores previos
       await bootSelfCheck().catch(e => console.log(`[boot] Self-check falló: ${e.message}`));
 
+      // Verificar includes críticos en configuration.yaml
+      try {
+        const cfgPath = path.join(HA_CONFIG, 'configuration.yaml');
+        if (fs.existsSync(cfgPath)) {
+          const cfgContent = fs.readFileSync(cfgPath, 'utf8');
+          const requiredIncludes = [
+            { key: 'automation', include: 'automation: !include automations.yaml' },
+            { key: 'script', include: 'script: !include scripts.yaml' },
+            { key: 'scene', include: 'scene: !include scenes.yaml' }
+          ];
+          for (const req of requiredIncludes) {
+            const hasLine = cfgContent.split('\n').some(line =>
+              new RegExp(`^${req.key}\\s*:`).test(line.trim()) && !line.trim().startsWith('#')
+            );
+            if (!hasLine) {
+              console.log(`[boot] ⚠️ FALTA "${req.include}" en configuration.yaml — REPARANDO`);
+              autoBackup(cfgPath);
+              fs.appendFileSync(cfgPath, `\n${req.include}\n`);
+              console.log(`[boot] ✓ Añadido "${req.include}" a configuration.yaml`);
+            }
+          }
+          // Si se reparó algo, recargar config core
+          const cfgAfter = fs.readFileSync(cfgPath, 'utf8');
+          if (cfgAfter !== cfgContent) {
+            console.log('[boot] Recargando core config tras reparar includes...');
+            await haPost('/services/homeassistant/reload_core_config', {}).catch(() => {});
+            await haPost('/services/automation/reload', {}).catch(() => {});
+          }
+        }
+      } catch (e) { console.log(`[boot] Error verificando configuration.yaml: ${e.message}`); }
+
       // Comprobar si había una tarea en curso cuando se reinició
       const pendingTask = loadJSON(PENDING_TASK_FILE, { status: 'idle' });
       if (pendingTask.status === 'running' && pendingTask.message) {
@@ -6230,6 +6486,13 @@ app.listen(PORT, '0.0.0.0', () => {
 
   // Escaneo de agentes IA locales al arranque
   setTimeout(bootAgentScan, 30_000); // 30s tras el arranque
+
+  // Aprendizaje de HA docs — empieza a los 45s, repite cada 6h para las pendientes
+  setTimeout(bootLearnHA, 45_000);
+  setInterval(bootLearnHA, 6 * 3600_000);
+
+  // Auto-conocimiento del proyecto — empieza a los 20s
+  setTimeout(bootLearnOwnProject, 20_000);
 
   // Monitor de emergencias + NEXUS watchers (cada 30 segundos)
   setInterval(() => { checkEmergencies(); nexusWatchers(); }, 30_000);
@@ -6649,6 +6912,27 @@ async function analyzePatterns() {
 // ── Expansión de conocimiento — Jarvis aprende por su cuenta ─────────────────
 
 const KNOWLEDGE_TOPICS = [
+  // HA Internals — arquitectura y funcionamiento profundo (PRIORIDAD)
+  'Home Assistant configuration.yaml estructura completa includes packages',
+  'Home Assistant .storage directorio archivos internos entity_registry device_registry',
+  'Home Assistant automation platform internals cómo carga automations.yaml restored state',
+  'Home Assistant integration lifecycle setup unload reload config_entries',
+  'Home Assistant entity registry unique_id entity_id platform disabled hidden',
+  'Home Assistant Supervisor API endpoints addons core host network',
+  'Home Assistant Lovelace dashboard storage mode yaml mode interno',
+  'Home Assistant YAML errores comunes indentación duplicados includes vacíos',
+  'Home Assistant Jinja2 templates avanzados states attributes time triggers',
+  'Home Assistant custom_components estructura __init__.py manifest.json config_flow',
+  'Home Assistant event bus state_changed call_service event trigger',
+  'Home Assistant recorder database history statistics purge',
+  'Home Assistant areas zones persons device_tracker presence detection',
+  'Home Assistant REST API endpoints authentication long-lived tokens webhook',
+  'Home Assistant add-on development Dockerfile config.yaml bashio ingress',
+  'Home Assistant backup restore parcial completo snapshot config .storage',
+  'Home Assistant MQTT discovery auto-configuration topics payload',
+  'Home Assistant scripts yaml estructura delay wait_template choose repeat',
+  'Home Assistant scenes snapshot restore entities state attributes',
+  'Home Assistant input_boolean input_number input_select helpers automation state',
   // Industrial
   'Modbus TCP configuración Home Assistant integración',
   'OPC-UA servidor cliente configurar raspberry',
@@ -7094,6 +7378,202 @@ Responde ÚNICAMENTE con este JSON (sin texto extra):
     }
   } catch (e) {
     console.log(`[self-repair] Error: ${e.message}`);
+  }
+}
+
+// ── Boot Learn HA — Jarvis estudia la documentación de HA al arrancar ──────
+
+const HA_DOCS_URLS = [
+  { url: 'https://www.home-assistant.io/docs/configuration/', topic: 'HA configuration.yaml estructura' },
+  { url: 'https://www.home-assistant.io/docs/automation/yaml/', topic: 'HA automatizaciones YAML formato' },
+  { url: 'https://www.home-assistant.io/docs/scripts/', topic: 'HA scripts YAML estructura' },
+  { url: 'https://www.home-assistant.io/docs/scene/', topic: 'HA scenes YAML estructura' },
+  { url: 'https://www.home-assistant.io/integrations/automation/', topic: 'HA automation integration completa' },
+  { url: 'https://www.home-assistant.io/docs/configuration/splitting_configuration/', topic: 'HA split configuration includes packages' },
+  { url: 'https://www.home-assistant.io/docs/configuration/troubleshooting/', topic: 'HA troubleshooting configuration errores' },
+  { url: 'https://www.home-assistant.io/docs/configuration/templating/', topic: 'HA Jinja2 templates avanzado' },
+  { url: 'https://developers.home-assistant.io/docs/config_entries_index/', topic: 'HA config entries integraciones internals' },
+  { url: 'https://developers.home-assistant.io/docs/entity_registry_index/', topic: 'HA entity registry internals' },
+  { url: 'https://developers.home-assistant.io/docs/dev_101_services/', topic: 'HA services internals' },
+  { url: 'https://developers.home-assistant.io/docs/api/supervisor/endpoints/', topic: 'HA Supervisor API endpoints completa' },
+  { url: 'https://www.home-assistant.io/docs/configuration/events/', topic: 'HA event bus state_changed events' },
+  { url: 'https://www.home-assistant.io/integrations/lovelace/', topic: 'HA Lovelace dashboards config modes' },
+  { url: 'https://developers.home-assistant.io/docs/add-ons/configuration/', topic: 'HA add-on development config' },
+  { url: 'https://www.home-assistant.io/common-tasks/os/#restoring-a-backup', topic: 'HA backup restore proceso' },
+  { url: 'https://www.home-assistant.io/docs/mqtt/discovery/', topic: 'HA MQTT discovery auto-config' },
+  { url: 'https://www.home-assistant.io/integrations/rest/', topic: 'HA REST integration sensors commands' },
+  { url: 'https://www.home-assistant.io/docs/configuration/secrets/', topic: 'HA secrets.yaml gestión segura' },
+  { url: 'https://www.home-assistant.io/integrations/recorder/', topic: 'HA recorder database history purge' }
+];
+
+const HA_LEARN_STATE_FILE = path.join(DATA_DIR, 'ha_learn_state.json');
+
+async function bootLearnHA() {
+  try {
+    if (!ANTHROPIC_API_KEY && !OPENAI_API_KEY) return;
+
+    // Comprobar qué docs ya hemos estudiado
+    const learnState = loadJSON(HA_LEARN_STATE_FILE, { studied: [], lastRun: null, totalPages: 0 });
+
+    // Estudiar máximo 3 páginas por boot (no sobrecargar)
+    const pending = HA_DOCS_URLS.filter(d => !learnState.studied.includes(d.url));
+    if (pending.length === 0) {
+      console.log(`[ha-learn] Ya he estudiado las ${HA_DOCS_URLS.length} páginas de docs de HA. ✓`);
+      return;
+    }
+
+    const batch = pending.slice(0, 3);
+    console.log(`[ha-learn] Estudiando ${batch.length}/${pending.length} páginas pendientes de docs HA...`);
+
+    for (const doc of batch) {
+      try {
+        // Fetch la página
+        const res = await fetch(doc.url, {
+          headers: { 'User-Agent': 'Jarvis-HA-Agent/1.0 (learning)' },
+          timeout: 15000
+        });
+        if (!res.ok) {
+          console.log(`[ha-learn] ${doc.topic}: HTTP ${res.status}, saltando.`);
+          continue;
+        }
+        const html = await res.text();
+
+        // Extraer texto principal (eliminar HTML)
+        const textContent = html
+          .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+          .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
+          .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '')
+          .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/&[a-z]+;/gi, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 6000); // Máximo 6000 chars por página
+
+        if (textContent.length < 200) {
+          console.log(`[ha-learn] ${doc.topic}: contenido muy corto, saltando.`);
+          learnState.studied.push(doc.url);
+          continue;
+        }
+
+        // Usar LLM para extraer conocimiento estructurado
+        const extractPrompt = `Lee esta documentación de Home Assistant y extrae el conocimiento más importante y práctico.
+Tema: ${doc.topic}
+URL: ${doc.url}
+
+Contenido:
+${textContent}
+
+Genera UNA entrada de knowledge_db con:
+- title: título descriptivo del tema
+- category: "domotica" o "integraciones" o "soluciones"
+- content: resumen PRÁCTICO de lo más importante (máximo 800 chars). Incluye: qué hace, cómo configurar, errores comunes, tips.
+- tags: 5-8 tags relevantes
+- importance: "high"
+- source: "${doc.url}"
+
+Solo la llamada a knowledge_db. Español.`;
+
+        const knowledgeTools = openAITools.filter(t => t.function.name === 'knowledge_db');
+        const result = await callOpenAI(BG_MODEL,
+          'Eres Jarvis, experto en Home Assistant. Extrae conocimiento práctico de documentación técnica. Responde SOLO con knowledge_db. Español.',
+          [{ role: 'user', content: extractPrompt }],
+          knowledgeTools, 1000
+        );
+
+        for (const tc of result.toolCalls) {
+          if (tc.name === 'knowledge_db') await executeTool('knowledge_db', tc.input);
+        }
+
+        learnState.studied.push(doc.url);
+        learnState.totalPages++;
+        console.log(`[ha-learn] ✓ ${doc.topic} — almacenado en knowledge_db`);
+
+        // Pausa entre páginas para no saturar
+        await new Promise(r => setTimeout(r, 2000));
+      } catch (e) {
+        console.log(`[ha-learn] Error en ${doc.topic}: ${e.message}`);
+      }
+    }
+
+    learnState.lastRun = new Date().toISOString();
+    saveJSON(HA_LEARN_STATE_FILE, learnState);
+    console.log(`[ha-learn] Sesión completada. ${learnState.studied.length}/${HA_DOCS_URLS.length} páginas estudiadas total.`);
+  } catch (e) {
+    console.log(`[ha-learn] Error general: ${e.message}`);
+  }
+}
+
+// ── Aprendizaje continuo del proyecto propio ─────────────────────────────────
+
+async function bootLearnOwnProject() {
+  try {
+    if (!ANTHROPIC_API_KEY && !OPENAI_API_KEY) return;
+
+    const ownLearnFile = path.join(DATA_DIR, 'own_project_learned.json');
+    const learnState = loadJSON(ownLearnFile, { learned: false, version: '' });
+
+    // Solo re-aprender si la versión cambió
+    const currentVersion = (() => {
+      try { return fs.readFileSync('/app/server.js', 'utf8').match(/JARVIS_VERSION\s*=\s*['"]([^'"]+)/)?.[1] || ''; } catch { return ''; }
+    })();
+
+    if (learnState.learned && learnState.version === currentVersion) return;
+
+    console.log('[own-project] Estudiando mi propio código para auto-conocimiento...');
+
+    // Leer archivos clave del proyecto
+    const filesToStudy = [
+      { path: '/app/server.js', name: 'server.js (backend principal)' },
+      { path: '/app/index.html', name: 'index.html (UI del chat)' },
+      { path: '/config/configuration.yaml', name: 'configuration.yaml (config HA del usuario)' }
+    ];
+
+    const projectKnowledge = [];
+    for (const file of filesToStudy) {
+      try {
+        if (!fs.existsSync(file.path)) continue;
+        const content = fs.readFileSync(file.path, 'utf8');
+        const stats = {
+          name: file.name,
+          lines: content.split('\n').length,
+          size: content.length,
+          hasAutomationInclude: file.name.includes('configuration') ? content.includes('automation:') : null
+        };
+        projectKnowledge.push(stats);
+      } catch {}
+    }
+
+    // Estudiar la instalación de HA del usuario
+    try {
+      const configContent = fs.readFileSync(path.join(HA_CONFIG, 'configuration.yaml'), 'utf8');
+      const includes = [];
+      const lines = configContent.split('\n');
+      for (const line of lines) {
+        if (line.includes('!include') && !line.trim().startsWith('#')) {
+          includes.push(line.trim());
+        }
+      }
+
+      // Guardar como self-knowledge
+      const selfKnowledge = loadJSON(path.join(DATA_DIR, 'self_knowledge.json'), []);
+      const existingIdx = selfKnowledge.findIndex(s => s.title === 'Estructura configuration.yaml del usuario');
+      const entry = {
+        title: 'Estructura configuration.yaml del usuario',
+        content: `Includes activos: ${includes.join(', ') || 'NINGUNO (⚠️ posible problema)'}. Total líneas: ${lines.length}. ${!includes.some(l => l.includes('automation')) ? '⚠️ FALTA automation: !include automations.yaml' : '✓ automation include presente'}`
+      };
+      if (existingIdx >= 0) selfKnowledge[existingIdx] = entry;
+      else selfKnowledge.push(entry);
+      saveJSON(path.join(DATA_DIR, 'self_knowledge.json'), selfKnowledge);
+    } catch (e) {
+      console.log(`[own-project] No pude leer configuration.yaml: ${e.message}`);
+    }
+
+    saveJSON(ownLearnFile, { learned: true, version: currentVersion, learnedAt: new Date().toISOString(), files: projectKnowledge });
+    console.log('[own-project] Auto-conocimiento actualizado. ✓');
+  } catch (e) {
+    console.log(`[own-project] Error: ${e.message}`);
   }
 }
 
