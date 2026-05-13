@@ -156,3 +156,16 @@ Si los archivos están en la raíz, HA no detecta actualizaciones. NUNCA mover a
 
 ### Proxmox (1)
 33. `proxmox_api` — Gestión completa: VMs, snapshots, storage, red, estado
+
+## Documentos de referencia en la raíz
+
+- `FUTURAS_MEJORAS.txt` — roadmap oficial con sprints priorizados por el usuario
+- `ANALISIS_MEJORAS.txt` — audit de deuda técnica, seguridad y quick wins
+  (referencia para cuando el usuario pida "limpiar", "refactorizar", "mejorar
+  seguridad" o "qué se puede mejorar"). Contiene orden sugerido por tamaño de PR.
+- `ESTADO_PROYECTO.txt` — estado actual completo del proyecto
+- `ARQUITECTURA_JARVIS.txt` — arquitectura y cambios funcionales
+- `CHANGELOG.txt` — historial de versiones
+
+Si el usuario pide trabajar en mejoras de calidad/seguridad/refactor, leer
+primero `ANALISIS_MEJORAS.txt` antes de proponer nada.

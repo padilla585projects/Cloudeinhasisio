@@ -1,0 +1,169 @@
+================================================================================
+ANALISIS DE MEJORAS — Jarvis AI Agent
+================================================================================
+Fecha del analisis: 2026-05-13
+Version analizada: 3.14.2
+Branch: claude/extract-valuable-insights-0cb70
+
+Este documento captura los hallazgos de un audit del repo. NO es el roadmap
+oficial (eso es FUTURAS_MEJORAS.txt) — es material de referencia para cuando
+toque limpiar deuda tecnica o priorizar mejoras de calidad.
+
+================================================================================
+RESUMEN EJECUTIVO (version para no-tecnicos)
+================================================================================
+
+Jarvis funciona y es potente, pero esta construido como una casa de un solo
+cuarto con la puerta entornada. Las mejoras se agrupan en:
+
+  - SEGURIDAD: poner cerrojos (validar entradas, cifrar claves)
+  - MANTENIMIENTO: dividir el codigo en habitaciones, tirar trastos viejos
+  - UX: comodidades visibles para el usuario (deshacer cambios, mas rapido)
+
+================================================================================
+PRIORIDAD 1 — SEGURIDAD (cerraduras flojas)
+================================================================================
+
+[ ] Validacion de input en tools peligrosas
+    - proxmox_api acepta cualquier endpoint del LLM (server.js:1964)
+      → riesgo: el modelo puede mandar paths arbitrarios al API Proxmox
+      → fix: whitelist de endpoints permitidos
+    - write_file / read_file: verificar que el path empieza por
+      /config, /share o /data antes de tocarlo
+    - call_service: validar dominio y servicio antes del POST a HA
+
+[ ] Cifrar agent_network.json
+    - Hoy guarda las API keys de agentes externos en texto plano
+    - Quien tenga acceso a /data las ve todas
+    - Fix: AES-256 con clave derivada de SUPERVISOR_TOKEN
+      (ya es secreto y unico por instalacion)
+
+================================================================================
+PRIORIDAD 2 — DEUDA TECNICA (taller desordenado)
+================================================================================
+
+[ ] Trocear server.js por dominio
+    - PROBLEMA: 7.600 lineas, 122 case statements en un solo executeTool()
+    - Cualquier cambio toca todo, no hay tests por tool
+    - Estructura propuesta:
+        jarvis/
+          server.js                  (solo Express + bucle agentico)
+          tools/
+            index.js                 (registry: { name -> handler })
+            devices.js               (5 tools HA)
+            automations.js           (3 tools)
+            filesystem.js            (4 tools)
+            dashboards.js            (5 tools)
+            proxmox.js               (1 tool, 15+ subacciones)
+            network.js               (scan, WoL, port_scan)
+            memory.js                (learn, save, distill)
+            telegram.js              (3 tools)
+    - Beneficios: hot-reload selectivo, tests unitarios, menos colisiones
+
+[ ] Borrar carpeta ClaudeInHassio/
+    - Prototipo v1.1.0 abandonado antes del rebrand a Jarvis
+    - Referencia gpt-4.1-mini (modelo invalido)
+    - Solo confunde y ocupa repo
+
+[ ] Cap a memory.json
+    - learnings.json ya tiene cap de 200 entradas
+    - memory.json crece sin limite hasta intervencion manual
+    - Aplicar mismo patron + distilacion periodica
+
+================================================================================
+PRIORIDAD 3 — APROVECHAR PATRONES QUE YA FUNCIONAN
+================================================================================
+
+[ ] Generalizar el "auto-backup antes de escribir"
+    - Hoy solo lo hace update_dashboard (server.js:1635-1673)
+    - Patron: rolling buffer de 10 backups antes de tocar config
+    - Extender a write_file, create_automation, append_file
+      cuando el target esta en /config
+    - Helper unico: safeWrite(path, content)
+
+[ ] Cache compartida tipo "30s TTL" en mas tools
+    - Hoy solo get_entities tiene cache (30s, max 100)
+    - Tools que se beneficiarian igual:
+        - get_automations
+        - get_dashboards
+        - get_installed_frontend
+    - Reduce latencia y carga sobre HA
+
+[ ] Recuperacion automatica de errores comunes
+    - Ya existe para imagenes corruptas (server.js:5905-5908):
+      auto-detecta -> limpia del historial -> reintenta
+    - Extender a:
+        - Tool result demasiado grande -> trocear o resumir
+        - Rate limit Anthropic -> backoff exponencial
+        - HA 503 -> reintentar tras 2s
+
+[ ] Paginar scan_installation
+    - Hoy carga toda la instalacion de golpe cada 2h
+    - Riesgo de timeout con instalaciones grandes (787+ entidades)
+    - Paginar por dominio, guardar resultado parcial entre paginas
+
+================================================================================
+PRIORIDAD 4 — QUICK WINS DE UX (cambios visibles, bajo esfuerzo)
+================================================================================
+
+[ ] Tool: rollback_dashboard
+    - Los backups ya existen, falta exponerlos como tool
+    - "Jarvis, deshaz el ultimo cambio del dashboard salon"
+    - → restaura backup N-1
+
+[ ] Tool: get_tool_stats
+    - El bucle agentico ya sabe que tools se llaman → loggear contador
+    - Util para:
+        - Saber que tools nunca se usan (candidatas a eliminar)
+        - Saber cuales fallan mas
+        - Alimentar la distilacion de learnings
+
+[ ] Endpoint /api/health con introspeccion
+    - Lista tools cargadas, ultimo error, hits de cache,
+      tamano de memoria.json
+    - Util para debugging desde fuera del chat
+
+================================================================================
+GEMAS DEL CODIGO ACTUAL (lo que SI esta bien hecho)
+================================================================================
+
+Patrones que merece la pena PRESERVAR si se hace refactor:
+
+  - Bucle agentico con tool_use paralelo (server.js:5893-6010)
+    All tools de un turno en Promise.all(), push unico de assistant
+    + tool_results. Max 15 iter, SSE en cada paso.
+
+  - SSE streaming Express -> frontend vanilla (sin frameworks)
+
+  - Integracion HA REST con caches y fallbacks API -> .storage
+
+  - Auto-backup antes de modificar dashboards (rolling 10)
+
+  - Distilacion de learnings cada 6h (convierte errores en reglas)
+
+  - Router de modelos: Sonnet 4.6 para chat / Haiku para fondo (~80% ahorro)
+
+  - Self-knowledge file (jarvis se introspecciona entre reinicios)
+
+  - Auto-recuperacion de imagenes corruptas en el historial
+
+  - Uso de SUPERVISOR_TOKEN (sin token externo, solo dentro del add-on)
+
+================================================================================
+ORDEN SUGERIDO CUANDO RETOMEMOS
+================================================================================
+
+PR pequeno (commit visible, version patch):
+  1. Validacion de input en proxmox_api / write_file / call_service
+  2. Borrar ClaudeInHassio/
+  3. Tool rollback_dashboard
+
+PR mediano (cifrado + helpers):
+  4. Cifrar agent_network.json
+  5. Generalizar safeWrite()
+  6. Cache compartida en get_automations/get_dashboards
+
+PR grande (refactor estructural, version minor):
+  7. Trocear server.js en tools/*.js
+
+================================================================================
