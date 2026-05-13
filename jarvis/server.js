@@ -1327,6 +1327,18 @@ async function executeTool(name, input) {
         if (!allowedWrite.some(p => input.filepath.startsWith(p))) {
           return { error: `Escritura no permitida en esa ruta. Usa: ${allowedWrite.join(', ')}` };
         }
+        // Protección de archivos críticos de HA — sobreescritura completa requiere confirmación
+        const CRITICAL_FILES = ['automations.yaml', 'configuration.yaml', 'scripts.yaml', 'scenes.yaml', 'secrets.yaml'];
+        const basename = path.basename(input.filepath);
+        if (CRITICAL_FILES.includes(basename) && input.filepath.startsWith(HA_CONFIG)) {
+          if (!input.adrian_confirmed) {
+            return {
+              error: `PROTECCIÓN: ${basename} es un archivo crítico de HA. Sobreescribirlo borra TODO su contenido actual. Para crear automatizaciones usa create_automation (que AÑADE sin borrar). Si realmente necesitas sobreescribir el archivo completo, pide confirmación a Adrián y repite con adrian_confirmed:true.`,
+              backup_hint: 'Los backups están en /data/backups/ si necesitas recuperar.'
+            };
+          }
+          console.log(`[CRITICAL] Sobreescritura confirmada de ${basename}`);
+        }
         const backupMade = autoBackup(input.filepath);
         const dir = path.dirname(input.filepath);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
