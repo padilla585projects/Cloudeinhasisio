@@ -6737,11 +6737,16 @@ app.listen(PORT, '0.0.0.0', () => {
             autoBackup(cfgPath);
             fs.appendFileSync(cfgPath, '\nautomation: !include automations.yaml\n');
             console.log('[boot] ✓ Añadido "automation: !include automations.yaml" a configuration.yaml');
-            // Solo recargar automations, no el core completo
             await haPost('/services/automation/reload', {}).catch(() => {});
           }
         }
       } catch (e) { console.log(`[boot] Error verificando configuration.yaml: ${e.message}`); }
+
+      // Recuperación automática de scripts si están en estado "restored"
+      // Busca el backup más reciente de scripts.yaml y lo restaura si el dominio no carga
+      try {
+        await bootRecoverScripts();
+      } catch (e) { console.log(`[boot] Script recovery falló (no crítico): ${e.message}`); }
 
       // Comprobar si había una tarea en curso cuando se reinició
       const pendingTask = loadJSON(PENDING_TASK_FILE, { status: 'idle' });
@@ -7587,6 +7592,102 @@ async function bootAgentScan() {
   } catch (e) {
     console.log(`[boot-scan] Error: ${e.message}`);
   }
+}
+
+// ── Recuperación automática de scripts al arrancar ───────────────────────────
+async function bootRecoverScripts() {
+  const scriptsYaml = path.join(HA_CONFIG, 'scripts.yaml');
+  const cfgPath = path.join(HA_CONFIG, 'configuration.yaml');
+
+  // Dar tiempo a HA para que cargue los estados
+  await new Promise(r => setTimeout(r, 8000));
+
+  // Verificar si los scripts están en estado "restored" (dominio no cargó)
+  let scriptsRestored = false;
+  try {
+    const states = await haGet('/states');
+    const scriptEntities = states.filter(e => e.entity_id.startsWith('script.'));
+    scriptsRestored = scriptEntities.length > 0 && scriptEntities.every(e => e.attributes?.restored === true);
+    if (scriptEntities.length === 0) {
+      // Sin entidades de script — también puede ser que el dominio no cargó
+      // Verificar si hay un include roto en configuration.yaml
+      if (fs.existsSync(cfgPath)) {
+        const cfgContent = fs.readFileSync(cfgPath, 'utf8');
+        const hasScriptInclude = cfgContent.split('\n').some(l => /^script\s*:/.test(l.trim()) && !l.trim().startsWith('#'));
+        if (hasScriptInclude && !fs.existsSync(scriptsYaml)) {
+          scriptsRestored = true; // include existe pero el archivo no → el dominio falla
+        }
+      }
+    }
+  } catch (e) {
+    console.log(`[boot-recover] No pude verificar estados: ${e.message}`);
+    return;
+  }
+
+  if (!scriptsRestored) {
+    console.log('[boot-recover] Scripts OK — no se necesita recuperación.');
+    return;
+  }
+
+  console.log('[boot-recover] ⚠️ Scripts en estado "restored" o archivo faltante — buscando backup...');
+
+  // Buscar el backup más reciente de scripts.yaml
+  if (!fs.existsSync(BACKUPS_DIR)) {
+    console.log('[boot-recover] No hay directorio de backups. Creando scripts.yaml vacío como mínimo...');
+    fs.writeFileSync(scriptsYaml, '# Scripts de Home Assistant\n');
+    return;
+  }
+
+  const backupFiles = fs.readdirSync(BACKUPS_DIR)
+    .filter(f => f.includes('scripts.yaml') && f.endsWith('.bak'))
+    .sort()
+    .reverse(); // más reciente primero
+
+  if (backupFiles.length === 0) {
+    // No hay backup — crear archivo mínimo para que el include no falle
+    console.log('[boot-recover] Sin backups de scripts.yaml. Creando archivo mínimo...');
+    if (!fs.existsSync(scriptsYaml)) {
+      fs.writeFileSync(scriptsYaml, '# Scripts de Home Assistant\n');
+    }
+    // Recargar scripts
+    await haPost('/services/script/reload', {}).catch(() => {});
+    console.log('[boot-recover] ✓ scripts.yaml mínimo creado y dominio recargado.');
+    return;
+  }
+
+  // Restaurar el backup más reciente
+  const bestBackup = backupFiles[0];
+  const backupPath = path.join(BACKUPS_DIR, bestBackup);
+  const backupContent = fs.readFileSync(backupPath, 'utf8');
+
+  // Validar que el backup tiene contenido real (no vacío o solo comentarios)
+  const hasContent = backupContent.replace(/#[^\n]*/g, '').trim().length > 0;
+  if (!hasContent) {
+    // El backup está vacío — buscar uno anterior con contenido
+    for (const bf of backupFiles.slice(1)) {
+      const bc = fs.readFileSync(path.join(BACKUPS_DIR, bf), 'utf8');
+      if (bc.replace(/#[^\n]*/g, '').trim().length > 0) {
+        autoBackup(scriptsYaml);
+        fs.copyFileSync(path.join(BACKUPS_DIR, bf), scriptsYaml);
+        console.log(`[boot-recover] ✓ scripts.yaml restaurado desde backup: ${bf}`);
+        await haPost('/services/script/reload', {}).catch(() => {});
+        return;
+      }
+    }
+    // Todos los backups están vacíos — crear mínimo
+    fs.writeFileSync(scriptsYaml, '# Scripts de Home Assistant\n');
+    await haPost('/services/script/reload', {}).catch(() => {});
+    return;
+  }
+
+  // Restaurar backup con contenido
+  if (fs.existsSync(scriptsYaml)) autoBackup(scriptsYaml);
+  fs.copyFileSync(backupPath, scriptsYaml);
+  console.log(`[boot-recover] ✓ scripts.yaml restaurado desde backup: ${bestBackup}`);
+
+  // Recargar el dominio script
+  await haPost('/services/script/reload', {}).catch(() => {});
+  console.log('[boot-recover] ✓ Dominio script recargado. Scripts recuperados.');
 }
 
 // ── Autoreparación — Jarvis lee sus logs y se repara solo ────────────────────
