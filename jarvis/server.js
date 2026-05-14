@@ -1206,6 +1206,56 @@ const tools = [
     }
   },
 
+  // ─── Ejecución de código y comandos ───
+  {
+    name: 'exec_command',
+    description: 'Ejecuta comandos bash, scripts Python o código Node.js directamente en el servidor. MÁXIMA POTENCIA: instala paquetes (pip/apk), procesa archivos, genera imágenes con Pillow/matplotlib, analiza datos con pandas, crea cualquier cosa. Usa python3 para ciencia de datos/imágenes, bash para gestión del sistema, node para JavaScript. Como el Bash tool de Claude Code.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        command: { type: 'string', description: 'Código o comando a ejecutar' },
+        language: { type: 'string', enum: ['bash', 'python3', 'node'], description: 'bash (default): comandos del sistema | python3: scripts Python | node: JavaScript' },
+        timeout: { type: 'number', description: 'Timeout en segundos (default: 30, max: 120)' },
+        working_dir: { type: 'string', description: 'Directorio de trabajo (default: /data)' },
+        install_packages: { type: 'array', items: { type: 'string' }, description: 'Paquetes pip o apk a instalar antes de ejecutar (ej: ["pillow","matplotlib"] o ["ffmpeg"])' }
+      },
+      required: ['command']
+    }
+  },
+
+  // ─── Mapa 3D de la casa ───
+  {
+    name: 'house_3d_map',
+    description: 'Crea y gestiona un mapa 3D interactivo de la casa con Three.js. El mapa se sirve en /3d-map y se puede embeber en Lovelace como tarjeta iframe. Muestra habitaciones con colores, luces activas, presencia y dispositivos en tiempo real. Primero usa setup_rooms para definir las habitaciones, luego el mapa aparece automáticamente.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['setup_rooms', 'get_config', 'get_lovelace_card', 'reset'], description: 'setup_rooms: define/actualiza las habitaciones | get_config: ver config actual | get_lovelace_card: YAML para Lovelace | reset: borrar config' },
+        rooms: {
+          type: 'array',
+          description: 'Lista de habitaciones (para setup_rooms). Coordenadas en metros desde la esquina superior-izquierda de la planta.',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: 'ID único (ej: salon, dormitorio_1, cocina)' },
+              name: { type: 'string', description: 'Nombre visible en el mapa' },
+              x: { type: 'number', description: 'Posición X en metros' },
+              y: { type: 'number', description: 'Posición Y en metros (profundidad)' },
+              width: { type: 'number', description: 'Ancho en metros' },
+              depth: { type: 'number', description: 'Profundidad en metros' },
+              height: { type: 'number', description: 'Altura del techo en metros (default: 2.5)' },
+              color: { type: 'string', description: 'Color hex del suelo (ej: #1a2744). Opcional.' },
+              floor: { type: 'number', description: 'Número de planta: 0=baja, 1=primera, etc. (default: 0)' },
+              entities: { type: 'array', items: { type: 'string' }, description: 'entity_ids de HA en esta habitación (para mostrar estado en tiempo real)' }
+            },
+            required: ['id', 'name', 'width', 'depth']
+          }
+        }
+      },
+      required: ['action']
+    }
+  },
+
   // ─── Emergencias autónomas ───
   {
     name: 'emergency_config',
@@ -4028,6 +4078,104 @@ ${dots}`;
         }
       }
 
+      // ─── Ejecución de código ───
+      case 'exec_command': {
+        const lang = input.language || 'bash';
+        const timeoutSec = Math.min(input.timeout || 30, 120);
+        const cwd = input.working_dir || '/data';
+
+        if (!fs.existsSync(cwd)) fs.mkdirSync(cwd, { recursive: true });
+
+        // Instalar paquetes antes de ejecutar si se pide
+        if (input.install_packages && input.install_packages.length > 0) {
+          const pkgs = input.install_packages.map(p => p.replace(/[^a-z0-9._\-]/gi, '')).filter(Boolean);
+          if (pkgs.length > 0) {
+            // pip primero para Python, apk para paquetes del sistema
+            const pipPkgs = pkgs.filter(p => /^[a-z0-9]/.test(p));
+            await new Promise(r => exec(`pip3 install ${pipPkgs.join(' ')} -q 2>&1 || true`, { timeout: 90000 }, r));
+          }
+        }
+
+        let cmd;
+        let tmpFile = null;
+
+        if (lang === 'python3') {
+          tmpFile = `/tmp/jx_${Date.now()}.py`;
+          fs.writeFileSync(tmpFile, input.command);
+          cmd = `python3 "${tmpFile}"`;
+        } else if (lang === 'node') {
+          tmpFile = `/tmp/jx_${Date.now()}.js`;
+          fs.writeFileSync(tmpFile, input.command);
+          cmd = `node "${tmpFile}"`;
+        } else {
+          cmd = input.command;
+        }
+
+        return new Promise((resolve) => {
+          exec(cmd, {
+            timeout: timeoutSec * 1000,
+            cwd,
+            env: { ...process.env, PYTHONUNBUFFERED: '1' }
+          }, (error, stdout, stderr) => {
+            if (tmpFile) try { fs.unlinkSync(tmpFile); } catch {}
+            const timedOut = !!(error && error.killed);
+            resolve({
+              success: !error || error.code === 0,
+              exit_code: error ? (error.code || 1) : 0,
+              stdout: (stdout || '').slice(0, 10000),
+              stderr: (stderr || '').slice(0, 3000),
+              timed_out: timedOut,
+              language: lang,
+              note: timedOut ? `Timeout después de ${timeoutSec}s` : undefined
+            });
+          });
+        });
+      }
+
+      // ─── Mapa 3D de la casa ───
+      case 'house_3d_map': {
+        const MAP_CONFIG_FILE = path.join(DATA_DIR, 'house_3d_config.json');
+
+        if (input.action === 'get_config') {
+          const cfg = fs.existsSync(MAP_CONFIG_FILE) ? JSON.parse(fs.readFileSync(MAP_CONFIG_FILE, 'utf8')) : { rooms: [] };
+          return { config: cfg, rooms_count: cfg.rooms?.length || 0 };
+        }
+
+        if (input.action === 'reset') {
+          if (fs.existsSync(MAP_CONFIG_FILE)) fs.unlinkSync(MAP_CONFIG_FILE);
+          return { success: true, message: 'Configuración del mapa 3D eliminada.' };
+        }
+
+        if (input.action === 'get_lovelace_card') {
+          // Necesitamos la URL de ingress para el iframe
+          return {
+            success: true,
+            note: 'Añade esta tarjeta a tu dashboard de Lovelace (en modo edición → añadir tarjeta → Manual)',
+            yaml: `type: iframe\nurl: /api/hassio_ingress/${process.env.SUPERVISOR_TOKEN ? 'auto' : 'INGRESS_URL'}/3d-map\naspect_ratio: 75%`,
+            alternative: 'Si no funciona la URL de ingress, prueba con la URL directa del add-on: http://IP_HA:3000/3d-map',
+            tip: 'También puedes abrirlo directamente en tu navegador desde el panel lateral de Jarvis → clic derecho → Abrir en nueva pestaña → cambia la ruta a /3d-map'
+          };
+        }
+
+        if (input.action === 'setup_rooms') {
+          if (!input.rooms || !Array.isArray(input.rooms) || input.rooms.length === 0) {
+            return { error: 'Necesito al menos una habitación en el array rooms.' };
+          }
+          const config = { rooms: input.rooms, updated: new Date().toISOString() };
+          fs.writeFileSync(MAP_CONFIG_FILE, JSON.stringify(config, null, 2));
+          return {
+            success: true,
+            rooms_configured: input.rooms.length,
+            rooms: input.rooms.map(r => r.name),
+            map_url: '/3d-map',
+            message: `Mapa 3D configurado con ${input.rooms.length} habitaciones. Accede en /3d-map desde el panel lateral de Jarvis.`,
+            next_step: 'Para verlo en Lovelace usa: house_3d_map(action:"get_lovelace_card")'
+          };
+        }
+
+        return { error: `Acción desconocida: ${input.action}` };
+      }
+
       default:
         return { error: `Tool desconocida: ${name}` };
     }
@@ -6211,6 +6359,238 @@ app.post('/api/alexa-voice', async (req, res) => {
   })();
 
   res.json({ received: true, command });
+});
+
+// ── Mapa 3D de la casa ──────────────────────────────────────────────────────
+
+const HOUSE_3D_CONFIG_FILE = path.join(DATA_DIR, 'house_3d_config.json');
+
+// Endpoint de configuración del mapa (lo consume el visor Three.js)
+app.get('/api/3d-map-config', (req, res) => {
+  const cfg = fs.existsSync(HOUSE_3D_CONFIG_FILE)
+    ? JSON.parse(fs.readFileSync(HOUSE_3D_CONFIG_FILE, 'utf8'))
+    : { rooms: [] };
+  res.json(cfg);
+});
+
+// Estados simplificados para el visor 3D (entity_id → state)
+app.get('/api/ha-states-simple', async (req, res) => {
+  try {
+    const states = await haGet('/states');
+    const map = {};
+    for (const s of states) map[s.entity_id] = s.state;
+    res.json(map);
+  } catch (e) {
+    res.json({});
+  }
+});
+
+// Visor 3D Three.js
+app.get('/3d-map', (req, res) => {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jarvis — Mapa 3D</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{background:#0d1117;font-family:'DM Sans',system-ui,sans-serif;overflow:hidden}
+    canvas{display:block;width:100vw;height:100vh}
+    #hud{position:fixed;top:12px;left:12px;color:#8b949e;font-size:11px;font-family:monospace;pointer-events:none}
+    #legend{position:fixed;bottom:16px;right:16px;background:rgba(22,27,34,0.92);border:1px solid #30363d;border-radius:10px;padding:10px 14px;font-size:10px;color:#8b949e;pointer-events:none}
+    .li{display:flex;align-items:center;gap:7px;margin:3px 0}
+    .ld{width:10px;height:10px;border-radius:2px;flex-shrink:0}
+    #tooltip{position:fixed;background:rgba(22,27,34,0.96);border:1px solid #30363d;border-radius:8px;padding:8px 12px;font-size:11px;color:#e6edf3;pointer-events:none;display:none;z-index:100;line-height:1.5}
+    #hint{position:fixed;bottom:16px;left:16px;color:#30363d;font-size:10px;pointer-events:none}
+    #refresh{position:fixed;top:12px;right:12px;background:rgba(22,27,34,0.8);border:1px solid #30363d;color:#8b949e;font-size:10px;padding:5px 10px;border-radius:7px;cursor:pointer}
+    #refresh:hover{border-color:#58a6ff;color:#58a6ff}
+  </style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">🏠 Jarvis — Mapa 3D · <span id="room-count">cargando...</span></div>
+<div id="tooltip"></div>
+<div id="legend">
+  <div class="li"><div class="ld" style="background:#6b5410"></div>Luces encendidas</div>
+  <div class="li"><div class="ld" style="background:#0d2240"></div>Presencia detectada</div>
+  <div class="li"><div class="ld" style="background:#1a2744"></div>Sin actividad</div>
+</div>
+<div id="hint">Rotar: arrastrar · Zoom: rueda · Pan: Shift+arrastrar</div>
+<button id="refresh" onclick="loadStates()">↻ Actualizar</button>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+<script>
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x0d1117);
+renderer.shadowMap.enabled = true;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
+const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+scene.add(ambient);
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
+dirLight.position.set(15, 25, 15);
+dirLight.castShadow = true;
+scene.add(dirLight);
+const grid = new THREE.GridHelper(60, 30, 0x21262d, 0x161b22);
+scene.add(grid);
+
+let azimuth = Math.PI/5, elevation = Math.PI/4.5, radius = 24, tx = 0, tz = 0;
+function updateCam() {
+  camera.position.set(tx + radius*Math.sin(azimuth)*Math.cos(elevation), radius*Math.sin(elevation)+2, tz + radius*Math.cos(azimuth)*Math.cos(elevation));
+  camera.lookAt(tx, 1.5, tz);
+}
+updateCam();
+
+let drag = false, lastX = 0, lastY = 0, shiftDown = false;
+canvas.addEventListener('mousedown', e=>{drag=true;lastX=e.clientX;lastY=e.clientY;shiftDown=e.shiftKey});
+canvas.addEventListener('mouseup', ()=>drag=false);
+canvas.addEventListener('mouseleave', ()=>drag=false);
+canvas.addEventListener('mousemove', e=>{
+  if(!drag) return;
+  const dx=(e.clientX-lastX)*0.006, dy=(e.clientY-lastY)*0.006;
+  if(shiftDown||e.buttons===4){tx-=Math.cos(azimuth)*dx*radius*0.3;tz+=Math.sin(azimuth)*dx*radius*0.3;}
+  else{azimuth+=dx;elevation=Math.max(0.05,Math.min(Math.PI/2.1,elevation-dy));}
+  lastX=e.clientX;lastY=e.clientY;updateCam();
+});
+canvas.addEventListener('wheel', e=>{radius=Math.max(2,Math.min(100,radius+e.deltaY*0.05));updateCam();e.preventDefault();},{passive:false});
+
+const rooms = new Map();
+const labelEls = [];
+
+function hex3(hex){return new THREE.Color(parseInt(hex.replace('#',''),16));}
+
+function addRoom(r) {
+  const w=r.width||3, d=r.depth||3, h=r.height||2.5;
+  const flY=(r.floor||0)*(h+0.4);
+  const cx=(r.x||0)+w/2, cz=(r.y||0)+d/2;
+  const baseColor = r.color ? hex3(r.color) : new THREE.Color(0x1a2744);
+
+  const floorGeo = new THREE.BoxGeometry(w-0.06, 0.06, d-0.06);
+  const floorMat = new THREE.MeshLambertMaterial({color: baseColor.clone()});
+  const floor = new THREE.Mesh(floorGeo, floorMat);
+  floor.position.set(cx, flY, cz);
+  floor.receiveShadow = true;
+  scene.add(floor);
+
+  const wh = h*0.88;
+  const wallMat = new THREE.MeshLambertMaterial({color: baseColor.clone(), transparent:true, opacity:0.28, side:THREE.DoubleSide});
+  [[cx,flY+wh/2+0.03,cz+d/2,w,wh,0.05],[cx,flY+wh/2+0.03,cz-d/2,w,wh,0.05],[cx+w/2,flY+wh/2+0.03,cz,0.05,wh,d],[cx-w/2,flY+wh/2+0.03,cz,0.05,wh,d]].forEach(([x,y,z,gw,gh,gd])=>{
+    const m = new THREE.Mesh(new THREE.BoxGeometry(gw,gh,gd), wallMat.clone());
+    m.position.set(x,y,z);
+    scene.add(m);
+  });
+
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(w,0.06,d)), new THREE.LineBasicMaterial({color:0x30363d}));
+  edges.position.set(cx,flY,cz);
+  scene.add(edges);
+
+  const lbl = document.createElement('div');
+  lbl.style.cssText='position:fixed;background:rgba(13,17,23,0.85);color:#c9d1d9;font-size:9px;padding:2px 6px;border-radius:4px;pointer-events:none;white-space:nowrap;font-family:DM Sans,system-ui';
+  lbl.textContent = r.name;
+  document.body.appendChild(lbl);
+  labelEls.push({el:lbl, x:cx, y:flY+h+0.5, z:cz});
+
+  rooms.set(r.id, {floor, wallMat, room:r, baseColor:baseColor.clone(), cx, cz, flY});
+}
+
+function project(x,y,z){
+  const v=new THREE.Vector3(x,y,z).project(camera);
+  return{sx:(v.x*.5+.5)*window.innerWidth,sy:(-v.y*.5+.5)*window.innerHeight,behind:v.z>1};
+}
+
+let haStates = {};
+
+async function loadConfig() {
+  try {
+    const res = await fetch('api/3d-map-config');
+    const cfg = await res.json();
+    for(const r of (cfg.rooms||[])) addRoom(r);
+    document.getElementById('room-count').textContent = (cfg.rooms||[]).length + ' habitaciones';
+    if(!(cfg.rooms||[]).length) showNoConfig();
+  } catch(e) { showNoConfig(); }
+}
+
+function showNoConfig() {
+  document.getElementById('room-count').textContent = 'sin configurar';
+  const d = document.createElement('div');
+  d.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(22,27,34,0.95);border:1px solid #30363d;border-radius:12px;padding:24px 32px;color:#8b949e;font-size:13px;text-align:center;pointer-events:none;line-height:1.7';
+  d.innerHTML='🏠 <b style="color:#e6edf3;font-size:15px">Mapa sin configurar</b><br>Dile a Jarvis:<br><i style="color:#58a6ff">«Crea el mapa 3D de mi casa»</i><br>y descríbele las habitaciones.';
+  document.body.appendChild(d);
+}
+
+async function loadStates() {
+  try {
+    const res = await fetch('api/ha-states-simple');
+    haStates = await res.json();
+    updateColors();
+  } catch {}
+}
+
+function updateColors() {
+  for(const [id,{floor,wallMat,room,baseColor}] of rooms) {
+    const ents = room.entities||[];
+    const hasLight = ents.some(e=>e.startsWith('light.')&&haStates[e]==='on');
+    const hasPresence = ents.some(e=>(e.startsWith('binary_sensor.')||e.startsWith('person.'))&&(haStates[e]==='on'||haStates[e]==='home'));
+    if(hasLight){
+      floor.material.color.set(0x6b5410);
+    } else if(hasPresence){
+      floor.material.color.set(0x0d2240);
+    } else {
+      floor.material.color.copy(baseColor);
+    }
+  }
+}
+
+const ray = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+canvas.addEventListener('mousemove', e=>{
+  mouse.x=(e.clientX/window.innerWidth)*2-1;
+  mouse.y=-(e.clientY/window.innerHeight)*2+1;
+  ray.setFromCamera(mouse, camera);
+  const meshes=[...rooms.values()].map(r=>r.floor);
+  const hits=ray.intersectObjects(meshes);
+  const tt=document.getElementById('tooltip');
+  if(hits.length){
+    const entry=[...rooms.values()].find(r=>r.floor===hits[0].object);
+    if(entry){
+      const {room}=entry;
+      const active=(room.entities||[]).filter(e=>['on','home','playing','open'].includes(haStates[e])).length;
+      tt.style.display='block';
+      tt.style.left=(e.clientX+14)+'px';
+      tt.style.top=(e.clientY-8)+'px';
+      tt.innerHTML='<b>'+room.name+'</b><br>'+(room.entities?.length||0)+' entidades · '+active+' activas';
+    }
+  } else tt.style.display='none';
+});
+
+function animate(){
+  requestAnimationFrame(animate);
+  for(const {el,x,y,z} of labelEls){
+    const p=project(x,y,z);
+    if(p.behind){el.style.display='none';}
+    else{el.style.display='block';el.style.left=(p.sx-el.offsetWidth/2)+'px';el.style.top=(p.sy-8)+'px';}
+  }
+  renderer.render(scene,camera);
+}
+
+window.addEventListener('resize',()=>{
+  camera.aspect=window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth,window.innerHeight);
+});
+
+loadConfig();
+loadStates();
+setInterval(loadStates, 15000);
+animate();
+</script>
+</body>
+</html>`);
 });
 
 app.get('/api/health', (req, res) => {

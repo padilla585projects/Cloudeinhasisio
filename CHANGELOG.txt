@@ -3,6 +3,43 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.23.0 (2026-05-14) — exec_command, mapa 3D, limpieza UI
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVAS HERRAMIENTAS:
+
+  exec_command — Ejecución de código directa dentro del contenedor Docker
+    Ejecuta bash, Python 3 o Node.js con timeout configurable (máx 120s).
+    Puede instalar paquetes pip o apk antes de ejecutar (install_packages).
+    Captura stdout, stderr, exit_code, timed_out.
+    Como el Bash tool de Claude Code — desbloquea: imágenes con Pillow,
+    análisis de datos con pandas, ffmpeg, cualquier script personalizado.
+
+  house_3d_map — Mapa 3D interactivo de la casa con Three.js
+    Endpoint /3d-map: visor Three.js con rotación, zoom, pan táctil.
+    Rooms configurables: posición en metros, dimensiones, color, planta, entidades HA.
+    Estados en tiempo real: luces encendidas (amarillo), presencia (azul oscuro).
+    Tooltip con nombre de habitación y entidades activas al pasar el ratón.
+    Se refresca automáticamente cada 15 segundos con estados de HA.
+    setup_rooms: define/actualiza habitaciones | get_lovelace_card: YAML para Lovelace.
+
+  generate_image (ya existía, ahora documentada)
+    DALL-E 3 via OpenAI API. Tamaños: 1024x1024, 1792x1024, 1024x1792.
+    Calidad standard/hd. Estilo vivid/natural.
+    URL válida ~1h. Mostrar con ![descripción](url) en el chat.
+
+NUEVOS ENDPOINTS:
+  GET /3d-map — Visor Three.js de la casa
+  GET /api/3d-map-config — Config JSON del mapa (rooms)
+  GET /api/ha-states-simple — Estados simplificados {entity_id:state} para el visor
+
+UI — Limpieza del panel de red de agentes:
+  Eliminado el botón "Red" de la barra superior
+  Eliminado el panel desplegable de red de agentes
+  Eliminados los handlers SSE de mensajes de agentes
+  Añadidos iconos para exec_command, house_3d_map, generate_image en tool blocks
+
+────────────────────────────────────────────────────────────────────────────────
 v3.22.2 (2026-05-14) — Eliminado código de administración de gateway de agentes
 ────────────────────────────────────────────────────────────────────────────────
 
