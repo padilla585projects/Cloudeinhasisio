@@ -3,6 +3,25 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.22.2 (2026-05-14) — Eliminado código de administración de gateway de agentes
+────────────────────────────────────────────────────────────────────────────────
+
+ELIMINADO — Gateway de agentes IA (Jarvis ya no administra la red):
+  - Constantes: AGENT_NETWORK_FILE, agentNetwork, findAgentByKey, NETWORK_NORMS, JARVIS_IDENTITY
+  - Herramienta: agent_network (list/send/set_permission/remove)
+  - Endpoints HTTP: /api/agents/discover, /api/agents/register, /api/agents/message, /api/agents/status
+  - Funciones: processAgentMessage(), bootAgentScan()
+  - Timeout de arranque: setTimeout(bootAgentScan, 30_000)
+  - Toda la lógica de registro, autenticación y enrutamiento de agentes
+
+MOTIVO: Adrián gestiona el gateway externamente. Jarvis se conectará a él como cliente
+cuando esté listo, sin necesidad de administrar la red desde el add-on.
+
+ACTUALIZADO — System prompt (módulo 'network'):
+  Jarvis ahora sabe que es cliente del gateway externo, no administrador.
+  Cuando el gateway esté listo, Adrián proporcionará URL y credenciales.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.22.0 (2026-05-14) — HA Config Engineering: herramientas y conocimiento experto
 ────────────────────────────────────────────────────────────────────────────────
 
