@@ -3,6 +3,36 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.21.4 (2026-05-14) — UI: tool blocks permanentes + transparencia paso a paso
+────────────────────────────────────────────────────────────────────────────────
+
+UI — Tool blocks como Claude Code:
+  - Cada herramienta que Jarvis ejecuta crea un bloque PERMANENTE en el chat
+    (antes desaparecían al llegar la respuesta)
+  - Cada bloque muestra: icono + nombre + detalle del input + estado (···/✓/✗)
+  - Al terminar la herramienta, el bloque es clickable para expandir el resultado
+  - El resultado se formatea de forma legible (no JSON crudo):
+    read_file → primeras líneas del archivo
+    get_entities → lista de entidades con su estado
+    web_search → primeros 3 resultados con snippet
+    call_service → éxito/error
+    write_file/append_file → confirmación con path
+  - El indicador "Pensando..." es independiente de los tool blocks
+  - Comportamiento idéntico al de Claude Code
+
+SYSTEM PROMPT — Transparencia obligatoria:
+  - Jarvis DEBE anunciar en una línea qué va a hacer ANTES de llamar cualquier tool
+  - Después del resultado explica brevemente qué encontró y qué significa
+  - Si va a usar múltiples tools, anuncia el plan completo antes de empezar
+
+SYSTEM PROMPT — Conocimiento sobre archivos críticos:
+  - Módulo 'filesystem' añadido a TODOS los expertos NEXUS
+  - Lección aprendida del incidente de mayo 2026 documentada en el prompt:
+    nunca añadir !include sin verificar que el archivo destino existe
+    nunca modificar configuration.yaml sin confirmación de Adrián
+  - Protocolo obligatorio: leer → mostrar cambio → esperar confirmación → escribir → verificar
+
+────────────────────────────────────────────────────────────────────────────────
 v3.21.3 (2026-05-14) — Seguridad: proteger archivos críticos en append_file
 ────────────────────────────────────────────────────────────────────────────────
 

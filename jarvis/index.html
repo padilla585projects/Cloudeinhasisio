@@ -203,6 +203,63 @@
     color: var(--error);
   }
 
+  /* ── Tool blocks v2: permanentes y expandibles ── */
+  .tool-block-v2 {
+    flex-direction: column;
+    gap: 0;
+    padding: 0;
+    cursor: default;
+    overflow: hidden;
+  }
+  .tool-block-v2.has-result { cursor: pointer; }
+  .tool-block-v2.has-result:hover { border-color: var(--accent); }
+  .tbv2-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 13px;
+    width: 100%;
+  }
+  .tbv2-detail {
+    font-size: 10.5px;
+    color: var(--text3);
+    font-family: 'DM Mono', monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 260px;
+    flex: 1;
+  }
+  .tool-status.running {
+    background: #1a2f4a;
+    color: #60a5fa;
+    animation: blink 1.4s ease infinite;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.5} }
+  .tbv2-result {
+    display: none;
+    font-size: 11px;
+    color: var(--text2);
+    font-family: 'DM Mono', monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+    padding: 8px 13px;
+    background: rgba(0,0,0,0.25);
+    border-top: 1px solid var(--tool-border);
+    max-height: 260px;
+    overflow-y: auto;
+    line-height: 1.5;
+  }
+  .tbv2-result::-webkit-scrollbar { width: 3px; }
+  .tbv2-result::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .tool-block-v2.expanded .tbv2-result { display: block; }
+  .tbv2-expand-hint {
+    font-size: 9px;
+    color: var(--text3);
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+
   /* ── Thinking indicator ── */
   .thinking {
     display: flex;
@@ -928,51 +985,154 @@
     agent_network: '🌐 Red de agentes IA',
   };
 
-  let toolStepCount = 0;
+  // ── Tool blocks permanentes (como Claude Code) ──────────────────────────────
+  // Cola por nombre de tool para emparejar tool_start → tool_end en orden FIFO
+  const pendingToolBlocks = {};
 
-  function addThinking(toolName, toolInput) {
+  const TOOL_ICONS = {
+    get_entities: '📋', get_entity_state: '🔍', call_service: '⚡',
+    get_automations: '🤖', get_history: '📊', search_entities: '🔎',
+    save_memory: '💾', get_memory: '🧠', delete_memory: '🗑️',
+    create_automation: '⚙️', reload_config: '🔄',
+    read_file: '📄', write_file: '✍️', append_file: '📝', list_directory: '📁',
+    web_search: '🌐', fetch_url: '🔗', learn: '🧪',
+    scan_installation: '🏗️', check_config: '✅',
+    get_dashboards: '🎨', get_dashboard_config: '📐', update_dashboard: '🖌️',
+    get_installed_frontend: '🧩', search_hacs_resources: '🔍',
+    install_hacs_resource: '📦', ha_knowledge: '📚', proxmox_api: '🖥️',
+    get_system_logs: '📋', get_error_log: '🚨',
+    telegram_send: '📨', telegram_send_image: '🖼️', telegram_get_updates: '📩',
+    create_custom_tool: '🛠️', run_custom_tool: '▶️',
+    proactive_thought: '💭', knowledge_db: '📚', nexus_manage: '🧩',
+    github_push: '🐙', ha_supervisor: '⚙️', update_self: '🧬',
+  };
+
+  function toolDetail(name, input) {
+    if (!input) return '';
+    if (input.filepath) return input.filepath.replace('/config/', '').replace('/data/', '');
+    if (input.dirpath) return input.dirpath.replace('/config/', '');
+    if (input.entity_id) return input.entity_id;
+    if (input.domain && input.service) return `${input.domain}.${input.service}`;
+    if (input.domain) return input.domain;
+    if (input.query) return `"${input.query.slice(0, 50)}"`;
+    if (input.url) return input.url.replace(/^https?:\/\//, '').slice(0, 50);
+    if (input.message) return `"${input.message.slice(0, 50)}"`;
+    if (input.action) return input.action;
+    if (input.slug) return input.slug;
+    if (input.target) return input.target;
+    if (input.topic) return input.topic;
+    return '';
+  }
+
+  function toolResultSummary(toolName, result) {
+    if (!result) return '';
+    if (result.error) return `⚠ ${result.error}`;
+    try {
+      if (toolName === 'read_file') {
+        const c = result.content || result;
+        const text = typeof c === 'string' ? c : JSON.stringify(c);
+        return text.slice(0, 600) + (text.length > 600 ? '\n...' : '');
+      }
+      if (toolName === 'get_entities' || toolName === 'search_entities') {
+        const arr = Array.isArray(result) ? result : (result.entities || []);
+        if (arr.length === 0) return 'Sin resultados';
+        return arr.slice(0, 12).map(e => `${e.entity_id || e.name}: ${e.state || ''}`).join('\n') + (arr.length > 12 ? `\n... y ${arr.length - 12} más` : '');
+      }
+      if (toolName === 'list_directory') {
+        const arr = Array.isArray(result) ? result : (result.items || []);
+        return arr.slice(0, 20).map(f => f.name || f).join('\n') + (arr.length > 20 ? `\n... y ${arr.length - 20} más` : '');
+      }
+      if (toolName === 'web_search') {
+        const r = result.results || result;
+        if (Array.isArray(r)) return r.slice(0, 3).map(x => `• ${x.title || x.url || ''}\n  ${(x.snippet || x.body || '').slice(0, 120)}`).join('\n\n');
+      }
+      if (toolName === 'call_service') return result.success ? '✓ Servicio ejecutado' : JSON.stringify(result).slice(0, 200);
+      if (toolName === 'write_file' || toolName === 'append_file') return result.message || '✓ Archivo guardado';
+      if (toolName === 'reload_config') return result.message || '✓ Recargado';
+      if (toolName === 'create_automation') return result.message || '✓ Automatización creada';
+      const text = JSON.stringify(result, null, 2);
+      return text.slice(0, 500) + (text.length > 500 ? '\n...' : '');
+    } catch { return String(result).slice(0, 300); }
+  }
+
+  function addPermanentTool(toolName, toolInput) {
+    hideWelcome();
+    removeThinking();
+    const container = document.getElementById('messages');
+    const div = document.createElement('div');
+    div.className = 'message ai';
+
+    const icon = TOOL_ICONS[toolName] || '🔧';
+    const label = TOOL_LABELS[toolName] || toolName;
+    const detail = toolDetail(toolName, toolInput);
+
+    div.innerHTML = `<div class="tool-block tool-block-v2">
+      <div class="tbv2-header">
+        <span class="tool-icon">${icon}</span>
+        <span class="tool-name">${label}</span>
+        ${detail ? `<span class="tbv2-detail">${detail}</span>` : ''}
+        <span class="tool-status running" style="margin-left:auto">···</span>
+      </div>
+      <div class="tbv2-result"></div>
+    </div>`;
+
+    container.appendChild(div);
+    scrollToBottom();
+
+    const block = div.querySelector('.tool-block-v2');
+    if (!pendingToolBlocks[toolName]) pendingToolBlocks[toolName] = [];
+    pendingToolBlocks[toolName].push(block);
+  }
+
+  function finishTool(toolName, result) {
+    const queue = pendingToolBlocks[toolName];
+    if (!queue || queue.length === 0) return;
+    const block = queue.shift();
+
+    const status = block.querySelector('.tool-status');
+    const resultDiv = block.querySelector('.tbv2-result');
+    const isError = result && result.error;
+
+    status.className = `tool-status ${isError ? 'error' : 'done'}`;
+    status.textContent = isError ? '✗ error' : '✓';
+
+    const summary = toolResultSummary(toolName, result);
+    if (summary) {
+      resultDiv.textContent = summary;
+      block.classList.add('has-result');
+      const header = block.querySelector('.tbv2-header');
+      // Añadir hint de expandir
+      const hint = document.createElement('span');
+      hint.className = 'tbv2-expand-hint';
+      hint.textContent = '▸';
+      header.appendChild(hint);
+      block.addEventListener('click', () => {
+        block.classList.toggle('expanded');
+        hint.textContent = block.classList.contains('expanded') ? '▾' : '▸';
+      });
+    }
+    scrollToBottom();
+  }
+
+  function addThinking() {
     hideWelcome();
     const container = document.getElementById('messages');
     let div = document.getElementById('thinking');
-    if (!div) {
-      div = document.createElement('div');
-      div.className = 'message ai';
-      div.id = 'thinking';
-      container.appendChild(div);
-    }
-
-    toolStepCount++;
-    const label = toolName ? (TOOL_LABELS[toolName] || `⚙️ ${toolName}`) : 'Pensando...';
-
-    // Construir detalle del input
-    let detail = '';
-    if (toolInput) {
-      if (toolInput.domain) detail = toolInput.domain;
-      else if (toolInput.entity_id) detail = toolInput.entity_id;
-      else if (toolInput.query) detail = `"${toolInput.query}"`;
-      else if (toolInput.action) detail = toolInput.action;
-      else if (toolInput.service) detail = `${toolInput.domain || ''}.${toolInput.service}`;
-      else if (toolInput.filepath) detail = toolInput.filepath.split('/').pop();
-      else if (toolInput.message) detail = `"${toolInput.message.slice(0, 40)}${toolInput.message.length > 40 ? '...' : ''}"`;
-      else if (toolInput.slug) detail = toolInput.slug;
-      else if (toolInput.addon_slug) detail = toolInput.addon_slug;
-      else if (toolInput.integration_domain) detail = toolInput.integration_domain;
-    }
-
+    if (div) return;
+    div = document.createElement('div');
+    div.className = 'message ai';
+    div.id = 'thinking';
     div.innerHTML = `<div class="thinking">
       <div class="dots"><span></span><span></span><span></span></div>
-      <div style="display:flex;flex-direction:column;gap:2px;">
-        <span style="font-size:13px;color:var(--accent);font-weight:500;">${label}${detail ? ' — ' + detail : ''}</span>
-        <span style="font-size:11px;color:var(--text3);">Paso ${toolStepCount}</span>
-      </div>
+      <span style="font-size:13px;color:var(--text2);">Pensando...</span>
     </div>`;
+    container.appendChild(div);
     scrollToBottom();
   }
 
   function removeThinking() {
     const t = document.getElementById('thinking');
     if (t) t.remove();
-    toolStepCount = 0;
   }
 
   function hideWelcome() {
@@ -1666,16 +1826,10 @@
                 handleLocalRequest(event);
 
               } else if (event.type === 'tool_start') {
-                addThinking(event.tool, event.input);
+                addPermanentTool(event.tool, event.input);
 
               } else if (event.type === 'tool_end') {
-                // Breve flash de confirmación en el indicador
-                const t = document.getElementById('thinking');
-                if (t && event.result && !event.result.error) {
-                  const label = TOOL_LABELS[event.tool] || event.tool;
-                  t.querySelector('.thinking span:first-of-type') &&
-                    (t.querySelector('.thinking').style.borderColor = 'var(--success)');
-                }
+                finishTool(event.tool, event.result);
 
               } else if (event.type === 'done') {
                 removeThinking();
