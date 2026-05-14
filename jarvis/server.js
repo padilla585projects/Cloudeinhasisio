@@ -1376,9 +1376,22 @@ async function executeTool(name, input) {
         if (!allowedAppend.some(p => input.filepath.startsWith(p))) {
           return { error: `Escritura no permitida en esa ruta` };
         }
+        // Protección de archivos críticos — igual que write_file
+        const CRITICAL_FILES_APPEND = ['automations.yaml', 'configuration.yaml', 'scripts.yaml', 'scenes.yaml', 'secrets.yaml'];
+        const basenameAppend = path.basename(input.filepath);
+        if (CRITICAL_FILES_APPEND.includes(basenameAppend) && input.filepath.startsWith(HA_CONFIG)) {
+          if (!input.adrian_confirmed) {
+            return {
+              error: `PROTECCIÓN: ${basenameAppend} es un archivo crítico de HA. Para añadir contenido necesito confirmación de Adrián. Muéstrale qué quieres añadir y espera a que diga "sí, hazlo" antes de repetir con adrian_confirmed:true.`,
+              backup_hint: 'Los backups están en /data/backups/ si necesitas recuperar.'
+            };
+          }
+          console.log(`[CRITICAL] Append confirmado en ${basenameAppend}`);
+        }
+        const backupMadeAppend = autoBackup(input.filepath);
         fs.appendFileSync(input.filepath, input.content);
         console.log(`[fs] Append: ${input.filepath} (+${input.content.length} chars)`);
-        return { success: true, message: `Contenido añadido a: ${input.filepath}` };
+        return { success: true, message: `Contenido añadido a: ${input.filepath}${backupMadeAppend ? ` (backup: ${path.basename(backupMadeAppend)})` : ''}` };
       }
 
       case 'list_directory': {
@@ -6405,32 +6418,23 @@ app.listen(PORT, '0.0.0.0', () => {
       // Auto-diagnóstico: leer logs propios y repararse si hay errores previos
       await bootSelfCheck().catch(e => console.log(`[boot] Self-check falló: ${e.message}`));
 
-      // Verificar includes críticos en configuration.yaml
+      // Verificar include de automations.yaml en configuration.yaml
+      // SOLO para automations (crítico para que funcionen), y SOLO si automations.yaml ya existe
+      // NO tocar scripts.yaml ni scenes.yaml automáticamente — demasiado arriesgado
       try {
         const cfgPath = path.join(HA_CONFIG, 'configuration.yaml');
-        if (fs.existsSync(cfgPath)) {
+        const automationsPath = path.join(HA_CONFIG, 'automations.yaml');
+        if (fs.existsSync(cfgPath) && fs.existsSync(automationsPath)) {
           const cfgContent = fs.readFileSync(cfgPath, 'utf8');
-          const requiredIncludes = [
-            { key: 'automation', include: 'automation: !include automations.yaml' },
-            { key: 'script', include: 'script: !include scripts.yaml' },
-            { key: 'scene', include: 'scene: !include scenes.yaml' }
-          ];
-          for (const req of requiredIncludes) {
-            const hasLine = cfgContent.split('\n').some(line =>
-              new RegExp(`^${req.key}\\s*:`).test(line.trim()) && !line.trim().startsWith('#')
-            );
-            if (!hasLine) {
-              console.log(`[boot] ⚠️ FALTA "${req.include}" en configuration.yaml — REPARANDO`);
-              autoBackup(cfgPath);
-              fs.appendFileSync(cfgPath, `\n${req.include}\n`);
-              console.log(`[boot] ✓ Añadido "${req.include}" a configuration.yaml`);
-            }
-          }
-          // Si se reparó algo, recargar config core
-          const cfgAfter = fs.readFileSync(cfgPath, 'utf8');
-          if (cfgAfter !== cfgContent) {
-            console.log('[boot] Recargando core config tras reparar includes...');
-            await haPost('/services/homeassistant/reload_core_config', {}).catch(() => {});
+          const hasAutomationLine = cfgContent.split('\n').some(line =>
+            /^automation\s*:/.test(line.trim()) && !line.trim().startsWith('#')
+          );
+          if (!hasAutomationLine) {
+            console.log('[boot] ⚠️ FALTA "automation: !include automations.yaml" en configuration.yaml — REPARANDO');
+            autoBackup(cfgPath);
+            fs.appendFileSync(cfgPath, '\nautomation: !include automations.yaml\n');
+            console.log('[boot] ✓ Añadido "automation: !include automations.yaml" a configuration.yaml');
+            // Solo recargar automations, no el core completo
             await haPost('/services/automation/reload', {}).catch(() => {});
           }
         }

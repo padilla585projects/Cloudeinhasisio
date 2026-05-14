@@ -3,6 +3,22 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.21.3 (2026-05-14) — Seguridad: proteger archivos críticos en append_file
+────────────────────────────────────────────────────────────────────────────────
+
+SEGURIDAD CRÍTICA:
+  - append_file ahora exige adrian_confirmed:true para archivos críticos de HA
+    (automations.yaml, configuration.yaml, scripts.yaml, scenes.yaml, secrets.yaml)
+  - Antes append_file era completamente libre — podía modificar cualquier archivo
+    crítico sin confirmación, a diferencia de write_file que sí estaba protegido
+  - append_file ahora también hace backup automático antes de escribir
+  - Boot auto-repair simplificado: ya NO añade script: ni scene: includes automáticamente
+    — demasiado arriesgado si scripts.yaml o scenes.yaml no existen
+  - Boot auto-repair solo toca automation: !include automations.yaml (el más seguro),
+    y únicamente si automations.yaml ya existe en disco
+  - Boot auto-repair ya no hace reload_core_config (solo automation/reload si procede)
+
+────────────────────────────────────────────────────────────────────────────────
 v3.21.2 (2026-05-13) — Inteligencia investigativa UNIVERSAL en módulo base
 ────────────────────────────────────────────────────────────────────────────────
 
