@@ -8,6 +8,7 @@ const { exec } = require('child_process');
 const net = require('net');
 const dgram = require('dgram');
 const { EdgeTTS } = require('node-edge-tts');
+let yaml; try { yaml = require('js-yaml'); } catch { yaml = null; }
 
 const app = express();
 app.use(cors());
@@ -61,6 +62,56 @@ function loadJSON(filepath, fallback = []) {
 
 function saveJSON(filepath, data) {
   fs.writeFileSync(filepath, JSON.stringify(data, null, 2));
+}
+
+// ── Validación YAML ───────────────────────────────────────────────────────────
+function validateYamlSyntax(content) {
+  // Parser real con js-yaml si está disponible
+  if (yaml) {
+    try {
+      yaml.load(content);
+    } catch (e) {
+      return `Error YAML en línea ${e.mark?.line + 1 || '?'}: ${e.reason || e.message}`;
+    }
+    return null;
+  }
+  // Fallback: validación manual de errores frecuentes en HA
+  const lines = content.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const n = i + 1;
+    if (/^\t/.test(line)) return `Línea ${n}: tab encontrado — usa 2 espacios, nunca tabs`;
+    const spaces = (line.match(/^( +)/) || ['',''])[1].length;
+    if (spaces % 2 !== 0 && line.trim() && !line.trim().startsWith('#'))
+      return `Línea ${n}: indentación impar (${spaces} espacios) — usa múltiplos de 2`;
+    if (/^\s*-[^\s\-]/.test(line) && !line.trim().startsWith('---'))
+      return `Línea ${n}: lista mal formada — debe ser "- " (guión + espacio)`;
+  }
+  return null;
+}
+
+function validateHAStructure(content, fileType) {
+  if (fileType === 'automations') {
+    if (!content.includes('trigger:') && !content.includes('triggers:'))
+      return 'Falta "trigger:" — toda automatización necesita al menos un trigger';
+    if (!content.includes('action:') && !content.includes('actions:'))
+      return 'Falta "action:" — toda automatización necesita al menos una acción';
+    // Detectar IDs duplicados
+    const ids = [];
+    for (const line of content.split('\n')) {
+      const m = line.match(/^\s*id:\s*['"]?([^'"#\n]+?)['"]?\s*$/);
+      if (m) {
+        const id = m[1].trim();
+        if (ids.includes(id)) return `ID duplicado: "${id}" — cada automatización debe tener un ID único`;
+        ids.push(id);
+      }
+    }
+  }
+  if (fileType === 'scripts') {
+    if (!content.includes('sequence:'))
+      return 'Falta "sequence:" — todo script necesita una secuencia de acciones';
+  }
+  return null;
 }
 
 // ── Backup automático antes de sobreescribir archivos ─────────────────────────
@@ -477,6 +528,32 @@ const tools = [
         content: { type: 'string', description: 'Contenido a añadir al final' }
       },
       required: ['filepath', 'content']
+    }
+  },
+  {
+    name: 'patch_file',
+    description: 'Edición quirúrgica: busca texto EXACTO en un archivo y lo reemplaza. SIEMPRE preferir esto a write_file para modificar archivos existentes — nunca sobrescribe el archivo completo. Si old_str no se encuentra, falla sin tocar el archivo.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        filepath: { type: 'string', description: 'Ruta absoluta del archivo a editar' },
+        old_str: { type: 'string', description: 'Fragmento EXACTO a buscar (copia-pega del read_file, con indentación incluida). Debe ser único en el archivo.' },
+        new_str: { type: 'string', description: 'Texto que reemplaza a old_str. Mantén indentación de 2 espacios para YAML de HA.' },
+        expected_replacements: { type: 'number', description: 'Ocurrencias esperadas (default: 1). Si hay más o menos, falla para evitar ediciones inesperadas.' }
+      },
+      required: ['filepath', 'old_str', 'new_str']
+    }
+  },
+  {
+    name: 'validate_yaml',
+    description: 'Valida sintaxis YAML y estructura específica de HA ANTES de escribir. Usa siempre antes de patch_file/write_file/append_file en archivos .yaml de HA. Devuelve el error con número de línea exacto.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        content: { type: 'string', description: 'Contenido YAML a validar' },
+        file_type: { type: 'string', enum: ['automations', 'scripts', 'scenes', 'configuration', 'generic'], description: 'Tipo: activa validaciones específicas de HA (automations requiere trigger+action, scripts requiere sequence, etc.)' }
+      },
+      required: ['content', 'file_type']
     }
   },
   {
@@ -1274,39 +1351,59 @@ async function executeTool(name, input) {
         const automationsPath = path.join(HA_CONFIG, 'automations.yaml');
         const configYamlPath = path.join(HA_CONFIG, 'configuration.yaml');
 
-        // ── Verificar que configuration.yaml tiene "automation: !include automations.yaml" ──
+        // 1. Validar YAML del contenido antes de tocar nada
+        const newEntry = '\n- ' + input.yaml_content.replace(/\n/g, '\n  ') + '\n';
+        const yamlValidErr = validateYamlSyntax(input.yaml_content);
+        if (yamlValidErr) {
+          return { error: `YAML inválido — automatización NO creada: ${yamlValidErr}`, hint: 'Revisa indentación (2 espacios), que trigger: y action: existen, y que no hay tabs.' };
+        }
+        const structErr = validateHAStructure(input.yaml_content, 'automations');
+        if (structErr) {
+          return { error: `Estructura inválida — automatización NO creada: ${structErr}` };
+        }
+
+        // 2. Verificar include en configuration.yaml
         let configFixed = false;
         try {
           if (fs.existsSync(configYamlPath)) {
             const configContent = fs.readFileSync(configYamlPath, 'utf8');
-            // Buscar "automation:" al inicio de línea (no comentado)
-            const hasAutomationLine = configContent.split('\n').some(line =>
-              /^automation\s*:/.test(line.trim()) && !line.trim().startsWith('#')
-            );
-            if (!hasAutomationLine) {
+            const hasLine = configContent.split('\n').some(l => /^automation\s*:/.test(l.trim()) && !l.trim().startsWith('#'));
+            if (!hasLine) {
               autoBackup(configYamlPath);
-              const appendLine = '\nautomation: !include automations.yaml\n';
-              fs.appendFileSync(configYamlPath, appendLine);
+              fs.appendFileSync(configYamlPath, '\nautomation: !include automations.yaml\n');
               configFixed = true;
-              console.log('[automation] REPARADO: añadido "automation: !include automations.yaml" a configuration.yaml');
-              // Recargar config core para que HA detecte el nuevo include
+              console.log('[automation] Añadido include a configuration.yaml');
               try { await haPost('/services/homeassistant/reload_core_config', {}); } catch {}
             }
           }
-        } catch (e) { console.log(`[automation] Error verificando configuration.yaml: ${e.message}`); }
+        } catch (e) { console.log(`[automation] Error cfg: ${e.message}`); }
 
+        // 3. Leer archivo actual, validar resultado completo, escribir
         let existing = '';
         if (fs.existsSync(automationsPath)) {
           autoBackup(automationsPath);
           existing = fs.readFileSync(automationsPath, 'utf8');
         }
-        const newEntry = '\n- ' + input.yaml_content.replace(/\n/g, '\n  ') + '\n';
-        fs.writeFileSync(automationsPath, existing + newEntry);
+        const proposed = existing + newEntry;
+        const proposedErr = validateYamlSyntax(proposed);
+        if (proposedErr) {
+          return { error: `El archivo resultante tendría YAML inválido: ${proposedErr}. Automatización NO creada.` };
+        }
+        fs.writeFileSync(automationsPath, proposed);
         console.log(`[automation] Creada: ${input.description}`);
-        // Auto-reload
+
+        // 4. Reload y verificar que no hay "restored"
         try { await haPost('/services/automation/reload', {}); } catch {}
-        const fixMsg = configFixed ? ' [REPARADO: se añadió "automation: !include automations.yaml" a configuration.yaml que faltaba]' : '';
-        return { success: true, message: `Automatización creada: ${input.description}. Config recargada.${fixMsg}` };
+        await new Promise(r => setTimeout(r, 2500));
+        let restoredWarning = '';
+        try {
+          const states = await haGet('/states');
+          const restored = states.filter(e => e.entity_id.startsWith('automation.') && e.attributes?.restored === true);
+          if (restored.length > 0) restoredWarning = ` ⚠ ${restored.length} automatizaciones en estado "restored" — verifica que el include existe en configuration.yaml`;
+        } catch {}
+
+        const fixMsg = configFixed ? ' [Añadido include en configuration.yaml]' : '';
+        return { success: true, message: `Automatización creada: ${input.description}. Config recargada.${fixMsg}${restoredWarning}` };
       }
 
       case 'reload_config': {
@@ -1363,6 +1460,11 @@ async function executeTool(name, input) {
           }
           console.log(`[CRITICAL] Sobreescritura confirmada de ${basename}`);
         }
+        // Validación YAML automática para archivos .yaml de HA
+        if ((input.filepath.endsWith('.yaml') || input.filepath.endsWith('.yml')) && input.filepath.startsWith(HA_CONFIG)) {
+          const yamlErr = validateYamlSyntax(input.content);
+          if (yamlErr) return { error: `ESCRITURA BLOQUEADA: YAML inválido — ${yamlErr}`, hint: 'Corrige el error antes de volver a intentarlo.' };
+        }
         const backupMade = autoBackup(input.filepath);
         const dir = path.dirname(input.filepath);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -1388,10 +1490,70 @@ async function executeTool(name, input) {
           }
           console.log(`[CRITICAL] Append confirmado en ${basenameAppend}`);
         }
+        // Validar que el resultado completo (existente + nuevo) sea YAML válido
+        if ((input.filepath.endsWith('.yaml') || input.filepath.endsWith('.yml')) && input.filepath.startsWith(HA_CONFIG)) {
+          const existingContent = fs.existsSync(input.filepath) ? fs.readFileSync(input.filepath, 'utf8') : '';
+          const combined = existingContent + input.content;
+          const yamlErr = validateYamlSyntax(combined);
+          if (yamlErr) return { error: `APPEND BLOQUEADO: el archivo resultante tendría YAML inválido — ${yamlErr}`, hint: 'Revisa la indentación y sintaxis del contenido que quieres añadir.' };
+        }
         const backupMadeAppend = autoBackup(input.filepath);
         fs.appendFileSync(input.filepath, input.content);
         console.log(`[fs] Append: ${input.filepath} (+${input.content.length} chars)`);
         return { success: true, message: `Contenido añadido a: ${input.filepath}${backupMadeAppend ? ` (backup: ${path.basename(backupMadeAppend)})` : ''}` };
+      }
+
+      case 'patch_file': {
+        const allowedPatch = [HA_CONFIG, HA_SHARE, DATA_DIR];
+        if (!allowedPatch.some(p => input.filepath.startsWith(p)))
+          return { error: `Ruta no permitida para patch_file: ${input.filepath}` };
+        if (!fs.existsSync(input.filepath))
+          return { error: `Archivo no existe: ${input.filepath}. Usa write_file para crearlo.` };
+
+        const patchContent = fs.readFileSync(input.filepath, 'utf8');
+        const oldStr = input.old_str;
+        const newStr = input.new_str;
+        const expected = input.expected_replacements || 1;
+
+        // Contar ocurrencias
+        let count = 0, idx = patchContent.indexOf(oldStr);
+        while (idx !== -1) { count++; idx = patchContent.indexOf(oldStr, idx + 1); }
+
+        if (count === 0) {
+          const preview = patchContent.split('\n').slice(0, 25).join('\n');
+          return {
+            error: `PATCH FALLIDO: old_str no encontrado en el archivo.`,
+            hint: 'Usa read_file primero y copia el texto exactamente como aparece, incluyendo espacios e indentación.',
+            file_preview_25_lines: preview
+          };
+        }
+        if (count !== expected) {
+          return {
+            error: `PATCH ABORTADO: esperaba ${expected} ocurrencia(s) pero encontré ${count}. Añade más contexto a old_str para hacerlo único.`,
+            occurrences_found: count
+          };
+        }
+
+        // Validar YAML resultado antes de escribir
+        if (input.filepath.endsWith('.yaml') || input.filepath.endsWith('.yml')) {
+          const proposed = patchContent.replace(oldStr, newStr);
+          const yamlErr = validateYamlSyntax(proposed);
+          if (yamlErr) return { error: `PATCH ABORTADO: el resultado tendría YAML inválido — ${yamlErr}`, hint: 'Revisa la indentación (2 espacios en HA) y la sintaxis antes de reintentar.' };
+        }
+
+        const patchBackup = autoBackup(input.filepath);
+        const patched = patchContent.replace(oldStr, newStr);
+        fs.writeFileSync(input.filepath, patched);
+        console.log(`[patch] ${path.basename(input.filepath)}: ${oldStr.length}→${newStr.length} chars`);
+        return { success: true, message: `Patch aplicado en ${path.basename(input.filepath)}`, backup: patchBackup ? path.basename(patchBackup) : null };
+      }
+
+      case 'validate_yaml': {
+        const syntaxErr = validateYamlSyntax(input.content);
+        if (syntaxErr) return { valid: false, error: syntaxErr, type: 'syntax_error' };
+        const structErr = validateHAStructure(input.content, input.file_type);
+        if (structErr) return { valid: false, error: structErr, type: 'structure_error' };
+        return { valid: true, message: 'YAML válido — sintaxis y estructura correctas para HA' };
       }
 
       case 'list_directory': {
@@ -1543,14 +1705,21 @@ async function executeTool(name, input) {
       case 'check_config': {
         try {
           const result = await haPost('/services/homeassistant/check_config', {});
-          return result;
+          const isValid = result.result === 'valid';
+          return {
+            ...result,
+            safe_to_reload: isValid,
+            summary: isValid
+              ? '✓ Configuración válida — seguro hacer reload'
+              : `✗ ERRORES DETECTADOS — NO recargar hasta corregir: ${JSON.stringify(result.errors || result)}`
+          };
         } catch (err) {
-          // Intentar via supervisor
           try {
             const check = await supervisorGet('/core/check');
-            return check.data || { result: 'unknown' };
+            const d = check.data || {};
+            return { ...d, safe_to_reload: !d.error, summary: d.error ? `✗ ${d.error}` : '✓ OK según supervisor' };
           } catch {
-            return { error: err.message };
+            return { error: err.message, safe_to_reload: false };
           }
         }
       }
@@ -4666,6 +4835,101 @@ quedaron desactivadas. El daño tardó horas en detectarse y revertirse.
 REGLA: NUNCA añadir un !include sin verificar primero que el archivo destino existe.
 REGLA: NUNCA modificar configuration.yaml sin confirmación de Adrián.`,
 
+  ha_config_engineering: `HA CONFIG ENGINEERING — CÓMO MODIFICAR CONFIGURACIÓN DE HA CORRECTAMENTE:
+
+HERRAMIENTAS EN ORDEN DE PREFERENCIA (de más seguro a más peligroso):
+  1. patch_file → edición quirúrgica. Solo cambia lo que especificas. SIEMPRE preferir esto.
+  2. append_file → añade al final. Útil para nuevas entradas en listas YAML.
+  3. write_file → sobreescribe TODO. Solo con adrian_confirmed:true. Último recurso.
+  4. create_automation → para automatizaciones (valida y añade correctamente).
+
+PROTOCOLO OBLIGATORIO — 7 PASOS:
+  1. READ: read_file('/config/[archivo]') — ver el estado actual completo
+  2. UNDERSTAND: ¿Qué hay ya? ¿Qué IDs existen? ¿Qué indentación usa el archivo?
+  3. VALIDATE: validate_yaml(contenido_nuevo, file_type) — antes de escribir una sola línea
+  4. PATCH: patch_file o append_file con el cambio mínimo necesario
+  5. CHECK: check_config() — si safe_to_reload:false → rollback inmediato
+  6. RELOAD: el tipo correcto para cada archivo (ver tabla abajo)
+  7. VERIFY: get_entity_state o get_automations — confirmar que NO hay "restored:true"
+
+TABLA DE RELOADS:
+  automations.yaml  → reload_config('automations')   — NO reiniciar HA
+  scripts.yaml      → reload_config('scripts')        — NO reiniciar HA
+  scenes.yaml       → reload_config('scenes')         — NO reiniciar HA
+  configuration.yaml cambio inline  → reload_config('core')
+  configuration.yaml nuevo !include → REINICIO COMPLETO de HA (pedir confirmación)
+
+FORMATOS EXACTOS DE CADA ARCHIVO:
+
+automations.yaml — es una LISTA YAML (cada entrada empieza con "- ")
+  - id: 'jarvis_descripcion_YYYYMMDD'
+    alias: Descripción clara en español
+    trigger:
+      - platform: state
+        entity_id: light.salon
+        to: 'on'
+    condition: []
+    action:
+      - service: notify.mobile_app
+        data:
+          message: "Luz encendida"
+    mode: single
+
+scripts.yaml — es un MAPA YAML (la clave ES el ID, NO lista con "- ")
+  nombre_del_script:
+    alias: Nombre visible
+    sequence:
+      - service: light.turn_on
+        target:
+          entity_id: light.salon
+    mode: single
+
+scenes.yaml — es una LISTA YAML (como automations, empieza con "- ")
+  - id: jarvis_scene_nombre
+    name: Nombre Visible
+    entities:
+      light.salon:
+        state: 'on'
+        brightness: 128
+
+configuration.yaml — archivo maestro, modificar con extreme cuidado
+  Includes que DEBEN existir (verificar con read_file antes de añadir):
+    automation: !include automations.yaml
+    script: !include scripts.yaml
+    scene: !include scenes.yaml
+  REGLA: NUNCA añadir un !include sin verificar primero que el archivo destino existe.
+  Si el archivo no existe → crearlo primero con "[]" (lista vacía), luego añadir el include.
+
+ERRORES YAML MÁS COMUNES EN HA:
+  1. TABS en vez de espacios → "found character that cannot start any token"
+     Fix: patch_file reemplazando tabs por 2 espacios
+  2. Indentación incorrecta en automations.yaml:
+     CORRECTO:          INCORRECTO (4 espacios desde "- "):
+     - id: mi_auto       - id: mi_auto
+       alias: Mi auto        alias: Mi auto  ← ROTO
+       trigger:              trigger:
+  3. Strings con ":" sin comillas: alias: Encender: sala → ERROR
+     Fix: alias: 'Encender: sala'
+  4. ID duplicado → entidad con sufijo _2, _3
+     Fix: read_file → buscar el ID → patch_file para eliminar duplicado
+  5. Archivo !include vacío (0 bytes) → el dominio no carga
+     Fix: write_file con contenido "[]" (lista vacía mínima)
+
+VERIFICACIÓN POST-MODIFICACIÓN:
+  ✓ ÉXITO: get_automations → state='on' o state='off' (plataforma cargada)
+  ✗ FALLO: state='unavailable' + attributes.restored=true
+  → Si restored:true: rollback inmediato + diagnosticar con get_system_logs
+
+ROLLBACK:
+  Los backups están en /data/backups/ con timestamps.
+  rollback('list', filepath) → ver backups disponibles
+  rollback('restore', filepath, backup_name, adrian_confirmed:true) → restaurar
+
+LECCIÓN APRENDIDA (incidente mayo 2026):
+  Jarvis añadió "script: !include scripts.yaml" a configuration.yaml sin verificar
+  que scripts.yaml existía → HA no pudo cargar scripts → todos desaparecieron del panel.
+  REGLA PERMANENTE: verificar con list_directory que el archivo existe ANTES del include.`,
+
   filesystem: `REGLAS DE FILESYSTEM SEGURO:
 - Antes de escribir cualquier archivo de config de HA: leer primero, mostrar qué cambia, pedir confirmación
 - Los backups automáticos están en /data/backups/ — mencionarlos si algo sale mal
@@ -4683,32 +4947,32 @@ const EXPERTS = {
   },
   ha_control: {
     model: MODEL, maxTokens: 6144, maxIter: 15,
-    modules: ['base', 'philosophy', 'ha_control', 'ha_internals', 'autonomy', 'filesystem', 'inamovible'],
+    modules: ['base', 'philosophy', 'ha_control', 'ha_internals', 'ha_config_engineering', 'autonomy', 'filesystem', 'inamovible'],
     label: 'Control HA'
   },
   diagnostico: {
     model: MODEL, maxTokens: 8192, maxIter: 20,
-    modules: ['base', 'perseverance', 'ha_control', 'ha_internals', 'diagnostico', 'filesystem', 'inamovible'],
+    modules: ['base', 'perseverance', 'ha_control', 'ha_internals', 'ha_config_engineering', 'diagnostico', 'filesystem', 'inamovible'],
     label: 'Diagnóstico'
   },
   automatizacion: {
-    model: MODEL, maxTokens: 6144, maxIter: 15,
-    modules: ['base', 'philosophy', 'automation', 'ha_internals', 'ha_control', 'filesystem', 'inamovible'],
+    model: MODEL, maxTokens: 8192, maxIter: 15,
+    modules: ['base', 'philosophy', 'automation', 'ha_internals', 'ha_config_engineering', 'ha_control', 'filesystem', 'inamovible'],
     label: 'Automatización'
   },
   archivo: {
     model: MODEL, maxTokens: 4096, maxIter: 10,
-    modules: ['base', 'filesystem', 'autonomy', 'inamovible'],
+    modules: ['base', 'ha_config_engineering', 'filesystem', 'autonomy', 'inamovible'],
     label: 'Archivos'
   },
   emergencia: {
     model: MODEL, maxTokens: 8192, maxIter: 20,
-    modules: ['base', 'perseverance', 'emergency', 'diagnostico', 'ha_internals', 'ha_control', 'filesystem', 'inamovible'],
+    modules: ['base', 'perseverance', 'emergency', 'ha_config_engineering', 'diagnostico', 'ha_internals', 'ha_control', 'filesystem', 'inamovible'],
     label: 'Emergencia'
   },
   dev: {
     model: MODEL, maxTokens: 8192, maxIter: 20,
-    modules: ['base', 'philosophy', 'dev', 'ha_internals', 'filesystem', 'autonomy', 'inamovible'],
+    modules: ['base', 'philosophy', 'dev', 'ha_internals', 'ha_config_engineering', 'filesystem', 'autonomy', 'inamovible'],
     label: 'Desarrollo'
   },
   multimedia: {

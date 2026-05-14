@@ -3,6 +3,50 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.22.0 (2026-05-14) — HA Config Engineering: herramientas y conocimiento experto
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVAS HERRAMIENTAS:
+
+  patch_file — Edición quirúrgica de archivos (como el Edit tool de Claude Code)
+    Busca texto EXACTO en un archivo y lo reemplaza. Si no lo encuentra, falla sin
+    tocar el archivo. Nunca sobrescribe el archivo completo. Valida YAML automáticamente
+    antes de aplicar el patch. Es la forma correcta de modificar archivos de config de HA.
+
+  validate_yaml — Validación YAML con número de línea exacto
+    Usa js-yaml (nuevo) para validar sintaxis. Detecta: tabs, indentación incorrecta,
+    strings sin comillas, estructura incorrecta por tipo (automations requiere trigger+action,
+    scripts requiere sequence). Devuelve línea y columna exactas del error.
+
+MEJORAS A HERRAMIENTAS EXISTENTES:
+
+  create_automation — ahora valida YAML antes de escribir y verifica post-reload
+    1. validate_yaml del contenido antes de tocar el archivo
+    2. validateHAStructure (trigger+action obligatorios, IDs únicos)
+    3. Valida el archivo completo (existente + nuevo) antes de escribir
+    4. Tras reload, verifica que no hay automatizaciones en estado "restored"
+
+  write_file — bloquea escritura si el YAML resultante es inválido (archivos HA)
+  append_file — valida el archivo completo (existente + nuevo) antes de añadir
+
+  check_config — ahora interpreta la respuesta de HA:
+    Devuelve safe_to_reload:true/false y summary legible.
+    Si safe_to_reload:false → no recargar hasta corregir.
+
+NUEVO MÓDULO DE CONOCIMIENTO: ha_config_engineering
+  Protocolo completo de 7 pasos para modificar config de HA correctamente:
+  READ → UNDERSTAND → VALIDATE → PATCH → CHECK → RELOAD → VERIFY
+  Formatos exactos de automations.yaml, scripts.yaml, scenes.yaml, configuration.yaml
+  Tabla de reloads: cuándo usar automation.reload vs core vs reinicio completo
+  Los 5 errores YAML más comunes en HA con su fix exacto
+  Protocolo de rollback usando backups de /data/backups/
+  Lección del incidente de mayo 2026 documentada permanentemente
+  Añadido a experts: ha_control, diagnostico, automatizacion, archivo, emergencia, dev
+
+DEPENDENCIA NUEVA: js-yaml ^4.1.0 (añadida a package.json)
+  Validación YAML robusta con número de línea exacto del error.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.21.4 (2026-05-14) — UI: tool blocks permanentes + transparencia paso a paso
 ────────────────────────────────────────────────────────────────────────────────
 
