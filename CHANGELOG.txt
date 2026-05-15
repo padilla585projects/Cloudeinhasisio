@@ -3,6 +3,277 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.24.1 (2026-05-15) — Limpieza de duplicados en executeTool
+────────────────────────────────────────────────────────────────────────────────
+
+FIX: exec_command y generate_image estaban declarados DOS veces en
+executeTool() tras merge de cambios entre máquinas en v3.23.0. El switch
+ejecutaba siempre la primera coincidencia, dejando la segunda como código
+muerto.
+
+  - exec_command: se conserva la versión más reciente (commit aaddd11,
+    15-may 10:43) que valida working_dir contra whitelist
+    (/app, /config, /data, /share). Se elimina la versión antigua
+    (commit dc59939, 14-may 23:00) que soportaba node pero no validaba dirs.
+  - generate_image: se conserva la versión más reciente (commit aaddd11)
+    que descarga y guarda la imagen en /share/jarvis/images/. Se elimina
+    la versión antigua (commit 61a9b12) que solo devolvía URL caducable.
+
+Resultado: 65 cases → 63 cases. server.js: 8698 → 8618 líneas (-80).
+
+────────────────────────────────────────────────────────────────────────────────
+v3.24.0 (2026-05-15) — Revisión profesional semanal de dashboards Lovelace
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVA HERRAMIENTA: review_dashboard
+
+  Auditoría profesional automática de dashboards Lovelace para mantenerlos como un profesional.
+
+  CARACTERÍSTICAS:
+
+  ✓ Análisis multi-dimensional:
+    - Verificación estructural: vistas, cards, organización
+    - Performance scoring: cálculo de impacto según densidad de cards
+    - Análisis de UX: títulos, navegación, consistencia visual
+    - Estética: variedad de tipos de cards, coherencia visual
+    - Completitud: entidades detectadas vs mostradas en dashboard
+    - Accesibilidad: contraste, legibilidad, tema
+
+  ✓ Categorización de recomendaciones:
+    - 🔴 CRÍTICAS: bloquean funcionalidad (dashboard vacío, sin vistas)
+    - 🟡 ADVERTENCIAS: impacto en performance/UX (too many cards, broken views)
+    - 💡 SUGERENCIAS: mejoras optativas (variedad visual, titles, entities missing)
+
+  ✓ Plan de mejoras automático:
+    - Priorizado por urgencia: Hoy (crítico) > Esta semana (advertencia) > 2 semanas (sugerencia)
+    - Acciones concretas y ordenadas
+    - Genera historial de evolución (track improvements over 1 year)
+
+  ✓ Ejecución semanal automática:
+    - Scheduled task: cada lunes 09:00 AM
+    - Scans ALL dashboards
+    - Guarda histórico de reviews (últimas 52 = 1 año)
+    - Notifica vía Telegram si está configurado
+    - SSE push a clientes activos
+
+  Actions disponibles:
+  - analyze_all: auditoría completa de todos los dashboards (por defecto)
+  - analyze_one: analiza solo un dashboard específico
+  - generate_improvement_plan: crea plan actionable priorizado por criticidad
+
+CAMBIOS INTERNOS:
+
+  ✓ Nuevo sistema de tareas programadas (scheduleTask)
+    - Usa node-cron si está disponible (precisión de minutos)
+    - Fallback a setInterval semanal si node-cron no está instalado
+    - Persistent execution history (SCHEDULED_TASKS_FILE)
+
+  ✓ Historial de reviews (DASHBOARD_REVIEWS_FILE)
+    - Mantiene último año de auditorías
+    - Tracking de tendencias: "Hace 2 semanas 25 cards, hoy 22"
+    - Compara métricas de sesión a sesión
+
+────────────────────────────────────────────────────────────────────────────────
+v3.23.0 (2026-05-15) — exec_command, DALL-E, mapa 3D, transparencia + auto-optimización continua
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVAS HERRAMIENTAS:
+
+  exec_command — Ejecución de código directa dentro del contenedor Docker
+    Ejecuta bash, Python 3 o Node.js con timeout configurable (máx 30s).
+    Captura stdout, stderr, exit_code, timed_out.
+    Como el Bash tool de Claude Code — desbloquea: imágenes con Pillow,
+    análisis de datos con pandas, ffmpeg, cualquier script personalizado.
+
+MEJORA AL SYSTEM PROMPT:
+
+  Transparencia paso a paso + EFICIENCIA DE TOKENS — Feedback IDÉNTICO a Claude Code (UNIVERSAL)
+    Reescrita la sección "TRANSPARENCIA + EFICIENCIA" con:
+    ✓ APLICA A TODO: HA, internet, archivos, código, imágenes, análisis, datos
+    ✓ 40% más compacta (sin perder claridad). Optimizada para tokens.
+    ✓ 7 reglas explícitas de eficiencia (JSON → lenguaje natural, no repetir, 1-2 líneas máximo, etc.)
+    ✓ Ejemplos BIEN vs MAL en términos de gasto de tokens
+    ✓ Ejemplos comparativos lado a lado (Claude Code vs Jarvis)
+    ✓ Estructura obligatoria: Anuncio → Tool → Resultado legible → Explicación → Próximo paso
+    ✓ Lenguaje natural para CADA tipo de tool (no JSON crudo)
+    ✓ Plan antes de ejecutar 3+ tools
+    ✓ Énfasis en que esto NO ES OPCIONAL
+
+    Formatos legibles por categoría:
+
+    HOME ASSISTANT:
+      get_entities → "Encontré 8 luces (6 encendidas, 2 apagadas)"
+      create_automation → "Automatización creada con 1 trigger y 2 acciones"
+
+    INTERNET & DATOS:
+      web_search → "Los 3 resultados: [resumen de cada uno]"
+      fetch_url → "Encontré [secciones relevantes] en 15KB"
+
+    CREACIÓN:
+      generate_image → "Imagen generada: [descripción visual]"
+      exec_command → "npm instaló 15 paquetes, package-lock actualizado"
+      (Python) → "Script procesó 1.2M de datos en 2.3s, encontró 847 anomalías"
+
+    PROCESOS COMPLEJOS:
+      Plan → (1) instalar pandas (2) procesar CSV (3) generar gráfica
+      Tool 1 → "pandas instalado OK"
+      Tool 2 → "Procesé 50K filas, encontré 12 outliers"
+      Tool 3 → "Gráfica generada con outliers en rojo"
+
+NUEVO MÓDULO: AUTO-OPTIMIZACIÓN CONTINUA (activo en TODOS los expertos)
+  Jarvis ahora piensa constantemente en CÓMO MEJORAR:
+  ✓ ¿Hay forma más compacta de decir esto? (reducir tokens)
+  ✓ ¿Puedo paralelizar 2+ tools? (paralelización)
+  ✓ ¿He visto este patrón antes? (reutilizar knowledge)
+  ✓ ¿Estoy siendo redundante? (evitar repetición)
+  ✓ ¿Hay atajo? (no leer 847 líneas si con 50 es suficiente)
+  ✓ ¿Herramienta mejor? (exec_command vs call_service)
+  ✓ ¿Resultado redundante? (caché/memoria)
+  ✓ ¿Lenguaje compacto? ("3 on, 2 off", no "de 5 luces, 3 están...")
+
+  CÓMO ACTÚA:
+  - Registra cada optimización: learn(type:'optimization')
+  - Cada 10-20 interacciones: revisa learnings, presenta resumen
+  - PRESENTA IDEAS A ADRIÁN: "Encontré optimización que reduce 15% tokens"
+  - NO espera permiso — sorprende con mejoras inteligentes
+  - La verdadera inteligencia: notar qué PUEDE mejorarse y comunicarlo
+
+  Impacto: Jarvis mejora continuamente, cada sesión es más eficiente que la anterior
+
+  house_3d_map — Mapa 3D interactivo de la casa con Three.js
+    Endpoint /3d-map: visor Three.js con rotación, zoom, pan táctil.
+    Rooms configurables: posición en metros, dimensiones, color, planta, entidades HA.
+    Estados en tiempo real: luces encendidas (amarillo), presencia (azul oscuro).
+    Tooltip con nombre de habitación y entidades activas al pasar el ratón.
+    Se refresca automáticamente cada 15 segundos con estados de HA.
+    setup_rooms: define/actualiza habitaciones | get_lovelace_card: YAML para Lovelace.
+
+  generate_image (ya existía, ahora documentada)
+    DALL-E 3 via OpenAI API. Tamaños: 1024x1024, 1792x1024, 1024x1792.
+    Calidad standard/hd. Estilo vivid/natural.
+    URL válida ~1h. Mostrar con ![descripción](url) en el chat.
+
+NUEVOS ENDPOINTS:
+  GET /3d-map — Visor Three.js de la casa
+  GET /api/3d-map-config — Config JSON del mapa (rooms)
+  GET /api/ha-states-simple — Estados simplificados {entity_id:state} para el visor
+
+UI — Limpieza del panel de red de agentes:
+  Eliminado el botón "Red" de la barra superior
+  Eliminado el panel desplegable de red de agentes
+  Eliminados los handlers SSE de mensajes de agentes
+  Añadidos iconos para exec_command, house_3d_map, generate_image en tool blocks
+
+────────────────────────────────────────────────────────────────────────────────
+v3.22.2 (2026-05-14) — Eliminado código de administración de gateway de agentes
+────────────────────────────────────────────────────────────────────────────────
+
+ELIMINADO — Gateway de agentes IA (Jarvis ya no administra la red):
+  - Constantes: AGENT_NETWORK_FILE, agentNetwork, findAgentByKey, NETWORK_NORMS, JARVIS_IDENTITY
+  - Herramienta: agent_network (list/send/set_permission/remove)
+  - Endpoints HTTP: /api/agents/discover, /api/agents/register, /api/agents/message, /api/agents/status
+  - Funciones: processAgentMessage(), bootAgentScan()
+  - Timeout de arranque: setTimeout(bootAgentScan, 30_000)
+  - Toda la lógica de registro, autenticación y enrutamiento de agentes
+
+MOTIVO: Adrián gestiona el gateway externamente. Jarvis se conectará a él como cliente
+cuando esté listo, sin necesidad de administrar la red desde el add-on.
+
+ACTUALIZADO — System prompt (módulo 'network'):
+  Jarvis ahora sabe que es cliente del gateway externo, no administrador.
+  Cuando el gateway esté listo, Adrián proporcionará URL y credenciales.
+
+────────────────────────────────────────────────────────────────────────────────
+v3.22.0 (2026-05-14) — HA Config Engineering: herramientas y conocimiento experto
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVAS HERRAMIENTAS:
+
+  patch_file — Edición quirúrgica de archivos (como el Edit tool de Claude Code)
+    Busca texto EXACTO en un archivo y lo reemplaza. Si no lo encuentra, falla sin
+    tocar el archivo. Nunca sobrescribe el archivo completo. Valida YAML automáticamente
+    antes de aplicar el patch. Es la forma correcta de modificar archivos de config de HA.
+
+  validate_yaml — Validación YAML con número de línea exacto
+    Usa js-yaml (nuevo) para validar sintaxis. Detecta: tabs, indentación incorrecta,
+    strings sin comillas, estructura incorrecta por tipo (automations requiere trigger+action,
+    scripts requiere sequence). Devuelve línea y columna exactas del error.
+
+MEJORAS A HERRAMIENTAS EXISTENTES:
+
+  create_automation — ahora valida YAML antes de escribir y verifica post-reload
+    1. validate_yaml del contenido antes de tocar el archivo
+    2. validateHAStructure (trigger+action obligatorios, IDs únicos)
+    3. Valida el archivo completo (existente + nuevo) antes de escribir
+    4. Tras reload, verifica que no hay automatizaciones en estado "restored"
+
+  write_file — bloquea escritura si el YAML resultante es inválido (archivos HA)
+  append_file — valida el archivo completo (existente + nuevo) antes de añadir
+
+  check_config — ahora interpreta la respuesta de HA:
+    Devuelve safe_to_reload:true/false y summary legible.
+    Si safe_to_reload:false → no recargar hasta corregir.
+
+NUEVO MÓDULO DE CONOCIMIENTO: ha_config_engineering
+  Protocolo completo de 7 pasos para modificar config de HA correctamente:
+  READ → UNDERSTAND → VALIDATE → PATCH → CHECK → RELOAD → VERIFY
+  Formatos exactos de automations.yaml, scripts.yaml, scenes.yaml, configuration.yaml
+  Tabla de reloads: cuándo usar automation.reload vs core vs reinicio completo
+  Los 5 errores YAML más comunes en HA con su fix exacto
+  Protocolo de rollback usando backups de /data/backups/
+  Lección del incidente de mayo 2026 documentada permanentemente
+  Añadido a experts: ha_control, diagnostico, automatizacion, archivo, emergencia, dev
+
+DEPENDENCIA NUEVA: js-yaml ^4.1.0 (añadida a package.json)
+  Validación YAML robusta con número de línea exacto del error.
+
+────────────────────────────────────────────────────────────────────────────────
+v3.21.4 (2026-05-14) — UI: tool blocks permanentes + transparencia paso a paso
+────────────────────────────────────────────────────────────────────────────────
+
+UI — Tool blocks como Claude Code:
+  - Cada herramienta que Jarvis ejecuta crea un bloque PERMANENTE en el chat
+    (antes desaparecían al llegar la respuesta)
+  - Cada bloque muestra: icono + nombre + detalle del input + estado (···/✓/✗)
+  - Al terminar la herramienta, el bloque es clickable para expandir el resultado
+  - El resultado se formatea de forma legible (no JSON crudo):
+    read_file → primeras líneas del archivo
+    get_entities → lista de entidades con su estado
+    web_search → primeros 3 resultados con snippet
+    call_service → éxito/error
+    write_file/append_file → confirmación con path
+  - El indicador "Pensando..." es independiente de los tool blocks
+  - Comportamiento idéntico al de Claude Code
+
+SYSTEM PROMPT — Transparencia obligatoria:
+  - Jarvis DEBE anunciar en una línea qué va a hacer ANTES de llamar cualquier tool
+  - Después del resultado explica brevemente qué encontró y qué significa
+  - Si va a usar múltiples tools, anuncia el plan completo antes de empezar
+
+SYSTEM PROMPT — Conocimiento sobre archivos críticos:
+  - Módulo 'filesystem' añadido a TODOS los expertos NEXUS
+  - Lección aprendida del incidente de mayo 2026 documentada en el prompt:
+    nunca añadir !include sin verificar que el archivo destino existe
+    nunca modificar configuration.yaml sin confirmación de Adrián
+  - Protocolo obligatorio: leer → mostrar cambio → esperar confirmación → escribir → verificar
+
+────────────────────────────────────────────────────────────────────────────────
+v3.21.3 (2026-05-14) — Seguridad: proteger archivos críticos en append_file
+────────────────────────────────────────────────────────────────────────────────
+
+SEGURIDAD CRÍTICA:
+  - append_file ahora exige adrian_confirmed:true para archivos críticos de HA
+    (automations.yaml, configuration.yaml, scripts.yaml, scenes.yaml, secrets.yaml)
+  - Antes append_file era completamente libre — podía modificar cualquier archivo
+    crítico sin confirmación, a diferencia de write_file que sí estaba protegido
+  - append_file ahora también hace backup automático antes de escribir
+  - Boot auto-repair simplificado: ya NO añade script: ni scene: includes automáticamente
+    — demasiado arriesgado si scripts.yaml o scenes.yaml no existen
+  - Boot auto-repair solo toca automation: !include automations.yaml (el más seguro),
+    y únicamente si automations.yaml ya existe en disco
+  - Boot auto-repair ya no hace reload_core_config (solo automation/reload si procede)
+
+────────────────────────────────────────────────────────────────────────────────
 v3.21.2 (2026-05-13) — Inteligencia investigativa UNIVERSAL en módulo base
 ────────────────────────────────────────────────────────────────────────────────
 

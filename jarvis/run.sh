@@ -35,8 +35,8 @@ if bashio::config.has_value 'github_token'; then
   export GITHUB_TOKEN=$(bashio::config 'github_token')
 fi
 
-bashio::log.info "Iniciando Jarvis AI Agent v3.15.0..."
-bashio::log.info "Modelos: gpt-4o-mini (simple) + gpt-4.1-mini (complejo)"
+bashio::log.info "Iniciando Jarvis AI Agent v3.24.1..."
+bashio::log.info "Modelos: gpt-4o-mini (background) + gpt-4.1-mini (principal)"
 if [ -n "${SERPER_API_KEY:-}" ]; then
   bashio::log.info "Busqueda: Google (Serper)"
 else

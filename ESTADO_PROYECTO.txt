@@ -1,14 +1,14 @@
 ================================================================================
 ESTADO ACTUAL DEL PROYECTO — Jarvis AI Agent para Home Assistant
 ================================================================================
-Ultima actualizacion: 2026-05-10
-Version actual: 3.14.2
+Ultima actualizacion: 2026-05-15
+Version actual: 3.24.1
 
 === QUE ES ===
 Agente IA autonomo especializado en Home Assistant y GATEWAY CENTRAL de una red
 de agentes IA. No es un chatbot — es un ingeniero domotico privado con acceso
 total a: dispositivos, archivos, automatizaciones, dashboards, internet,
-memoria permanente, red local, voz y altavoces del hogar.
+memoria permanente, red local, voz, altavoces del hogar y maquinas virtuales.
 Se llama JARVIS.
 
 Filosofia: ACTUA primero, explica despues. Si no sabe algo lo busca.
@@ -19,7 +19,8 @@ via HTTP. No hay intermediarios ni servicios externos.
 === STACK TECNICO ===
 - Backend:      Node.js + Express (CommonJS, require())
 - Frontend:     HTML/CSS/JS vanilla (archivo unico index.html, dark theme)
-- Modelo:       Claude Sonnet 4.6 (principal) + Claude Haiku (background/reparacion)
+- Modelo:       gpt-4.1-mini (principal) + gpt-4o-mini (background y reparacion)
+- Busqueda:     DuckDuckGo (defecto) o Google via Serper API (si se configura)
 - Dependencias: express, node-fetch v2.x, cors
 - Docker:       Alpine + nodejs npm iproute2 iputils
 - Persistencia: JSON en /data (memoria, learnings, historial, red de agentes)
@@ -39,16 +40,19 @@ via HTTP. No hay intermediarios ni servicios externos.
 ├── CHANGELOG.txt            # Historial de cambios por version
 ├── ESTADO_PROYECTO.txt      # ESTE ARCHIVO
 ├── FUTURAS_MEJORAS.txt      # Roadmap con prioridades
+├── ANALISIS_MEJORAS.txt     # Audit de deuda tecnica y mejoras pendientes
 ├── ARQUITECTURA_JARVIS.txt  # Arquitectura interna detallada
 ├── AGENT_CARD.txt           # Documento para que otros agentes IA se conecten
 ├── LICENSE                  # MIT
 └── jarvis/                  # CARPETA DEL ADD-ON
-    ├── config.yaml          # Definicion (v3.14.2, host_network:true)
+    ├── config.yaml          # Definicion (v3.24.1, host_network:true)
     ├── Dockerfile           # Alpine + Node.js + iproute2 + iputils
     ├── run.sh               # Lee config con bashio, exporta vars, lanza server.js
-    ├── server.js            # SERVIDOR PRINCIPAL — agente con 35+ tools
-    ├── index.html           # UI del chat (dark theme, DM Sans, SSE, voz)
+    ├── server.js            # SERVIDOR PRINCIPAL — 63 tools, 8618 lineas
+    ├── index.html           # UI del chat (dark theme, DM Sans, SSE, voz, 3D)
     └── package.json         # Dependencias npm
+
+NOTA: ClaudeInHassio/ es un prototipo v1.1.0 abandonado. Pendiente borrar.
 
 === RED DE AGENTES IA (v2.0 — desde v3.14.0) ===
 
@@ -63,7 +67,7 @@ PROTOCOLO v2.0:
      → Recibe api_key unica (jvs_<hex>), normas y identidad de Jarvis
      → Adrian es notificado por Telegram
   3. Comunicacion: POST /api/agents/message (Bearer token)
-     → Jarvis procesa con Claude Haiku y responde via callback_url
+     → Jarvis procesa con gpt-4o-mini y responde via callback_url
   4. Estado: GET /api/agents/status (publico)
      → Lista agentes conectados, estado, mensajes recientes
 
@@ -84,11 +88,48 @@ PERMISOS:
   write   → Puede pedir acciones en Home Assistant
   blocked → API key rechazada (403)
 
-JARVIS_IDENTITY:
-  Constante en server.js con nombre, version, capabilities, role,
-  endpoints. Se envia a cada agente al registrarse.
+=== SISTEMA NEXUS (desde v3.14.0) ===
 
-=== TOOLS DISPONIBLES (35+ total) ===
+Sistema de expertos dinamicos con modulos de prompt inyectables.
+El system prompt se construye en tiempo real combinando modulos segun el contexto.
+
+MODULOS NEXUS activos:
+  base          → Identidad, filosofia, ciclo investigativo (aplica a TODOS)
+  philosophy    → Forma de pensar y aprender
+  perseverance  → Ciclo INTENTAR→FALLAR→INVESTIGAR→APRENDER→RESOLVER
+  autonomy      → Autonomia total, busca credenciales antes de preguntar
+  ha_control    → Control de Home Assistant
+  ha_internals  → Arquitectura interna de HA (configuration.yaml, .storage,
+                   entity registry, automation platform, integraciones, Lovelace,
+                   Jinja2, Supervisor API, YAML errores comunes)
+  diagnostico   → Metodo cientifico: OBSERVAR→HIPOTESIS→PROBAR→INVESTIGAR→ARREGLAR
+  reparacion    → Autoreparacion del propio codigo
+  automatizacion → Conocimiento profundo de automatizaciones HA
+  optimization  → Auto-optimizacion continua del codigo y comportamiento
+  nexus_learning → Aprendizaje reactivo y knowledge_db
+  seguridad     → Seguridad del hogar y del sistema
+  energia       → Analisis y optimizacion energetica
+  multimedia    → Control de medios y altavoces
+  red           → Redes locales y remotas
+  emergencia    → Protocolos de emergencia
+  dev           → Desarrollo y debugging
+
+Los expertos pueden crearse y editarse con nexus_manage (Jarvis se auto-evoluciona).
+
+=== APRENDIZAJE AUTOMATICO DE HA ===
+
+bootLearnHA (v3.21.0):
+  - Al arrancar: lee 3 paginas de la wiki de HA (developers.home-assistant.io)
+  - Extrae texto → resume con LLM → almacena en knowledge_db
+  - 20 paginas en total, 3/boot, estado en /data/ha_learn_state.json
+  - Repite cada 6h hasta completar todas
+
+bootLearnOwnProject (v3.21.0):
+  - Al arrancar: lee server.js, index.html y configuration.yaml del usuario
+  - Detecta includes faltantes → los registra en self_knowledge
+  - Se re-ejecuta si la version cambia (detecta auto-updates)
+
+=== TOOLS DISPONIBLES (63 total) ===
 
 Dispositivos (5):
   - get_entities         → Lista entidades por dominio (cache 30s, max 100)
@@ -99,37 +140,42 @@ Dispositivos (5):
 
 Automatizaciones (3):
   - get_automations      → Lista automatizaciones con estado
-  - create_automation    → Escribe YAML en automations.yaml + reload
+  - create_automation    → Escribe YAML en automations.yaml + verifica includes + reload
   - reload_config        → Recarga automations/scripts/scenes/core/all
 
-Filesystem (4):
+Filesystem (6):
   - read_file            → Lee archivos en /config, /addons, /share, /media, /data
-  - write_file           → Escribe en /config, /share, /data
-  - append_file          → Anade al final de un archivo
+  - write_file           → Escribe en /config, /share, /data (whitelist + backup + YAML check)
+  - append_file          → Anade al final (whitelist + backup + YAML check)
   - list_directory       → Lista carpetas (recursivo opcional)
+  - patch_file           → Modifica seccion especifica de un archivo YAML/texto
+  - rollback             → Restaura backup de cualquier archivo (list | restore)
 
 Internet (2):
-  - web_search           → Busqueda DuckDuckGo (sin API key)
+  - web_search           → DuckDuckGo (defecto) o Google Serper
   - fetch_url            → Obtiene contenido de una URL
 
-Memoria y aprendizaje (4):
+Memoria y aprendizaje (5):
   - save_memory          → Guarda preferencia/rutina/info del usuario
   - get_memory           → Consulta memoria (filtro por categoria/texto)
   - delete_memory        → Elimina nota
   - learn                → Registra aprendizaje (error/success/pattern/optimization)
+  - knowledge_db         → Base de datos de conocimiento persistente (add/query/list/delete)
 
-Dashboards (5):
+Dashboards (6):
   - get_dashboards       → Lista todos los paneles Lovelace
   - get_dashboard_config → Lee config completa de un dashboard
-  - update_dashboard     → Modifica dashboard (con backup automatico)
+  - update_dashboard     → Modifica dashboard (con backup automatico x10)
   - get_installed_frontend → Detecta cards custom/HACS/temas
   - search_hacs_resources → Busca herramientas en la comunidad HA
+  - review_dashboard     → Auditoria profesional automatica del dashboard (semanal)
 
-Instalacion y conocimiento (4):
+Instalacion y conocimiento (5):
   - scan_installation    → Escanea toda la instalacion de HA
   - check_config         → Verifica config antes de recargar
   - install_hacs_resource → Descarga e instala cards/integraciones
   - ha_knowledge         → Consulta documentacion oficial de HA
+  - validate_yaml        → Valida YAML sin escribirlo
 
 Logs (2):
   - get_system_logs      → Logs de core, supervisor, host, add-ons
@@ -143,53 +189,79 @@ Telegram (3):
 Proxmox (1):
   - proxmox_api          → Gestion completa: VMs, snapshots, storage, red, estado
 
-Red de agentes IA (1):
-  - agent_network        → 4 acciones: list_agents, send_message,
-                           set_permission, remove_agent
-
-Voz / TTS (1):
-  - speak                → Habla por altavoces del hogar:
-                           alexa_salon, alexa_cocina, alexa_dormitorio,
-                           alexa_garaje, alexa_show, alexa_flex,
-                           all_alexa, ha_tts (Piper)
+Voz / TTS (2):
+  - speak                → Habla por altavoces (Alexa x6, all_alexa, ha_tts)
+  - alexa_bidirectional  → Comandos bidireccionales con Alexa
 
 Red local (1):
   - network              → arp_table, scan_subnet, ping, port_scan,
                            http_request, discover_agents, wol
 
-Archivos del PC (1):
-  - local_file           → Lee archivos del PC via File System Access API
+Generacion de contenido (2):
+  - generate_image       → DALL-E 3, guarda en /share/jarvis/images/
+  - render_floorplan     → Plano SVG de la instalacion
 
-Chat con agentes (1):
+Ejecucion de codigo (1):
+  - exec_command         → Ejecuta bash o python en dirs autorizados
+                           (whitelist: /app, /config, /data, /share)
+
+Interfaz y UI (2):
+  - update_ui            → Modifica la propia interfaz de Jarvis
+  - house_3d_map         → Mapa 3D interactivo de la casa (Three.js)
+
+NEXUS y agentes (4):
+  - nexus_manage         → Crea/edita/borra expertos y modulos NEXUS
+  - run_custom_tool      → Ejecuta herramienta custom definida por Adrian
+  - create_custom_tool   → Define nueva herramienta custom
+  - agent_communicate    → Comunicacion con otros agentes de la red
+
+HA avanzado (7):
+  - ha_supervisor        → Gestiona add-ons, snapshots, info del supervisor
+  - update_self          → Auto-actualiza el propio codigo de Jarvis
+  - create_addon         → Crea nuevo add-on de HA desde cero
+  - github_push          → Sube cambios al repositorio de GitHub
+  - analyze_github_repos → Analiza repos del usuario en GitHub
+  - emergency_config     → Configuracion de emergencia del sistema
+  - manage_users         → Gestiona usuarios de HA
+
+Notificaciones HA (2):
+  - get_notifications    → Lee notificaciones del sistema HA
+  - get_repairs          → Lee repairs/alertas de HA
+
+Patrones y rutinas (2):
+  - analyze_patterns     → Analiza snapshots de estado para detectar rutinas
+  - proactive_thought    → Registra/consulta pensamientos proactivos de Jarvis
+
+Agente externo (2):
   - agent_chat           → Habla con Ollama, LM Studio, LocalAI (OpenAI-compatible)
+  - local_file           → Lee archivos del PC via File System Access API
 
 === INTERFAZ DE USUARIO ===
 
 Header:
-  - Orb 3D animado (Three.js) que cambia segun estado
+  - Orb 3D animado (Three.js) — cambia segun estado (idle/thinking/speaking)
   - Boton "Voz / Mudo" — activa/silencia TTS de respuestas
   - Boton "Red" — panel de agentes con estado de la red
   - Boton "PC" — conectar carpeta local (File System Access API)
   - Indicador de estado (dot verde/rojo)
 
 Chat:
-  - Burbujas de usuario y Jarvis con renderizado Markdown
-  - Indicador visual por herramienta (emoji + nombre + parametro + paso)
-  - Subida de archivos: imagenes→vision Claude, PDFs→document, texto→formateado
+  - Burbujas con renderizado Markdown completo
+  - Indicador visual por herramienta en tiempo real (SSE)
+  - Feedback paso a paso estilo Claude Code
+  - Subida de archivos: imagenes→vision OpenAI, PDFs→document, texto→formateado
   - Sugerencias de comandos al arrancar
+
+Vistas adicionales:
+  - Mapa 3D de la casa (Three.js) — /3d-map
+  - Panel Red de Agentes (boton "Red")
+  - Panel de revisiones de dashboard — /api/dashboard-reviews
 
 Input:
   - Textarea con auto-resize
   - Boton adjuntar archivos
   - Boton microfono — Web Speech API es-ES, auto-envio al terminar
   - Boton enviar
-
-Panel Red de Agentes (boton "Red"):
-  - Lista de agentes registrados con descripcion y capabilities
-  - Estado online/offline y permisos (read/write/blocked)
-  - Callback URL configurado o no
-  - Mensajes recientes de cada agente
-  - Refresco automatico cada 15s
 
 === VOZ ===
 
@@ -203,13 +275,11 @@ TTS (Jarvis habla):
   - SpeechSynthesis lee respuestas automaticamente
   - Limpia markdown antes de leer
   - Voz espanola seleccionada automaticamente
-  - Estado mute/activo persiste en localStorage
 
 Altavoces del hogar (tool speak):
   - Echo Dot salon, cocina, dormitorio
   - Echo Pop garaje
-  - Echo Show 5
-  - Echo Flex
+  - Echo Show 5, Echo Flex
   - all_alexa: todos simultaneamente
   - ha_tts: Piper (TTS nativo HA, espanol)
 
@@ -224,29 +294,52 @@ System prompt dinamico que incluye:
   6. Learnings destilados cada 6h (distilled_rules.json)
   7. Self-knowledge (self_knowledge.json — Jarvis puede editarlo el mismo)
   8. Conocimiento de dashboards y cards (nativas + HACS)
-  9. Experticia en HA, protocolos, hardware, Proxmox, Linux
+  9. Modulos NEXUS segun contexto del request
   10. Protocolo de red de agentes v2.0 (identidad, normas, endpoints)
-  11. Instrucciones de autoreparacion
-  12. Instrucciones de auto-evolucion
+  11. Asuntos pendientes (pending_thoughts) si los hay
 
 Bucle agentico:
   - Maximo 15 iteraciones por request
   - SSE streaming al frontend (feedback visual en tiempo real)
+  - Todas las tools de un turno se ejecutan en paralelo (Promise.all)
+  - Un solo push de assistant + tool_results por turno
   - Errores se auto-registran como learnings
-  - Preferencias se auto-guardan en memoria
   - Continuidad tras reinicio (pending_task.json)
 
 Procesos en background:
-  - updateLiveContext()      → estado en tiempo real cada 60s
-  - distillLearnings()       → destila learnings cada 6h
-  - checkSelfUpdate()        → chequea actualizaciones cada 12h
-  - proactiveThinkingLoop()  → pensamientos proactivos
-  - bootAgentScan()          → al arrancar, escanea LAN buscando agentes compatibles
+  - updateLiveContext()        → estado en tiempo real cada 60s
+  - captureStateSnapshot()     → snapshot del estado cada 10min
+  - analyzePatterns()          → analiza rutinas del usuario cada 6h
+  - proactiveThinkingLoop()    → pensamientos proactivos cada 30min
+  - knowledgeExpansionLoop()   → investiga y almacena conocimiento cada 4h
+  - distillLearnings()         → destila learnings en reglas cada 6h
+  - checkSystemUpdates()       → chequea actualizaciones HA/add-ons cada 12h
+  - checkSelfUpdate()          → auto-update del propio codigo cada 2min
+  - bootAgentScan()            → escanea LAN buscando agentes al arranque
+  - bootLearnHA()              → estudia documentacion HA al arranque (45s, luego 6h)
+  - bootLearnOwnProject()      → estudia su propio codigo al arranque (20s)
+  - checkEmergencies()         → monitor de emergencias cada 30s
+  - nexusWatchers()            → monitores NEXUS cada 30s
+
+=== PROTECCION DE ARCHIVOS CRITICOS ===
+
+write_file y append_file protegen:
+  automations.yaml, configuration.yaml, scripts.yaml, scenes.yaml, secrets.yaml
+  → Requieren adrian_confirmed:true para sobreescribir
+  → Validan YAML antes de escribir
+  → Hacen backup automatico antes de cualquier cambio
+
+Boot check:
+  → Al arrancar verifica que configuration.yaml tiene:
+    automation: !include automations.yaml
+    script: !include scripts.yaml
+    scene: !include scenes.yaml
+  → Si falta alguno lo repara automaticamente y recarga config core
 
 === AUTOREPARACION ===
   - bootSelfCheck() lee los propios logs al arrancar
-  - Si detecta errores: llama a Claude Haiku con el log + codigo
-  - Haiku genera el patch, Jarvis lo aplica en /app/server.js
+  - Si detecta errores: llama a gpt-4o-mini con el log + codigo
+  - Genera el patch, lo aplica en /app/server.js
   - Se reinicia automaticamente via supervisor API
   - Si no puede repararse: crea pensamiento proactivo
 
@@ -256,42 +349,65 @@ Procesos en background:
   - learnings.json         → Hasta 200 aprendizajes
   - distilled_rules.json   → Reglas destiladas de learnings
   - self_knowledge.json    → Conocimiento que Jarvis escribe para si mismo
+  - knowledge_db.json      → Base de datos de conocimiento investigado
   - house_context.json     → Resumen instalacion (se regenera cada 2h)
   - installation_map.json  → Mapa completo de la instalacion
-  - agent_network.json     → Red de agentes: agentes registrados, API keys, mensajes
+  - agent_network.json     → Red de agentes: registros, API keys, mensajes
   - pending_thoughts.json  → Cola de pensamientos proactivos
   - pending_task.json      → Tarea en curso (continuidad tras reinicio)
-  - backups/               → Backups automaticos de dashboards
+  - ha_learn_state.json    → Estado del aprendizaje de docs de HA
+  - patterns.json          → Snapshots de estado para deteccion de rutinas
+  - routines.json          → Rutinas detectadas del usuario
+  - backups/               → Backups automaticos de archivos (rolling x10)
 
 === VARIABLES DE ENTORNO ===
-  ANTHROPIC_API_KEY  → Key de Anthropic (config del add-on)
-  MODEL              → claude-sonnet-4-6 (default)
+  OPENAI_API_KEY     → Key de OpenAI (required — modelos gpt-4.1-mini y gpt-4o-mini)
+  SERPER_API_KEY     → Clave Serper para busqueda Google (opcional)
+  ANTHROPIC_API_KEY  → Key de Anthropic (opcional, reservado para uso futuro)
   LANGUAGE           → es (default)
-  HA_TOKEN           → ${SUPERVISOR_TOKEN} (automatico)
+  HA_TOKEN           → ${SUPERVISOR_TOKEN} (automatico — acceso completo a HA)
   HA_URL             → http://supervisor/core
   PROXMOX_URL        → URL del servidor Proxmox (opcional)
   PROXMOX_TOKEN      → API token de Proxmox (opcional)
   PROXMOX_NODE       → Nombre del nodo (default: pve)
+  GITHUB_TOKEN       → Token de GitHub para github_push (opcional)
 
 === PERMISOS DEL ADD-ON ===
   host_network: true → acceso a toda la LAN
   map:
     - config:rw    → Configuracion de HA
     - addons:ro    → Add-ons instalados
-    - share:rw     → Carpeta compartida
+    - share:rw     → Carpeta compartida (imagenes DALL-E, etc.)
     - media:ro     → Media
 
 === ENDPOINTS REST ===
-  GET  /                    → UI del chat (index.html)
-  POST /api/chat            → Conversacion con Jarvis (SSE)
-  GET  /api/history         → Historial de conversacion
-  GET  /api/greeting        → Saludo de bienvenida con estado real
-  GET  /api/health          → Estado del servidor + identidad del agente
-  POST /api/local_response  → Respuesta de File System Access API
-  GET  /api/agents/discover → Descubrimiento: identidad, normas, como unirse
-  POST /api/agents/register → Registro de nuevo agente (devuelve API key)
-  POST /api/agents/message  → Recibir mensaje de agente (Bearer token)
-  GET  /api/agents/status   → Estado de la red para el frontend
+  GET  /                       → UI del chat (index.html)
+  GET  /3d-map                 → Mapa 3D de la casa
+  POST /api/chat               → Conversacion con Jarvis (SSE)
+  GET  /api/history            → Historial de conversacion
+  DELETE /api/history          → Borra historial
+  GET  /api/greeting           → Saludo de bienvenida con estado real
+  GET  /api/health             → Estado del servidor + identidad del agente
+  GET  /api/status             → Estado completo del sistema
+  GET  /api/cost               → Estadisticas de uso de tokens
+  GET  /api/suggestions        → Sugerencias contextuales
+  GET  /api/logs               → Logs del servidor
+  GET  /api/events             → Stream SSE de eventos del sistema
+  GET  /api/pending_thoughts   → Cola de pensamientos proactivos
+  POST /api/pending_thoughts/:id → Gestionar pensamiento (approve/dismiss)
+  GET  /api/pending_task       → Tarea en curso
+  POST /api/local_response     → Respuesta de File System Access API
+  GET  /api/3d-map-config      → Configuracion del mapa 3D
+  GET  /api/ha-states-simple   → Estados HA simplificados para el mapa
+  GET  /api/dashboard-reviews  → Historial de revisiones de dashboards
+  POST /api/alexa-voice        → Comando de voz via Alexa
+  GET  /api/tts/status         → Estado del sistema TTS
+  GET  /api/tts/voices         → Voces disponibles
+  POST /api/tts                → Sintetizar voz
+  POST /api/saver              → Guardar configuracion
+  POST /api/agents/register    → Registro de nuevo agente
+  POST /api/agents/message     → Recibir mensaje de agente (Bearer token)
+  GET  /api/agents/status      → Estado de la red para el frontend
 
 === HISTORIAL DE VERSIONES (resumen) ===
   v1.x    → Chat basico con Claude
@@ -304,7 +420,20 @@ Procesos en background:
   v3.10   → Autoreparacion, gateway externo, JARVIS_IDENTITY, NETWORK_NORMS v1.0
   v3.11   → Hub central: gestion de agentes, panel UI "Red", colaboraciones, VOZ
   v3.13   → Mejoras de estabilidad y UI
-  v3.14.0 → REWRITE: Jarvis es el gateway (elimina dependencia de gateway externo)
-  v3.14.1 → Normas de red v2.0, descubrimiento, presentaciones
-  v3.14.2 → AGENT_CARD.txt reescrito para protocolo v2.0 ← ACTUAL
+  v3.14.x → Jarvis ES el gateway, NEXUS v1.0, Normas red v2.0
+  v3.15.0 → Migracion a OpenAI (gpt-4o-mini + gpt-4.1-mini), Google Serper
+  v3.16.x → rollback, patrones, voz Alexa, multiusuario, emergencias
+  v3.17.x → Markdown completo, sidebar, busqueda, sugerencias contextuales
+  v3.18.x → Cabeza holografica 3D + Modo Voz fullscreen
+  v3.19.x → generate_image (DALL-E 3), render_floorplan, update_ui
+  v3.20.x → Auto-reparacion configuration.yaml, check de includes al boot,
+             patch_file, validate_yaml, HA config engineering
+  v3.21.x → Inteligencia investigativa universal, bootLearnHA, bootLearnOwnProject,
+             ha_internals, knowledge_db, metodo cientifico de diagnostico
+  v3.22.x → exec_command, mapa 3D Three.js, limpieza UI, administracion
+             gateway eliminada, auto-recover scripts.yaml
+  v3.23.x → Modulo optimization en todos los expertos NEXUS, feedback
+             estilo Claude Code, transparencia universal, auto-optimizacion
+  v3.24.x → review_dashboard (auditoria semanal profesional), fix duplicados
+             exec_command/generate_image ← ACTUAL (v3.24.1)
 ================================================================================
