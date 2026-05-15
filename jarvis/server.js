@@ -4604,6 +4604,15 @@ EFICIENCIA — llama MÚLTIPLES tools A LA VEZ en cada turno:
 - Solo separa turnos cuando NECESITAS el resultado de una tool para la siguiente.
 - Ya tienes el contexto de la casa en tu prompt. NO llames scan_installation para cosas que ya sabes.`,
 
+  optimization: `AUTO-OPTIMIZACIÓN CONTINUA — BUSCA SIEMPRE MEJORAR:
+MIENTRAS TRABAJAS: ¿forma más compacta? ¿paralelizar tools? ¿patrón visto antes?
+INEFICIENCIA → learn(type:'optimization') + PRESENTA IDEA A ADRIÁN.
+CADA 10-20 INTERACCIONES → revisa learnings, presenta resumen: "Encontré X optimizaciones"
+CONSTANTEMENTE: ¿comprimir resultado? ¿atajo? ¿herramienta mejor? ¿redundancia? ¿caché?
+PARALLELIZAR tools. LENGUAJE compacto ("3 on, 2 off", no "de 5, 3 están...").
+CUÁNDO PRESENTAR: "Adrián, optimización encontrada: [breve] Impacto: [métrica] Implementación: [cómo]"
+NO ESPERES — ¡Sorprende! Si mejora 10-50% → CUÉNTAME INMEDIATAMENTE. Eso es inteligencia real.`,
+
   ha_control: `DIAGNÓSTICO Y ACCIÓN AUTÓNOMA EN DESCONEXIONES:
 PASO 1 — DIAGNOSTICA (rápido): llama get_entities por dominio, filtra state='unavailable', agrupa por integración:
   - ALEXA: switch.*_shuffle*, switch.*_repeat*, media_player.echo* → alexa_media_player
@@ -5147,62 +5156,62 @@ LECCIÓN APRENDIDA (incidente mayo 2026):
 const EXPERTS = {
   rapido: {
     model: BG_MODEL, maxTokens: 2048, maxIter: 6,
-    modules: ['base', 'autonomy'],
+    modules: ['base', 'autonomy', 'optimization'],
     label: 'Rápido'
   },
   ha_control: {
     model: MODEL, maxTokens: 6144, maxIter: 15,
-    modules: ['base', 'philosophy', 'ha_control', 'ha_internals', 'ha_config_engineering', 'autonomy', 'filesystem', 'inamovible'],
+    modules: ['base', 'philosophy', 'ha_control', 'ha_internals', 'ha_config_engineering', 'autonomy', 'optimization', 'filesystem', 'inamovible'],
     label: 'Control HA'
   },
   diagnostico: {
     model: MODEL, maxTokens: 8192, maxIter: 20,
-    modules: ['base', 'perseverance', 'ha_control', 'ha_internals', 'ha_config_engineering', 'diagnostico', 'filesystem', 'inamovible'],
+    modules: ['base', 'perseverance', 'ha_control', 'ha_internals', 'ha_config_engineering', 'diagnostico', 'optimization', 'filesystem', 'inamovible'],
     label: 'Diagnóstico'
   },
   automatizacion: {
     model: MODEL, maxTokens: 8192, maxIter: 15,
-    modules: ['base', 'philosophy', 'automation', 'ha_internals', 'ha_config_engineering', 'ha_control', 'filesystem', 'inamovible'],
+    modules: ['base', 'philosophy', 'automation', 'ha_internals', 'ha_config_engineering', 'ha_control', 'optimization', 'filesystem', 'inamovible'],
     label: 'Automatización'
   },
   archivo: {
     model: MODEL, maxTokens: 4096, maxIter: 10,
-    modules: ['base', 'ha_config_engineering', 'filesystem', 'autonomy', 'inamovible'],
+    modules: ['base', 'ha_config_engineering', 'filesystem', 'autonomy', 'optimization', 'inamovible'],
     label: 'Archivos'
   },
   emergencia: {
     model: MODEL, maxTokens: 8192, maxIter: 20,
-    modules: ['base', 'perseverance', 'emergency', 'ha_config_engineering', 'diagnostico', 'ha_internals', 'ha_control', 'filesystem', 'inamovible'],
+    modules: ['base', 'perseverance', 'emergency', 'ha_config_engineering', 'diagnostico', 'ha_internals', 'ha_control', 'optimization', 'filesystem', 'inamovible'],
     label: 'Emergencia'
   },
   dev: {
     model: MODEL, maxTokens: 8192, maxIter: 20,
-    modules: ['base', 'philosophy', 'dev', 'ha_internals', 'ha_config_engineering', 'filesystem', 'autonomy', 'inamovible'],
+    modules: ['base', 'philosophy', 'dev', 'ha_internals', 'ha_config_engineering', 'filesystem', 'autonomy', 'optimization', 'inamovible'],
     label: 'Desarrollo'
   },
   multimedia: {
     model: MODEL, maxTokens: 4096, maxIter: 10,
-    modules: ['base', 'autonomy', 'multimedia', 'ha_control', 'filesystem', 'inamovible'],
+    modules: ['base', 'autonomy', 'multimedia', 'ha_control', 'optimization', 'filesystem', 'inamovible'],
     label: 'Multimedia'
   },
   energia: {
     model: MODEL, maxTokens: 6144, maxIter: 15,
-    modules: ['base', 'autonomy', 'energia', 'ha_control', 'filesystem', 'inamovible'],
+    modules: ['base', 'autonomy', 'energia', 'ha_control', 'optimization', 'filesystem', 'inamovible'],
     label: 'Energía'
   },
   seguridad: {
     model: MODEL, maxTokens: 6144, maxIter: 15,
-    modules: ['base', 'autonomy', 'seguridad_casa', 'ha_control', 'diagnostico', 'filesystem', 'inamovible'],
+    modules: ['base', 'autonomy', 'seguridad_casa', 'ha_control', 'diagnostico', 'optimization', 'filesystem', 'inamovible'],
     label: 'Seguridad'
   },
   red: {
     model: MODEL, maxTokens: 6144, maxIter: 15,
-    modules: ['base', 'perseverance', 'red_infra', 'proxmox', 'diagnostico', 'filesystem', 'inamovible'],
+    modules: ['base', 'perseverance', 'red_infra', 'proxmox', 'diagnostico', 'optimization', 'filesystem', 'inamovible'],
     label: 'Red e Infra'
   },
   aprendizaje: {
     model: MODEL, maxTokens: 6144, maxIter: 15,
-    modules: ['base', 'autonomy', 'aprendizaje', 'ha_control', 'filesystem', 'inamovible'],
+    modules: ['base', 'autonomy', 'aprendizaje', 'ha_control', 'optimization', 'filesystem', 'inamovible'],
     label: 'Aprendizaje'
   }
 };
