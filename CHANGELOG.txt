@@ -3,6 +3,25 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.24.1 (2026-05-15) — Limpieza de duplicados en executeTool
+────────────────────────────────────────────────────────────────────────────────
+
+FIX: exec_command y generate_image estaban declarados DOS veces en
+executeTool() tras merge de cambios entre máquinas en v3.23.0. El switch
+ejecutaba siempre la primera coincidencia, dejando la segunda como código
+muerto.
+
+  - exec_command: se conserva la versión más reciente (commit aaddd11,
+    15-may 10:43) que valida working_dir contra whitelist
+    (/app, /config, /data, /share). Se elimina la versión antigua
+    (commit dc59939, 14-may 23:00) que soportaba node pero no validaba dirs.
+  - generate_image: se conserva la versión más reciente (commit aaddd11)
+    que descarga y guarda la imagen en /share/jarvis/images/. Se elimina
+    la versión antigua (commit 61a9b12) que solo devolvía URL caducable.
+
+Resultado: 65 cases → 63 cases. server.js: 8698 → 8618 líneas (-80).
+
+────────────────────────────────────────────────────────────────────────────────
 v3.24.0 (2026-05-15) — Revisión profesional semanal de dashboards Lovelace
 ────────────────────────────────────────────────────────────────────────────────
 

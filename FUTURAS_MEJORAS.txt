@@ -1,25 +1,40 @@
 ================================================================================
 FUTURAS MEJORAS — Jarvis AI Agent para Home Assistant
 ================================================================================
-Ultima actualizacion: 2026-05-10
-Version actual: 3.14.2
+Ultima actualizacion: 2026-05-15
+Version actual: 3.24.1
 
 Prioridad: ALTA | MEDIA | BAJA
 Orden del usuario: INTELIGENCIA primero, luego el resto.
 
 ================================================================================
-SPRINT 1 — INTELIGENCIA (proximo)                                    ALTA
+SPRINT 1 — INTELIGENCIA                                              ALTA
 ================================================================================
 
-[ ] Patrones temporales
-    - Jarvis aprende rutinas del usuario analizando historial de entidades
-    - Detecta patrones: "Siempre enciendes el despacho a las 9:00"
-    - Sugiere automatizaciones basadas en patrones detectados
-    - Implementacion: analizar get_history de entidades frecuentes
+[v] Patrones temporales (HECHO v3.23.0)
+    - captureStateSnapshot() cada 10min
+    - analyzePatterns() cada 6h detecta rutinas y sugiere automatizaciones
+    - analyze_patterns tool: show_routines | force_analysis
 
 [v] Contexto de presencia (HECHO v2.3.0)
     - updateLiveContext() consulta person.* en cada request
     - Inyecta presencia, luces, clima, media, alertas en system prompt
+
+[v] Diagnostico inteligente de problemas (HECHO v3.21.x)
+    - Modulo NEXUS 'diagnostico': metodo cientifico completo
+    - OBSERVAR → HIPOTESIS → PROBAR → INVESTIGAR → ENTENDER → ARREGLAR → APRENDER
+    - web_search obligatorio antes de rendirse en cualquier problema
+    - Ejemplo completo de diagnostico automatizaciones "restored:true"
+
+[v] Modo proactivo (HECHO v3.5.0)
+    - proactiveThinkingLoop() detecta anomalias cada 30min
+    - Envia alertas por Telegram y al chat
+    - Sugiere acciones correctivas
+
+[v] Aprendizaje de documentacion HA (HECHO v3.21.0)
+    - bootLearnHA: estudia 20 paginas clave de developers.home-assistant.io
+    - 3 paginas por boot, cada 6h, hasta completar
+    - Almacena en knowledge_db para consulta futura
 
 [ ] Scoring de la instalacion
     - "Tu instalacion tiene un 72/100 en optimizacion"
@@ -27,23 +42,12 @@ SPRINT 1 — INTELIGENCIA (proximo)                                    ALTA
       integraciones desactualizadas, dispositivos offline
     - Plan de mejora paso a paso
 
-[ ] Diagnostico inteligente de problemas
-    - "Jarvis, la luz del bano no funciona" → revisa logs, comprueba entidad,
-      busca en internet, sugiere fix
-    - Auto-analiza errores del log de HA
-    - Propone fixes basados en learnings previos
-
-[v] Modo proactivo (HECHO v3.5.0)
-    - proactiveThinkingLoop() detecta anomalias
-    - Envia alertas por Telegram y al chat
-    - Sugiere acciones correctivas
-
 [ ] Rutinas por voz natural
     - "Jarvis, cuando llegue a casa enciende el salon y pon musica"
     - Traduce lenguaje natural → YAML de automatizacion valido
 
 ================================================================================
-SPRINT 2 — UX: CHAT FLOTANTE                                        ALTA
+SPRINT 2 — UX                                                         ALTA
 ================================================================================
 
 [ ] Chat flotante (boton en esquina del panel HA)
@@ -60,14 +64,22 @@ SPRINT 2 — UX: CHAT FLOTANTE                                        ALTA
     - SpeechSynthesis lee respuestas automaticamente
     - Tool speak() para altavoces del hogar (Alexa + Piper)
 
+[v] Feedback paso a paso (HECHO v3.23.0)
+    - Feedback identico a Claude Code — el usuario ve cada paso
+    - Transparencia universal: aplica a TODA operacion, no solo HA
+
+[v] Mapa 3D de la casa (HECHO v3.23.0)
+    - house_3d_map tool + ruta /3d-map
+    - Three.js interactivo
+
 ================================================================================
-SPRINT 3 — COMUNICACION EXTERNA                                     ALTA
+SPRINT 3 — COMUNICACION EXTERNA                                       ALTA
 ================================================================================
 
-[ ] Bot de Telegram bidireccional
+[ ] Bot de Telegram bidireccional standalone
     - Integrar bot de Telegram directamente en el add-on (node-telegram-bot-api)
     - Hablar con Jarvis desde Telegram como si fuera el chat de HA
-    - Enviar notificaciones proactivas (alertas, sugerencias)
+    - (Nota: telegram_send/receive existen como tools, falta el bot standalone)
     - Comandos rapidos: /estado, /luces, /temperatura, /apagar_todo
 
 [ ] Notificaciones push inteligentes
@@ -76,12 +88,12 @@ SPRINT 3 — COMUNICACION EXTERNA                                     ALTA
     - Prioridades: urgente vs informativa
 
 ================================================================================
-SPRINT 4 — UX Y OPERATIVAS                                          MEDIA
+SPRINT 4 — UX Y OPERATIVAS                                           MEDIA
 ================================================================================
 
-[ ] Respuestas con acciones rapidas
-    - Botones "Deshacer" cuando Jarvis ejecuta acciones
-    - Botones de confirmacion inline para acciones grandes
+[v] Respuestas con acciones rapidas — rollback (HECHO v3.16.x + mejorado)
+    - Tool rollback generica: list | restore para cualquier archivo
+    - Backup automatico rolling x10 en write_file, append_file, update_dashboard
 
 [ ] Paneles visuales en el chat
     - "Estado de la casa?" → cards con iconos, no solo texto
@@ -90,9 +102,10 @@ SPRINT 4 — UX Y OPERATIVAS                                          MEDIA
 [ ] Comandos rapidos (slash commands)
     - /scan, /estado, /backup, /undo, /score, /diagnostico
 
-[ ] Backup inteligente
-    - Antes de write_file en /config, guardar copia en /data/backups/
-    - Historial de cambios: que se cambio, cuando, por que
+[v] Backup inteligente (HECHO v3.20.x)
+    - write_file y append_file hacen backup automatico antes de escribir
+    - Proteccion de archivos criticos (requieren adrian_confirmed:true)
+    - Validacion YAML previa en archivos .yaml de /config
 
 [ ] Testing de automatizaciones (dry-run)
     - "Jarvis, simula la automatizacion X" → dice que pasaria sin ejecutar
@@ -101,7 +114,7 @@ SPRINT 4 — UX Y OPERATIVAS                                          MEDIA
     - Vista rapida del estado al abrir el chat (antes del welcome)
 
 ================================================================================
-SPRINT 5 — AVANZADO (futuro)                                        BAJA
+SPRINT 5 — AVANZADO (futuro)                                          BAJA
 ================================================================================
 
 [ ] Analisis de consumo energetico
@@ -122,30 +135,45 @@ SPRINT 5 — AVANZADO (futuro)                                        BAJA
 
 [ ] Integracion con camaras + vision
     - Describir lo que ve, alertas basadas en deteccion visual
+    - (Base ya existe: subida de imagenes al chat + vision OpenAI)
 
 [ ] Plugin system
     - Carpeta /config/jarvis_plugins/ con archivos JS
-
-[ ] Modo debug
-    - Tokens consumidos, tiempos de respuesta, coste estimado
 
 [ ] Export/Import de configuracion
     - Exportar memoria + learnings + configuracion del agente
 
 ================================================================================
+DEUDA TECNICA (ver ANALISIS_MEJORAS.txt para detalle completo)
+================================================================================
+
+[v] Proteccion write_file/append_file (HECHO v3.21.3)
+[v] Backup automatico generalizado (HECHO v3.20.x)
+[v] Validacion YAML antes de escribir (HECHO v3.20.x)
+[v] Tool rollback (HECHO v3.16.x+)
+[v] Fix duplicados exec_command/generate_image (HECHO v3.24.1)
+
+[ ] proxmox_api action='custom': whitelist de endpoints
+    - Acepta input.endpoint sin validar — riesgo si el LLM manda path arbitrario
+[ ] exec_command: sin whitelist de comandos (valida dirs pero no el comando en si)
+    - Riesgo alto: LLM podria ejecutar cualquier bash/python
+[ ] call_service: sin validacion de dominio/servicio antes del POST
+[ ] Cifrar agent_network.json (API keys en texto plano en /data)
+[ ] Borrar carpeta ClaudeInHassio/ (prototipo v1.1.0 abandonado)
+[ ] Cap a memory.json (learnings.json tiene cap de 200, memory.json no)
+[ ] Trocear server.js (8618 lineas monoliticas — propuesta en ANALISIS_MEJORAS.txt)
+
+================================================================================
 IDEAS EN EVALUACION
 ================================================================================
 
-[?] Streaming a la API de Anthropic
+[?] Streaming a la API de OpenAI
     - Respuesta mas rapida, pero complica gestion de tool_use
 
 [?] Base de datos SQLite en vez de JSON
     - Evaluar si el rendimiento baja con muchas entradas
 
-[?] Multiples modelos (router inteligente)
-    - Haiku para tareas simples, Sonnet para complejas
-
-[?] Agente con vision (camaras + Claude Vision)
+[?] Agente con vision continua (camaras)
     - Potente para seguridad: "Quien hay en la puerta?"
 
 ================================================================================
@@ -166,6 +194,23 @@ COMPLETADO (referencia)
 [v] Red local (scan, ping, WoL) — v3.9.0
 [v] Archivos del PC — v3.9.0
 [v] Panel Red en UI — v3.11.0
+[v] Migracion a OpenAI — v3.15.0
+[v] Busqueda Google (Serper) — v3.15.0
+[v] Patrones temporales — v3.23.0
+[v] Diagnostico con metodo cientifico — v3.21.x
+[v] bootLearnHA + bootLearnOwnProject — v3.21.0
+[v] knowledge_db — v3.21.0
+[v] NEXUS sistema de expertos — v3.14.0+
+[v] Modulo optimization en todos los expertos — v3.23.0
+[v] exec_command — v3.23.0
+[v] generate_image (DALL-E 3) — v3.19.0+
+[v] Mapa 3D de la casa — v3.23.0
+[v] review_dashboard — v3.24.0
+[v] patch_file + validate_yaml — v3.22.0
+[v] Proteccion archivos criticos HA — v3.21.3
+[v] Backup generalizado (write_file, append_file) — v3.20.x
+[v] rollback tool — v3.16.x
+[v] Fix duplicados executeTool — v3.24.1
 
 ================================================================================
 NOTAS
@@ -174,6 +219,6 @@ NOTAS
 - El agente se llama JARVIS
 - Orden de desarrollo: Inteligencia → Comunicacion → UX → Avanzado
 - Antes de implementar, actualizar ESTADO_PROYECTO.txt
-- Despues de implementar, actualizar CHANGELOG.txt y subir version
-- Telegram bidireccional es prioridad tras features de inteligencia
+- Despues de implementar, actualizar CHANGELOG.txt y subir version en config.yaml
+- Antes de trabajar en deuda tecnica: leer ANALISIS_MEJORAS.txt
 - Objetivo: cuanto mas se use, mas inteligente se vuelve

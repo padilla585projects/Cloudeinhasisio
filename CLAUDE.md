@@ -7,18 +7,18 @@ Agente IA especializado en Home Assistant. No es un chatbot — es un ingeniero 
 ```
 HA Panel Lateral → index.html (UI chat) → server.js (Express Node.js)
                                                ↓           ↓          ↓
-                                        API OpenAI/    API HA    Filesystem
-                                        Anthropic      (REST)    (/config)
+                                        API Anthropic   API HA    Filesystem
+                                        (Claude)        (REST)    (/config)
 ```
 
 ## Stack
 - **Backend**: Node.js + Express (CommonJS, require())
 - **Frontend**: HTML/CSS/JS vanilla en un solo archivo index.html
-- **Modelo principal**: gpt-4.1-mini (MODEL) / gpt-4o-mini (BG_MODEL)
-- **Modelo alternativo**: claude-sonnet-4-6 / claude-haiku-4-5-20251001 (si se configura Anthropic)
-- **Dependencias**: express, node-fetch v2.x (CommonJS), cors, node-edge-tts, js-yaml
+- **Modelos**: gpt-4.1-mini (principal) + gpt-4o-mini (background/reparación) via OpenAI API
+- **Búsqueda**: DuckDuckGo por defecto, Google via Serper API (si se configura)
+- **Dependencias**: express, node-fetch v2.x (CommonJS), cors
 - **Base Docker**: ghcr.io/home-assistant/amd64-base:latest
-- **Persistencia**: JSON en /data (memoria, learnings, historial, contexto casa)
+- **Persistencia**: JSON en /data (memoria, learnings, historial, knowledge_db, contexto casa)
 
 ## Estructura del repositorio
 
@@ -33,27 +33,25 @@ Si los archivos están en la raíz, HA no detecta actualizaciones. NUNCA mover a
 ├── CHANGELOG.txt            # Historial de cambios por versión
 ├── ESTADO_PROYECTO.txt      # Estado actual completo del proyecto
 ├── FUTURAS_MEJORAS.txt      # Roadmap con prioridades
-├── ARQUITECTURA_JARVIS.txt  # Arquitectura interna detallada
 ├── LICENSE                  # MIT
 └── jarvis/                  # ← CARPETA DEL ADD-ON (HA busca config.yaml aquí)
     ├── config.yaml          # Definición del add-on (versión, slug, permisos)
     ├── Dockerfile           # Alpine + Node.js
     ├── run.sh               # Lee config con bashio, exporta vars, lanza server.js
-    ├── server.js            # SERVIDOR PRINCIPAL — agente con ~60 tools (8698 líneas)
+    ├── server.js            # SERVIDOR PRINCIPAL — agente con 17+ tools
     ├── index.html           # UI del chat (dark theme, DM Sans, SSE)
     └── package.json         # Dependencias npm
 ```
 
 ## Variables de entorno (definidas en run.sh)
-- `OPENAI_API_KEY` — Key de OpenAI (proveedor principal actual)
-- `ANTHROPIC_API_KEY` — Key de Anthropic (proveedor alternativo)
-- `MODEL` — gpt-4.1-mini (default)
+- `OPENAI_API_KEY` — Key de OpenAI (required — modelos gpt-4.1-mini y gpt-4o-mini)
+- `SERPER_API_KEY` — Key de Serper para búsqueda Google (opcional)
+- `ANTHROPIC_API_KEY` — Key de Anthropic (opcional, reservado)
 - `LANGUAGE` — es (default)
 - `HA_TOKEN` — ${SUPERVISOR_TOKEN} (acceso completo a HA, automático)
 - `HA_URL` — http://supervisor/core
-- `PROXMOX_URL`, `PROXMOX_TOKEN`, `PROXMOX_NODE` — Proxmox (opcional)
-- `GITHUB_TOKEN` — GitHub API (opcional)
-- `SERPER_API_KEY` — Búsqueda web mejorada (opcional)
+- `PROXMOX_URL`, `PROXMOX_TOKEN`, `PROXMOX_NODE` — Proxmox (opcionales)
+- `GITHUB_TOKEN` — Token GitHub para github_push (opcional)
 
 ## Reglas del proyecto
 
@@ -69,7 +67,7 @@ Si los archivos están en la raíz, HA no detecta actualizaciones. NUNCA mover a
 - HA solo detecta actualizaciones si la versión cambia
 - Formato semántico: MAJOR.MINOR.PATCH
 - Documentar cada versión en CHANGELOG.txt
-- Actualizar ARQUITECTURA_JARVIS.txt y ESTADO_PROYECTO.txt con cualquier cambio funcional relevante
+- Actualizar ARQUITECTURA_JARVIS.txt con cualquier cambio funcional (tools nuevas, procesos, UI, modelos)
 
 ### Código
 - server.js usa CommonJS (require), NO ES modules (import)
@@ -80,23 +78,20 @@ Si los archivos están en la raíz, HA no detecta actualizaciones. NUNCA mover a
 - Rutas de fetch en el frontend: SIEMPRE relativas ("api/chat", NO "/api/chat")
   porque ingress de HA prefija las rutas
 
-### API LLM (dual provider)
-- Proveedor actual: OpenAI (gpt-4.1-mini / gpt-4o-mini)
-- Proveedor alternativo: Anthropic (claude-sonnet-4-6 / claude-haiku-4-5-20251001)
+### API de OpenAI (bucle agéntico)
 - El bucle agéntico ejecuta TODAS las tools de un turno antes de hacer push al historial
 - Un solo push de assistant message + un solo push con todos los tool_results por turno
 - Máximo 15 iteraciones del bucle agéntico
 - get_entities siempre limitar a 100 entidades máximo por respuesta
 - get_entities usa caché de 30s para no sobrecargar HA
 - Errores de tools se auto-registran como learnings
+- gpt-4.1-mini para chat con usuario, gpt-4o-mini para background y autoreparación
 
 ### Seguridad
-- NUNCA exponer OPENAI_API_KEY, ANTHROPIC_API_KEY ni SUPERVISOR_TOKEN al frontend
-- El frontend solo habla con api/chat y api/history, nunca directamente con OpenAI/Anthropic ni HA
+- NUNCA exponer ANTHROPIC_API_KEY ni SUPERVISOR_TOKEN al frontend
+- El frontend solo habla con api/chat y api/history, nunca directamente con Anthropic ni HA
 - No loguear tokens ni API keys en consola
 - Filesystem limitado a: /config, /addons (ro), /share, /media (ro), /data
-- append_file y write_file exigen adrian_confirmed:true para archivos críticos de HA
-- patch_file: edición quirúrgica (busca texto exacto, falla sin tocar si no lo encuentra)
 
 ### Home Assistant
 - El add-on usa ingress (panel lateral de HA), no puerto directo
@@ -112,7 +107,7 @@ Si los archivos están en la raíz, HA no detecta actualizaciones. NUNCA mover a
 - Siempre actualizar CHANGELOG.txt antes de hacer push
 - El agente se llama JARVIS en todas partes (UI, prompt, logs, config)
 
-## Tools disponibles en Jarvis (~60 total)
+## Tools disponibles en Jarvis (63 total)
 
 ### Dispositivos (5)
 1. `get_entities` — Lista entidades por dominio (caché 30s, máx 100)
@@ -123,19 +118,19 @@ Si los archivos están en la raíz, HA no detecta actualizaciones. NUNCA mover a
 
 ### Automatizaciones (3)
 6. `get_automations` — Lista automatizaciones
-7. `create_automation` — Escribe YAML en automations.yaml + reload + validación previa
+7. `create_automation` — Escribe YAML en automations.yaml + verifica includes + reload
 8. `reload_config` — Recarga config (automations/scripts/scenes/core/all)
 
 ### Filesystem (6)
 9. `read_file` — Lee archivos en /config, /addons, /share, /media, /data
-10. `write_file` — Escribe en /config, /share, /data (valida YAML, protege críticos)
-11. `append_file` — Añade al final (requiere adrian_confirmed para archivos críticos)
-12. `patch_file` — Edición quirúrgica: busca texto exacto y reemplaza (como Edit tool de Claude Code)
-13. `validate_yaml` — Valida sintaxis YAML con número de línea exacto del error
-14. `list_directory` — Lista directorio (recursivo opcional)
+10. `write_file` — Escribe en /config, /share, /data (whitelist + backup + YAML check)
+11. `append_file` — Añade al final (whitelist + backup + YAML check)
+12. `list_directory` — Lista directorio (recursivo opcional)
+13. `patch_file` — Modifica sección específica de un archivo YAML/texto
+14. `rollback` — Restaura backup de cualquier archivo (list | restore)
 
 ### Internet (2)
-15. `web_search` — Búsqueda web (DuckDuckGo / Serper)
+15. `web_search` — DuckDuckGo (defecto) o Google via Serper
 16. `fetch_url` — Obtiene contenido de una URL
 
 ### Memoria y aprendizaje (5)
@@ -143,67 +138,89 @@ Si los archivos están en la raíz, HA no detecta actualizaciones. NUNCA mover a
 18. `get_memory` — Consulta memoria
 19. `delete_memory` — Elimina nota
 20. `learn` — Registra aprendizaje (error/success/pattern/optimization)
-21. `knowledge_db` — CRUD de base de conocimiento permanente
+21. `knowledge_db` — Base de datos de conocimiento persistente (add/query/list/delete)
 
-### Dashboards (5)
+### Dashboards (6)
 22. `get_dashboards` — Lista todos los dashboards Lovelace
 23. `get_dashboard_config` — Lee config completa de un dashboard
-24. `update_dashboard` — Modifica un dashboard (con backup auto)
+24. `update_dashboard` — Modifica dashboard (con backup auto rolling x10)
 25. `get_installed_frontend` — Detecta cards custom/HACS/temas
 26. `search_hacs_resources` — Busca herramientas en la comunidad HA
+27. `review_dashboard` — Auditoría profesional automática del dashboard
 
 ### Instalación y conocimiento (5)
-27. `scan_installation` — Escanea toda la instalación de HA
-28. `check_config` — Verifica que la config es válida
-29. `install_hacs_resource` — Descarga e instala cards/integraciones
-30. `ha_knowledge` — Consulta documentación oficial de HA
-31. `review_dashboard` — Auditoría profesional de dashboards (semanal automática)
+28. `scan_installation` — Escanea toda la instalación de HA
+29. `check_config` — Verifica que la config es válida
+30. `install_hacs_resource` — Descarga e instala cards/integraciones
+31. `ha_knowledge` — Consulta documentación oficial de HA
+32. `validate_yaml` — Valida YAML sin escribirlo
 
-### Logs y sistema HA (4)
-32. `get_system_logs` — Logs de core, supervisor, host, add-ons (con filtro)
-33. `get_error_log` — home-assistant.log directo
-34. `get_notifications` — Notificaciones activas de HA
-35. `get_repairs` — Issues de reparación pendientes en HA
+### Logs (2)
+33. `get_system_logs` — Logs de core, supervisor, host, add-ons (con filtro)
+34. `get_error_log` — home-assistant.log directo
 
 ### Telegram (3)
-36. `telegram_send` — Envía mensaje por Telegram
-37. `telegram_send_image` — Envía imagen/snapshot de cámara
-38. `telegram_get_updates` — Lee mensajes recibidos por el bot
+35. `telegram_send` — Envía mensaje por Telegram
+36. `telegram_send_image` — Envía imagen/snapshot de cámara
+37. `telegram_get_updates` — Lee mensajes recibidos por el bot
 
 ### Proxmox (1)
-39. `proxmox_api` — Gestión completa: VMs, snapshots, storage, red, estado
+38. `proxmox_api` — Gestión completa: VMs, snapshots, storage, red, estado
 
-### Voz y multimedia (2)
-40. `speak` — Habla por altavoces del hogar (Alexa + Piper)
-41. `alexa_bidirectional` — Control bidireccional de Alexa
+### Generación de contenido (2)
+39. `generate_image` — DALL-E 3, guarda en /share/jarvis/images/
+40. `render_floorplan` — Plano SVG de la instalación
 
-### Red y agentes (3)
-42. `network` — arp_table, scan_subnet, ping, port_scan, http_request, wol
-43. `agent_communicate` — Comunicación con otros agentes IA
-44. `agent_chat` — Habla con Ollama, LM Studio, LocalAI (OpenAI-compatible)
+### Ejecución de código (1)
+41. `exec_command` — Ejecuta bash o python (whitelist de dirs: /app, /config, /data, /share)
 
-### GitHub y desarrollo (4)
-45. `github_push` — Push de cambios al repo (requiere adrian_confirmed)
-46. `analyze_github_repos` — Análisis de repositorios GitHub
-47. `create_custom_tool` — Crea herramientas custom en runtime
-48. `run_custom_tool` — Ejecuta herramientas custom
+### Interfaz y UI (2)
+42. `update_ui` — Modifica la propia interfaz de Jarvis
+43. `house_3d_map` — Mapa 3D interactivo de la casa (Three.js)
 
-### IA y autonomía (6)
-49. `proactive_thought` — Genera pensamientos proactivos para Adrián
-50. `update_self` — Auto-actualización del add-on
-51. `ha_supervisor` — API del Supervisor (add-ons, OS, host, network)
-52. `nexus_manage` — Crea/edita/elimina expertos y módulos NEXUS dinámicamente
-53. `exec_command` — Ejecuta bash/Python/Node.js dentro del contenedor Docker
-54. `analyze_patterns` — Análisis de patrones de uso
+### Voz (2)
+44. `speak` — Habla por altavoces del hogar (Alexa x6, all_alexa, ha_tts Piper)
+45. `alexa_bidirectional` — Comandos bidireccionales con Alexa
 
-### Creación y visualización (5)
-55. `generate_image` — Genera imágenes con DALL-E 3
-56. `render_floorplan` — Renderiza plano SVG de la casa con áreas HA
-57. `update_ui` — Inserta HTML/componentes inline en el chat
-58. `create_addon` — Crea add-ons completos para HA
-59. `rollback` — Rollback de cambios a versiones anteriores
+### NEXUS y agentes (4)
+46. `nexus_manage` — Crea/edita/borra expertos y módulos NEXUS
+47. `run_custom_tool` — Ejecuta herramienta custom definida por Adrián
+48. `create_custom_tool` — Define nueva herramienta custom
+49. `agent_communicate` — Comunicación con otros agentes de la red
 
-### Usuarios y emergencias (3)
-60. `manage_users` — Gestión de usuarios de HA
-61. `emergency_config` — Configuración de emergencia
-62. `local_file` — Lee archivos del PC via File System Access API
+### Red local (2)
+50. `network` — arp_table, scan_subnet, ping, port_scan, http_request, discover_agents, wol
+51. `agent_chat` — Habla con Ollama, LM Studio, LocalAI (OpenAI-compatible)
+
+### HA avanzado (7)
+52. `ha_supervisor` — Gestiona add-ons, snapshots, info del supervisor
+53. `update_self` — Auto-actualiza el propio código de Jarvis
+54. `create_addon` — Crea nuevo add-on de HA desde cero
+55. `github_push` — Sube cambios al repositorio de GitHub
+56. `analyze_github_repos` — Analiza repos del usuario en GitHub
+57. `emergency_config` — Configuración de emergencia del sistema
+58. `manage_users` — Gestiona usuarios de HA
+
+### Notificaciones HA (2)
+59. `get_notifications` — Lee notificaciones del sistema HA
+60. `get_repairs` — Lee repairs/alertas de HA
+
+### Patrones y rutinas (2)
+61. `analyze_patterns` — Analiza snapshots de estado para detectar rutinas
+62. `proactive_thought` — Registra/consulta pensamientos proactivos de Jarvis
+
+### Archivos del PC (1)
+63. `local_file` — Lee archivos del PC via File System Access API
+
+## Documentos de referencia en la raíz
+
+- `FUTURAS_MEJORAS.txt` — roadmap oficial con sprints priorizados por el usuario
+- `ANALISIS_MEJORAS.txt` — audit de deuda técnica, seguridad y quick wins
+  (referencia para cuando el usuario pida "limpiar", "refactorizar", "mejorar
+  seguridad" o "qué se puede mejorar"). Contiene orden sugerido por tamaño de PR.
+- `ESTADO_PROYECTO.txt` — estado actual completo del proyecto
+- `ARQUITECTURA_JARVIS.txt` — arquitectura y cambios funcionales
+- `CHANGELOG.txt` — historial de versiones
+
+Si el usuario pide trabajar en mejoras de calidad/seguridad/refactor, leer
+primero `ANALISIS_MEJORAS.txt` antes de proponer nada.

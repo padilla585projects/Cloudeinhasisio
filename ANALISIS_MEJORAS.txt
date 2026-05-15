@@ -1,0 +1,165 @@
+================================================================================
+ANALISIS DE MEJORAS — Jarvis AI Agent
+================================================================================
+Fecha del analisis: 2026-05-13 (actualizado 2026-05-15)
+Version analizada: 3.24.1
+Branch: claude/extract-valuable-insights-0cb70
+
+Este documento captura los hallazgos de un audit del repo. NO es el roadmap
+oficial (eso es FUTURAS_MEJORAS.txt) — es material de referencia para cuando
+toque limpiar deuda tecnica o priorizar mejoras de calidad.
+
+================================================================================
+RESUMEN EJECUTIVO (version para no-tecnicos)
+================================================================================
+
+Jarvis funciona y es potente, pero esta construido como una casa de un solo
+cuarto con la puerta entornada. Las mejoras se agrupan en:
+
+  - SEGURIDAD: poner cerrojos (validar entradas, cifrar claves)
+  - MANTENIMIENTO: dividir el codigo en habitaciones, tirar trastos viejos
+  - UX: comodidades visibles para el usuario (deshacer cambios, mas rapido)
+
+================================================================================
+PRIORIDAD 1 — SEGURIDAD (cerraduras flojas)
+================================================================================
+
+[v] write_file / append_file: whitelist de paths + proteccion criticos (HECHO v3.21.3)
+    - allowedWrite/allowedAppend valida que el path empiece por /config, /share o /data
+    - Archivos criticos (automations.yaml, configuration.yaml, etc.) requieren
+      adrian_confirmed:true para sobreescribir o appendear
+    - Backup automatico antes de cualquier escritura
+    - Validacion YAML previa para archivos .yaml de /config
+
+[ ] proxmox_api action='custom': whitelist de endpoints (PENDIENTE)
+    - Acepta input.endpoint del LLM sin validar (server.js ~linea 2258)
+    - Riesgo: el modelo puede mandar paths arbitrarios al API Proxmox
+    - Fix: whitelist de prefijos permitidos (/nodes, /cluster, /storage, etc.)
+
+[ ] exec_command: sin whitelist de comandos (PENDIENTE — ALTO RIESGO)
+    - Valida working_dir contra whitelist (/app, /config, /data, /share)
+    - Pero no valida el comando en si: LLM podria ejecutar 'rm -rf /config'
+    - Fix: lista negra de comandos peligrosos + logging de cada ejecucion
+
+[ ] call_service: sin validacion de dominio/servicio (PENDIENTE)
+    - Manda directamente al POST de HA sin comprobar nada
+    - Bajo riesgo (HA ya valida) pero conveniente para detectar errores antes
+
+[ ] Cifrar agent_network.json (PENDIENTE)
+    - Guarda API keys de agentes externos en texto plano en /data
+    - Fix: AES-256 con clave derivada de SUPERVISOR_TOKEN
+
+================================================================================
+PRIORIDAD 2 — DEUDA TECNICA (taller desordenado)
+================================================================================
+
+[ ] Trocear server.js por dominio
+    - PROBLEMA: 7.600 lineas, 122 case statements en un solo executeTool()
+    - Cualquier cambio toca todo, no hay tests por tool
+    - Estructura propuesta:
+        jarvis/
+          server.js                  (solo Express + bucle agentico)
+          tools/
+            index.js                 (registry: { name -> handler })
+            devices.js               (5 tools HA)
+            automations.js           (3 tools)
+            filesystem.js            (4 tools)
+            dashboards.js            (5 tools)
+            proxmox.js               (1 tool, 15+ subacciones)
+            network.js               (scan, WoL, port_scan)
+            memory.js                (learn, save, distill)
+            telegram.js              (3 tools)
+    - Beneficios: hot-reload selectivo, tests unitarios, menos colisiones
+
+[ ] Borrar carpeta ClaudeInHassio/
+    - Prototipo v1.1.0 abandonado antes del rebrand a Jarvis
+    - Referencia gpt-4.1-mini (modelo invalido)
+    - Solo confunde y ocupa repo
+
+[ ] Cap a memory.json
+    - learnings.json ya tiene cap de 200 entradas
+    - memory.json crece sin limite hasta intervencion manual
+    - Aplicar mismo patron + distilacion periodica
+
+================================================================================
+PRIORIDAD 3 — PATRONES A PRESERVAR Y EXTENDER
+================================================================================
+
+[v] Auto-backup generalizado (HECHO v3.20.x)
+    - write_file, append_file, update_dashboard hacen autoBackup() antes de escribir
+    - Rolling buffer de 10 backups por archivo en /data/backups/
+
+[v] Tool rollback generica (HECHO v3.16.x+)
+    - rollback tool: list | restore para cualquier archivo con backup
+    - Requiere adrian_confirmed:true para restaurar
+
+[ ] Cache compartida tipo "30s TTL" en mas tools
+    - Hoy solo get_entities tiene cache (30s, max 100)
+    - get_automations, get_dashboards, get_installed_frontend podrian beneficiarse
+    - Reduce latencia y carga sobre HA
+
+[ ] Paginar scan_installation
+    - Carga toda la instalacion de golpe — riesgo de timeout (787+ entidades)
+    - Paginar por dominio, guardar resultado parcial entre paginas
+
+[ ] Cap a memory.json
+    - learnings.json tiene cap de 200 entradas; memory.json no tiene limite
+    - Aplicar mismo patron
+
+================================================================================
+PRIORIDAD 4 — QUICK WINS DE UX
+================================================================================
+
+[ ] Tool: get_tool_stats
+    - Loggear contador de llamadas por tool + tasa de error
+    - Util para saber que tools nunca se usan y cuales fallan mas
+    - Input para la distilacion de learnings
+
+[ ] Endpoint /api/health ampliado
+    - Ya existe /api/health basico
+    - Ampliar con: hits de cache, tamano de memoria.json, tools cargadas
+
+================================================================================
+GEMAS DEL CODIGO ACTUAL (lo que SI esta bien hecho)
+================================================================================
+
+Patrones que merece la pena PRESERVAR si se hace refactor:
+
+  - Bucle agentico con tool_use paralelo (server.js:5893-6010)
+    All tools de un turno en Promise.all(), push unico de assistant
+    + tool_results. Max 15 iter, SSE en cada paso.
+
+  - SSE streaming Express -> frontend vanilla (sin frameworks)
+
+  - Integracion HA REST con caches y fallbacks API -> .storage
+
+  - Auto-backup antes de modificar dashboards (rolling 10)
+
+  - Distilacion de learnings cada 6h (convierte errores en reglas)
+
+  - Router de modelos: Sonnet 4.6 para chat / Haiku para fondo (~80% ahorro)
+
+  - Self-knowledge file (jarvis se introspecciona entre reinicios)
+
+  - Auto-recuperacion de imagenes corruptas en el historial
+
+  - Uso de SUPERVISOR_TOKEN (sin token externo, solo dentro del add-on)
+
+================================================================================
+ORDEN SUGERIDO CUANDO RETOMEMOS
+================================================================================
+
+PR pequeno (commit visible, version patch):
+  1. Validacion de input en proxmox_api / write_file / call_service
+  2. Borrar ClaudeInHassio/
+  3. Tool rollback_dashboard
+
+PR mediano (cifrado + helpers):
+  4. Cifrar agent_network.json
+  5. Generalizar safeWrite()
+  6. Cache compartida en get_automations/get_dashboards
+
+PR grande (refactor estructural, version minor):
+  7. Trocear server.js en tools/*.js
+
+================================================================================

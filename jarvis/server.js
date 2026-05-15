@@ -3986,32 +3986,6 @@ mode: single`;
         return { error: `Acción desconocida: ${input.action}` };
       }
 
-      // ─── Generación de imágenes (DALL-E 3) ───
-      case 'generate_image': {
-        if (!OPENAI_API_KEY) return { error: 'OpenAI API key no configurada. Añade openai_api_key en la configuración del add-on.' };
-        const imgRes = await fetch('https://api.openai.com/v1/images/generations', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: 'dall-e-3',
-            prompt: input.prompt,
-            n: 1,
-            size: input.size || '1024x1024',
-            quality: input.quality || 'standard',
-            style: input.style || 'natural',
-            response_format: 'url'
-          })
-        });
-        if (!imgRes.ok) {
-          const errText = await imgRes.text();
-          return { error: `DALL-E error ${imgRes.status}: ${errText.slice(0, 300)}` };
-        }
-        const imgData = await imgRes.json();
-        const imageUrl = imgData.data[0].url;
-        const revised = imgData.data[0].revised_prompt;
-        return { success: true, image_url: imageUrl, revised_prompt: revised, note: 'URL válida ~1h. Muestra con: ![descripción](url)' };
-      }
-
       // ─── Plano SVG de la instalación ───
       case 'render_floorplan': {
         const FLOORPLAN_FILE = path.join(DATA_DIR, 'floorplan_layout.json');
@@ -4198,60 +4172,6 @@ ${dots}`;
           default:
             return { error: `Acción desconocida: ${input.action}. Usa: list, create_expert, edit_expert, delete_expert, create_module, edit_module, delete_module, get_health.` };
         }
-      }
-
-      // ─── Ejecución de código ───
-      case 'exec_command': {
-        const lang = input.language || 'bash';
-        const timeoutSec = Math.min(input.timeout || 30, 120);
-        const cwd = input.working_dir || '/data';
-
-        if (!fs.existsSync(cwd)) fs.mkdirSync(cwd, { recursive: true });
-
-        // Instalar paquetes antes de ejecutar si se pide
-        if (input.install_packages && input.install_packages.length > 0) {
-          const pkgs = input.install_packages.map(p => p.replace(/[^a-z0-9._\-]/gi, '')).filter(Boolean);
-          if (pkgs.length > 0) {
-            // pip primero para Python, apk para paquetes del sistema
-            const pipPkgs = pkgs.filter(p => /^[a-z0-9]/.test(p));
-            await new Promise(r => exec(`pip3 install ${pipPkgs.join(' ')} -q 2>&1 || true`, { timeout: 90000 }, r));
-          }
-        }
-
-        let cmd;
-        let tmpFile = null;
-
-        if (lang === 'python3') {
-          tmpFile = `/tmp/jx_${Date.now()}.py`;
-          fs.writeFileSync(tmpFile, input.command);
-          cmd = `python3 "${tmpFile}"`;
-        } else if (lang === 'node') {
-          tmpFile = `/tmp/jx_${Date.now()}.js`;
-          fs.writeFileSync(tmpFile, input.command);
-          cmd = `node "${tmpFile}"`;
-        } else {
-          cmd = input.command;
-        }
-
-        return new Promise((resolve) => {
-          exec(cmd, {
-            timeout: timeoutSec * 1000,
-            cwd,
-            env: { ...process.env, PYTHONUNBUFFERED: '1' }
-          }, (error, stdout, stderr) => {
-            if (tmpFile) try { fs.unlinkSync(tmpFile); } catch {}
-            const timedOut = !!(error && error.killed);
-            resolve({
-              success: !error || error.code === 0,
-              exit_code: error ? (error.code || 1) : 0,
-              stdout: (stdout || '').slice(0, 10000),
-              stderr: (stderr || '').slice(0, 3000),
-              timed_out: timedOut,
-              language: lang,
-              note: timedOut ? `Timeout después de ${timeoutSec}s` : undefined
-            });
-          });
-        });
       }
 
       // ─── Mapa 3D de la casa ───
