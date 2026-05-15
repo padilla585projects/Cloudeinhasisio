@@ -16,9 +16,12 @@ NUEVAS HERRAMIENTAS:
 
 MEJORA AL SYSTEM PROMPT:
 
-  Transparencia paso a paso — Feedback IDÉNTICO a Claude Code (UNIVERSAL)
-    Reescrita la sección "TRANSPARENCIA PASO A PASO" con:
+  Transparencia paso a paso + EFICIENCIA DE TOKENS — Feedback IDÉNTICO a Claude Code (UNIVERSAL)
+    Reescrita la sección "TRANSPARENCIA + EFICIENCIA" con:
     ✓ APLICA A TODO: HA, internet, archivos, código, imágenes, análisis, datos
+    ✓ 40% más compacta (sin perder claridad). Optimizada para tokens.
+    ✓ 7 reglas explícitas de eficiencia (JSON → lenguaje natural, no repetir, 1-2 líneas máximo, etc.)
+    ✓ Ejemplos BIEN vs MAL en términos de gasto de tokens
     ✓ Ejemplos comparativos lado a lado (Claude Code vs Jarvis)
     ✓ Estructura obligatoria: Anuncio → Tool → Resultado legible → Explicación → Próximo paso
     ✓ Lenguaje natural para CADA tipo de tool (no JSON crudo)
