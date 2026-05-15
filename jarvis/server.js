@@ -1270,6 +1270,39 @@ const tools = [
       },
       required: ['action']
     }
+  },
+
+  // ─── Ejecución de código ───
+  {
+    name: 'exec_command',
+    description: 'Ejecuta comandos bash o scripts Python directamente en el contenedor Docker de Jarvis. Útil para instalar paquetes, procesar datos, generar imágenes, trabajar con archivos complejos. El contenedor tiene: bash, python3, pip, ffmpeg, imagemagick, curl. TIMEOUT 30s.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        command: { type: 'string', description: 'Comando bash a ejecutar. Ej: npm install express, pip install pillow, ffmpeg -i input.mp4 output.gif' },
+        language: { type: 'string', enum: ['bash', 'python'], description: 'bash para comandos del shell, python para ejecutar script inline' },
+        script: { type: 'string', description: 'SOLO si language=python. Código Python a ejecutar (puede ser multiline)' },
+        timeout: { type: 'number', description: 'Timeout en segundos (max 30, default 15)' },
+        working_dir: { type: 'string', description: 'Directorio de trabajo (default /app). Rutas válidas: /app, /config, /data, /share' }
+      },
+      required: ['command']
+    }
+  },
+
+  // ─── Generación de imágenes ───
+  {
+    name: 'generate_image',
+    description: 'Genera imágenes usando DALL-E 3 API de OpenAI. Las imágenes se guardan en /share/jarvis/images/ y devuelven una URL para ver/usar. Requiere OPENAI_API_KEY en config.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string', description: 'Descripción detallada de la imagen a generar (en inglés es mejor). Ej: "Modern smart home dashboard design with blue and purple neon colors"' },
+        size: { type: 'string', enum: ['1024x1024', '1792x1024', '1024x1792'], description: 'Tamaño de la imagen. 1024x1024 es estándar (default), 1792x1024 y 1024x1792 requieren más tokens.' },
+        quality: { type: 'string', enum: ['standard', 'hd'], description: 'standard (default) o hd. HD cuesta más pero sale mejor.' },
+        style: { type: 'string', enum: ['natural', 'vivid'], description: 'natural (realista) o vivid (más artístico). Default: vivid.' }
+      },
+      required: ['prompt']
+    }
   }
 ];
 
@@ -4174,6 +4207,125 @@ ${dots}`;
         }
 
         return { error: `Acción desconocida: ${input.action}` };
+      }
+
+      case 'exec_command': {
+        const { command, language = 'bash', script, timeout = 15, working_dir = '/app' } = input;
+        const timeoutMs = Math.min(timeout * 1000, 30000);
+
+        // Validar directorio de trabajo
+        const validDirs = ['/app', '/config', '/data', '/share'];
+        if (!validDirs.includes(working_dir)) {
+          return { error: `Directorio inválido: ${working_dir}. Válidos: ${validDirs.join(', ')}` };
+        }
+
+        return new Promise((resolve) => {
+          let isTimedOut = false;
+          let proc;
+
+          try {
+            if (language === 'python') {
+              if (!script) return resolve({ error: 'Se requiere script para language=python' });
+              // Crear archivo temporal con el script
+              const scriptFile = path.join(working_dir, `.jarvis_tmp_${Date.now()}.py`);
+              fs.writeFileSync(scriptFile, script);
+              proc = exec(`cd ${working_dir} && python3 ${scriptFile}`, { maxBuffer: 5 * 1024 * 1024 }, (error, stdout, stderr) => {
+                if (isTimedOut) return;
+                try { fs.unlinkSync(scriptFile); } catch {}
+                if (error && error.code !== 0) {
+                  resolve({ error: stderr || error.message, stdout });
+                } else {
+                  resolve({ success: true, output: stdout, stderr: stderr || undefined });
+                }
+              });
+            } else {
+              // bash
+              proc = exec(`cd ${working_dir} && ${command}`, { maxBuffer: 5 * 1024 * 1024 }, (error, stdout, stderr) => {
+                if (isTimedOut) return;
+                if (error && error.code !== 0) {
+                  resolve({ error: stderr || error.message, stdout });
+                } else {
+                  resolve({ success: true, output: stdout, stderr: stderr || undefined });
+                }
+              });
+            }
+
+            const timerId = setTimeout(() => {
+              isTimedOut = true;
+              if (proc) proc.kill();
+              resolve({ error: `Comando excedió timeout de ${timeout}s` });
+            }, timeoutMs);
+
+            // Borrar timeout si el proceso termina primero
+            proc.on('exit', () => clearTimeout(timerId));
+
+          } catch (err) {
+            resolve({ error: err.message });
+          }
+        });
+      }
+
+      case 'generate_image': {
+        const { prompt, size = '1024x1024', quality = 'standard', style = 'vivid' } = input;
+
+        if (!OPENAI_API_KEY) {
+          return { error: 'OPENAI_API_KEY no configurada en el add-on' };
+        }
+
+        if (!prompt || prompt.length < 10) {
+          return { error: 'El prompt debe tener al menos 10 caracteres' };
+        }
+
+        try {
+          const imagesDir = path.join(HA_SHARE, 'jarvis', 'images');
+          if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true });
+
+          // Llamar a DALL-E 3
+          const res = await fetch('https://api.openai.com/v1/images/generations', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${OPENAI_API_KEY}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              model: 'dall-e-3',
+              prompt,
+              n: 1,
+              size,
+              quality,
+              style
+            })
+          });
+
+          if (!res.ok) {
+            const err = await res.json();
+            return { error: err.error?.message || 'Error de OpenAI API' };
+          }
+
+          const data = await res.json();
+          const imageUrl = data.data[0].url;
+          const revised_prompt = data.data[0].revised_prompt;
+
+          // Descargar la imagen
+          const imgRes = await fetch(imageUrl);
+          const buffer = await imgRes.buffer();
+          const filename = `jarvis_${Date.now()}.png`;
+          const filepath = path.join(imagesDir, filename);
+          fs.writeFileSync(filepath, buffer);
+
+          return {
+            success: true,
+            image_url: `/share/jarvis/images/${filename}`,
+            filename,
+            prompt: prompt,
+            revised_prompt,
+            size,
+            message: `Imagen generada y guardada en /share/jarvis/images/. Puedes verla en: /share/jarvis/images/${filename}`
+          };
+
+        } catch (err) {
+          return { error: err.message };
+        }
       }
 
       default:
