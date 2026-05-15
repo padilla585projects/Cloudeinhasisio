@@ -16,21 +16,35 @@ NUEVAS HERRAMIENTAS:
 
 MEJORA AL SYSTEM PROMPT:
 
-  Transparencia paso a paso — Feedback IDÉNTICO a Claude Code
+  Transparencia paso a paso — Feedback IDÉNTICO a Claude Code (UNIVERSAL)
     Reescrita la sección "TRANSPARENCIA PASO A PASO" con:
+    ✓ APLICA A TODO: HA, internet, archivos, código, imágenes, análisis, datos
     ✓ Ejemplos comparativos lado a lado (Claude Code vs Jarvis)
     ✓ Estructura obligatoria: Anuncio → Tool → Resultado legible → Explicación → Próximo paso
-    ✓ Lenguaje natural para cada tipo de tool (no JSON crudo)
+    ✓ Lenguaje natural para CADA tipo de tool (no JSON crudo)
     ✓ Plan antes de ejecutar 3+ tools
     ✓ Énfasis en que esto NO ES OPCIONAL
 
-    Jarvis ahora comunica EXACTAMENTE como tú:
-    - "Voy a leer configuration.yaml para verificar los includes..."
-    - [read_file]
-    - "Veo que tiene automation: pero le falta script:. Ese es el problema."
-    - "Ahora voy a crear el backup..."
-    - [write_file]
-    - "Listo: script:include añadido y replicado en 3 archivos."
+    Formatos legibles por categoría:
+
+    HOME ASSISTANT:
+      get_entities → "Encontré 8 luces (6 encendidas, 2 apagadas)"
+      create_automation → "Automatización creada con 1 trigger y 2 acciones"
+
+    INTERNET & DATOS:
+      web_search → "Los 3 resultados: [resumen de cada uno]"
+      fetch_url → "Encontré [secciones relevantes] en 15KB"
+
+    CREACIÓN:
+      generate_image → "Imagen generada: [descripción visual]"
+      exec_command → "npm instaló 15 paquetes, package-lock actualizado"
+      (Python) → "Script procesó 1.2M de datos en 2.3s, encontró 847 anomalías"
+
+    PROCESOS COMPLEJOS:
+      Plan → (1) instalar pandas (2) procesar CSV (3) generar gráfica
+      Tool 1 → "pandas instalado OK"
+      Tool 2 → "Procesé 50K filas, encontré 12 outliers"
+      Tool 3 → "Gráfica generada con outliers en rojo"
 
   house_3d_map — Mapa 3D interactivo de la casa con Three.js
     Endpoint /3d-map: visor Three.js con rotación, zoom, pan táctil.
