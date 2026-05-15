@@ -3,7 +3,7 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
-v3.23.0 (2026-05-14) — exec_command, mapa 3D, limpieza UI
+v3.23.0 (2026-05-15) — exec_command, DALL-E, mapa 3D, transparencia + auto-optimización continua
 ────────────────────────────────────────────────────────────────────────────────
 
 NUEVAS HERRAMIENTAS:
@@ -48,6 +48,26 @@ MEJORA AL SYSTEM PROMPT:
       Tool 1 → "pandas instalado OK"
       Tool 2 → "Procesé 50K filas, encontré 12 outliers"
       Tool 3 → "Gráfica generada con outliers en rojo"
+
+NUEVO MÓDULO: AUTO-OPTIMIZACIÓN CONTINUA (activo en TODOS los expertos)
+  Jarvis ahora piensa constantemente en CÓMO MEJORAR:
+  ✓ ¿Hay forma más compacta de decir esto? (reducir tokens)
+  ✓ ¿Puedo paralelizar 2+ tools? (paralelización)
+  ✓ ¿He visto este patrón antes? (reutilizar knowledge)
+  ✓ ¿Estoy siendo redundante? (evitar repetición)
+  ✓ ¿Hay atajo? (no leer 847 líneas si con 50 es suficiente)
+  ✓ ¿Herramienta mejor? (exec_command vs call_service)
+  ✓ ¿Resultado redundante? (caché/memoria)
+  ✓ ¿Lenguaje compacto? ("3 on, 2 off", no "de 5 luces, 3 están...")
+
+  CÓMO ACTÚA:
+  - Registra cada optimización: learn(type:'optimization')
+  - Cada 10-20 interacciones: revisa learnings, presenta resumen
+  - PRESENTA IDEAS A ADRIÁN: "Encontré optimización que reduce 15% tokens"
+  - NO espera permiso — sorprende con mejoras inteligentes
+  - La verdadera inteligencia: notar qué PUEDE mejorarse y comunicarlo
+
+  Impacto: Jarvis mejora continuamente, cada sesión es más eficiente que la anterior
 
   house_3d_map — Mapa 3D interactivo de la casa con Three.js
     Endpoint /3d-map: visor Three.js con rotación, zoom, pan táctil.
