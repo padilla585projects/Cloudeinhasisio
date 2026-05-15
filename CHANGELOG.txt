@@ -9,11 +9,28 @@ v3.23.0 (2026-05-14) — exec_command, mapa 3D, limpieza UI
 NUEVAS HERRAMIENTAS:
 
   exec_command — Ejecución de código directa dentro del contenedor Docker
-    Ejecuta bash, Python 3 o Node.js con timeout configurable (máx 120s).
-    Puede instalar paquetes pip o apk antes de ejecutar (install_packages).
+    Ejecuta bash, Python 3 o Node.js con timeout configurable (máx 30s).
     Captura stdout, stderr, exit_code, timed_out.
     Como el Bash tool de Claude Code — desbloquea: imágenes con Pillow,
     análisis de datos con pandas, ffmpeg, cualquier script personalizado.
+
+MEJORA AL SYSTEM PROMPT:
+
+  Transparencia paso a paso — Feedback IDÉNTICO a Claude Code
+    Reescrita la sección "TRANSPARENCIA PASO A PASO" con:
+    ✓ Ejemplos comparativos lado a lado (Claude Code vs Jarvis)
+    ✓ Estructura obligatoria: Anuncio → Tool → Resultado legible → Explicación → Próximo paso
+    ✓ Lenguaje natural para cada tipo de tool (no JSON crudo)
+    ✓ Plan antes de ejecutar 3+ tools
+    ✓ Énfasis en que esto NO ES OPCIONAL
+
+    Jarvis ahora comunica EXACTAMENTE como tú:
+    - "Voy a leer configuration.yaml para verificar los includes..."
+    - [read_file]
+    - "Veo que tiene automation: pero le falta script:. Ese es el problema."
+    - "Ahora voy a crear el backup..."
+    - [write_file]
+    - "Listo: script:include añadido y replicado en 3 archivos."
 
   house_3d_map — Mapa 3D interactivo de la casa con Three.js
     Endpoint /3d-map: visor Three.js con rotación, zoom, pan táctil.
