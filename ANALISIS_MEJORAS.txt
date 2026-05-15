@@ -1,8 +1,8 @@
 ================================================================================
 ANALISIS DE MEJORAS — Jarvis AI Agent
 ================================================================================
-Fecha del analisis: 2026-05-13
-Version analizada: 3.14.2
+Fecha del analisis: 2026-05-13 (actualizado 2026-05-15)
+Version analizada: 3.24.1
 Branch: claude/extract-valuable-insights-0cb70
 
 Este documento captura los hallazgos de un audit del repo. NO es el roadmap
@@ -24,19 +24,30 @@ cuarto con la puerta entornada. Las mejoras se agrupan en:
 PRIORIDAD 1 — SEGURIDAD (cerraduras flojas)
 ================================================================================
 
-[ ] Validacion de input en tools peligrosas
-    - proxmox_api acepta cualquier endpoint del LLM (server.js:1964)
-      → riesgo: el modelo puede mandar paths arbitrarios al API Proxmox
-      → fix: whitelist de endpoints permitidos
-    - write_file / read_file: verificar que el path empieza por
-      /config, /share o /data antes de tocarlo
-    - call_service: validar dominio y servicio antes del POST a HA
+[v] write_file / append_file: whitelist de paths + proteccion criticos (HECHO v3.21.3)
+    - allowedWrite/allowedAppend valida que el path empiece por /config, /share o /data
+    - Archivos criticos (automations.yaml, configuration.yaml, etc.) requieren
+      adrian_confirmed:true para sobreescribir o appendear
+    - Backup automatico antes de cualquier escritura
+    - Validacion YAML previa para archivos .yaml de /config
 
-[ ] Cifrar agent_network.json
-    - Hoy guarda las API keys de agentes externos en texto plano
-    - Quien tenga acceso a /data las ve todas
+[ ] proxmox_api action='custom': whitelist de endpoints (PENDIENTE)
+    - Acepta input.endpoint del LLM sin validar (server.js ~linea 2258)
+    - Riesgo: el modelo puede mandar paths arbitrarios al API Proxmox
+    - Fix: whitelist de prefijos permitidos (/nodes, /cluster, /storage, etc.)
+
+[ ] exec_command: sin whitelist de comandos (PENDIENTE — ALTO RIESGO)
+    - Valida working_dir contra whitelist (/app, /config, /data, /share)
+    - Pero no valida el comando en si: LLM podria ejecutar 'rm -rf /config'
+    - Fix: lista negra de comandos peligrosos + logging de cada ejecucion
+
+[ ] call_service: sin validacion de dominio/servicio (PENDIENTE)
+    - Manda directamente al POST de HA sin comprobar nada
+    - Bajo riesgo (HA ya valida) pero conveniente para detectar errores antes
+
+[ ] Cifrar agent_network.json (PENDIENTE)
+    - Guarda API keys de agentes externos en texto plano en /data
     - Fix: AES-256 con clave derivada de SUPERVISOR_TOKEN
-      (ya es secreto y unico por instalacion)
 
 ================================================================================
 PRIORIDAD 2 — DEUDA TECNICA (taller desordenado)
@@ -71,57 +82,42 @@ PRIORIDAD 2 — DEUDA TECNICA (taller desordenado)
     - Aplicar mismo patron + distilacion periodica
 
 ================================================================================
-PRIORIDAD 3 — APROVECHAR PATRONES QUE YA FUNCIONAN
+PRIORIDAD 3 — PATRONES A PRESERVAR Y EXTENDER
 ================================================================================
 
-[ ] Generalizar el "auto-backup antes de escribir"
-    - Hoy solo lo hace update_dashboard (server.js:1635-1673)
-    - Patron: rolling buffer de 10 backups antes de tocar config
-    - Extender a write_file, create_automation, append_file
-      cuando el target esta en /config
-    - Helper unico: safeWrite(path, content)
+[v] Auto-backup generalizado (HECHO v3.20.x)
+    - write_file, append_file, update_dashboard hacen autoBackup() antes de escribir
+    - Rolling buffer de 10 backups por archivo en /data/backups/
+
+[v] Tool rollback generica (HECHO v3.16.x+)
+    - rollback tool: list | restore para cualquier archivo con backup
+    - Requiere adrian_confirmed:true para restaurar
 
 [ ] Cache compartida tipo "30s TTL" en mas tools
     - Hoy solo get_entities tiene cache (30s, max 100)
-    - Tools que se beneficiarian igual:
-        - get_automations
-        - get_dashboards
-        - get_installed_frontend
+    - get_automations, get_dashboards, get_installed_frontend podrian beneficiarse
     - Reduce latencia y carga sobre HA
 
-[ ] Recuperacion automatica de errores comunes
-    - Ya existe para imagenes corruptas (server.js:5905-5908):
-      auto-detecta -> limpia del historial -> reintenta
-    - Extender a:
-        - Tool result demasiado grande -> trocear o resumir
-        - Rate limit Anthropic -> backoff exponencial
-        - HA 503 -> reintentar tras 2s
-
 [ ] Paginar scan_installation
-    - Hoy carga toda la instalacion de golpe cada 2h
-    - Riesgo de timeout con instalaciones grandes (787+ entidades)
+    - Carga toda la instalacion de golpe — riesgo de timeout (787+ entidades)
     - Paginar por dominio, guardar resultado parcial entre paginas
 
-================================================================================
-PRIORIDAD 4 — QUICK WINS DE UX (cambios visibles, bajo esfuerzo)
-================================================================================
+[ ] Cap a memory.json
+    - learnings.json tiene cap de 200 entradas; memory.json no tiene limite
+    - Aplicar mismo patron
 
-[ ] Tool: rollback_dashboard
-    - Los backups ya existen, falta exponerlos como tool
-    - "Jarvis, deshaz el ultimo cambio del dashboard salon"
-    - → restaura backup N-1
+================================================================================
+PRIORIDAD 4 — QUICK WINS DE UX
+================================================================================
 
 [ ] Tool: get_tool_stats
-    - El bucle agentico ya sabe que tools se llaman → loggear contador
-    - Util para:
-        - Saber que tools nunca se usan (candidatas a eliminar)
-        - Saber cuales fallan mas
-        - Alimentar la distilacion de learnings
+    - Loggear contador de llamadas por tool + tasa de error
+    - Util para saber que tools nunca se usan y cuales fallan mas
+    - Input para la distilacion de learnings
 
-[ ] Endpoint /api/health con introspeccion
-    - Lista tools cargadas, ultimo error, hits de cache,
-      tamano de memoria.json
-    - Util para debugging desde fuera del chat
+[ ] Endpoint /api/health ampliado
+    - Ya existe /api/health basico
+    - Ampliar con: hits de cache, tamano de memoria.json, tools cargadas
 
 ================================================================================
 GEMAS DEL CODIGO ACTUAL (lo que SI esta bien hecho)
