@@ -47,6 +47,8 @@ const BACKUPS_DIR = path.join(DATA_DIR, 'backups');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const EMERGENCY_CONFIG_FILE = path.join(DATA_DIR, 'emergency_config.json');
 const ALEXA_VOICE_FILE = path.join(DATA_DIR, 'alexa_pending.json');
+const DASHBOARD_REVIEWS_FILE = path.join(DATA_DIR, 'dashboard_reviews.json');
+const SCHEDULED_TASKS_FILE = path.join(DATA_DIR, 'scheduled_tasks.json');
 
 // Asegurar que /data existe
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -159,7 +161,79 @@ function pushToAll(event) {
   }
 }
 
-const JARVIS_VERSION = '3.22.1';
+// ── Sistema de tareas programadas ──────────────────────────────────────────────
+let scheduledTasks = loadJSON(SCHEDULED_TASKS_FILE, {});
+
+function scheduleTask(taskName, cronExpression, taskFn) {
+  const cron = require('node-cron');
+  const nextRun = calculateNextRun(cronExpression);
+  console.log(`[SCHEDULER] Tarea "${taskName}" programada. Próxima ejecución: ${nextRun}`);
+
+  try {
+    cron.schedule(cronExpression, async () => {
+      console.log(`[TASK] Ejecutando: ${taskName}`);
+      try {
+        await taskFn();
+        scheduledTasks[taskName] = { lastRun: new Date().toISOString(), success: true };
+      } catch (e) {
+        console.log(`[TASK ERROR] ${taskName}: ${e.message}`);
+        scheduledTasks[taskName] = { lastRun: new Date().toISOString(), success: false, error: e.message };
+      }
+      saveJSON(SCHEDULED_TASKS_FILE, scheduledTasks);
+    });
+  } catch (e) {
+    console.log(`[SCHEDULER] Error con node-cron (normal si no está instalado): ${e.message}`);
+    // Fallback a temporizador simple (menos preciso)
+    const interval = parseSimpleCron(cronExpression);
+    setInterval(async () => {
+      console.log(`[TASK] Ejecutando: ${taskName}`);
+      try {
+        await taskFn();
+        scheduledTasks[taskName] = { lastRun: new Date().toISOString(), success: true };
+      } catch (err) {
+        console.log(`[TASK ERROR] ${taskName}: ${err.message}`);
+        scheduledTasks[taskName] = { lastRun: new Date().toISOString(), success: false, error: err.message };
+      }
+      saveJSON(SCHEDULED_TASKS_FILE, scheduledTasks);
+    }, interval);
+  }
+}
+
+function calculateNextRun(cronExpr) {
+  // Aproximado: si es "0 9 * * 1" (lunes 9am), calcula el próximo lunes 9am
+  const parts = cronExpr.split(' ');
+  if (parts.length === 5) {
+    const [minute, hour, day, month, dow] = parts;
+    const now = new Date();
+    if (dow === '*' || !dow || dow === '?') {
+      // Cualquier día a esa hora
+      return `Hoy a las ${hour}:${minute} (aprox)`;
+    } else if (dow === '1-5') {
+      return `Próximo día laboral a las ${hour}:${minute}`;
+    }
+  }
+  return 'próxima ejecución calculada';
+}
+
+function parseSimpleCron(cronExpr) {
+  // Conversion simple: buscar patrón común "0 9 * * 1" (cada lunes 9am)
+  const parts = cronExpr.split(' ');
+  if (parts.length === 5) {
+    const [minute, hour, day, month, dow] = parts;
+    if (hour !== '*' && minute !== '*') {
+      // Calcular ms hasta la próxima ejecución
+      const [h, m] = [parseInt(hour), parseInt(minute)];
+      const now = new Date();
+      let next = new Date(now);
+      next.setHours(h, m, 0, 0);
+      if (next <= now) next.setDate(next.getDate() + 1);
+      return Math.max(60000, next - now); // Mínimo 1 minuto
+    }
+  }
+  return 7 * 24 * 60 * 60 * 1000; // Fallback: 7 días (semanal)
+}
+
+const JARVIS_VERSION = '3.24.0';
 
 try {
   if (fs.existsSync(HOUSE_CONTEXT_FILE)) {
@@ -1302,6 +1376,21 @@ const tools = [
         style: { type: 'string', enum: ['natural', 'vivid'], description: 'natural (realista) o vivid (más artístico). Default: vivid.' }
       },
       required: ['prompt']
+    }
+  },
+
+  // ─── Auditoría de Lovelace ───
+  {
+    name: 'review_dashboard',
+    description: 'Auditoría profesional de tu dashboard Lovelace. Analiza layout, performance, UX, estética y recomienda cambios como lo haría un diseñador profesional. Revisa todos los dashboards o uno específico.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['analyze_all', 'analyze_one', 'generate_improvement_plan'], description: 'analyze_all: todos los dashboards | analyze_one: un dashboard específico | generate_improvement_plan: plan paso a paso de mejoras' },
+        dashboard_id: { type: 'string', description: 'ID del dashboard a analizar (solo para analyze_one)' },
+        focus: { type: 'string', enum: ['layout', 'performance', 'ux', 'aesthetics', 'completeness', 'all'], description: 'Área de enfoque. all analiza todo.' }
+      },
+      required: ['action']
     }
   }
 ];
@@ -4328,6 +4417,232 @@ ${dots}`;
         }
       }
 
+      case 'review_dashboard': {
+        const { action = 'analyze_all', dashboard_id, focus = 'all' } = input;
+
+        try {
+          // Obtener todos los dashboards
+          const dashboards = await haGet('/lovelace/dashboards');
+          if (!dashboards || dashboards.length === 0) {
+            return { note: 'No hay dashboards configurados. Crea uno primero.' };
+          }
+
+          // Cargar historial de reviews
+          let reviewHistory = loadJSON(DASHBOARD_REVIEWS_FILE, []);
+
+          const results = [];
+          let critical = 0, warnings = 0, suggestions = 0;
+
+          for (const db of dashboards) {
+            if (action === 'analyze_one' && db.id !== dashboard_id) continue;
+
+            const config = await haGet(`/lovelace/dashboards/${db.id}`);
+            const views = config.views || [];
+            const configStr = JSON.stringify(config);
+
+            // Análisis profesional completo
+            const analysis = {
+              name: db.title,
+              id: db.id,
+              views_count: views.length,
+              total_cards: views.reduce((sum, v) => sum + (v.cards?.length || 0), 0),
+              performance_score: 0,
+              recommendations: { critical: [], warning: [], suggestion: [] }
+            };
+
+            // ─ ANÁLISIS CRÍTICO ─────────────────────────────────────────────
+            if (views.length === 0) {
+              analysis.recommendations.critical.push('Dashboard sin vistas. Organiza al menos una vista para comenzar.');
+              critical++;
+            }
+
+            const totalCards = analysis.total_cards;
+            if (totalCards === 0 && views.length > 0) {
+              analysis.recommendations.critical.push('Dashboard vacío. Añade cards para controlar tus dispositivos.');
+              critical++;
+            } else if (totalCards > 100) {
+              analysis.recommendations.critical.push(`⚠️ ${totalCards} cards (muy muchas). Performance se verá afectada. Máximo recomendado: 50-60 por dashboard.`);
+              critical++;
+            }
+
+            // ─ ANÁLISIS DE PERFORMANCE ─────────────────────────────────────
+            let perfScore = 100;
+            if (totalCards > 50) perfScore -= 20;
+            if (totalCards > 75) perfScore -= 15;
+            if (views.length > 10) perfScore -= 10;
+            views.forEach(v => {
+              const cards = v.cards || [];
+              if (cards.length > 20) perfScore -= 5;
+            });
+            analysis.performance_score = Math.max(0, perfScore);
+
+            // ─ ANÁLISIS DE VISTAS ──────────────────────────────────────────
+            let hasUnnamedView = false;
+            for (let i = 0; i < views.length; i++) {
+              const view = views[i];
+              const cards = view.cards || [];
+              const viewName = view.title || `Vista sin nombre (${i + 1})`;
+
+              if (cards.length === 0) {
+                analysis.recommendations.warning.push(`Vista "${viewName}" vacía. Quítala o añade cards.`);
+                warnings++;
+              } else if (cards.length > 20) {
+                analysis.recommendations.warning.push(`Vista "${viewName}" (${cards.length} cards). Divide en 2-3 vistas para mejorar UX.`);
+                warnings++;
+              } else if (cards.length > 12) {
+                analysis.recommendations.suggestion.push(`Vista "${viewName}" tiene ${cards.length} cards. Considera dividir si el scroll es lento.`);
+                suggestions++;
+              }
+
+              if (!view.title) hasUnnamedView = true;
+            }
+
+            if (hasUnnamedView) {
+              analysis.recommendations.suggestion.push('Etiqueta todas las vistas con títulos claros. Mejora navegación.');
+              suggestions++;
+            }
+
+            // ─ ANÁLISIS DE ENTIDADES ───────────────────────────────────────
+            try {
+              const entities = await haGet('/states');
+              const domainCounts = {};
+              entities.forEach(e => {
+                const domain = e.entity_id.split('.')[0];
+                domainCounts[domain] = (domainCounts[domain] || 0) + 1;
+              });
+
+              // Buscar dominios no representados
+              const criticalDomains = ['light', 'switch', 'climate', 'lock'];
+              for (const domain of criticalDomains) {
+                if (domainCounts[domain] > 0 && !configStr.includes(`'${domain}.`) && !configStr.includes(`"${domain}.`)) {
+                  analysis.recommendations.suggestion.push(`Tienes ${domainCounts[domain]} ${domain}(s) pero no los controlas desde este dashboard.`);
+                  suggestions++;
+                }
+              }
+            } catch (e) {
+              // Silenciar errores en análisis de entidades
+            }
+
+            // ─ ANÁLISIS DE ESTÉTICA ────────────────────────────────────────
+            const cardTypes = {};
+            views.forEach(v => {
+              (v.cards || []).forEach(c => {
+                const type = c.type || 'unknown';
+                cardTypes[type] = (cardTypes[type] || 0) + 1;
+              });
+            });
+            const cardTypeCount = Object.keys(cardTypes).length;
+
+            if (cardTypeCount === 1 && totalCards > 0) {
+              analysis.recommendations.suggestion.push(`Todas tus cards son del mismo tipo. Variedad visual mejora UX: añade gráficos, botones, etc.`);
+              suggestions++;
+            } else if (cardTypeCount <= 2) {
+              analysis.recommendations.suggestion.push(`Pocas tipos de cards (${cardTypeCount}). Añade más variedad visual.`);
+              suggestions++;
+            }
+
+            // Verificar accesibilidad
+            if (!config.background && !view?.background) {
+              analysis.recommendations.suggestion.push('Personaliza el fondo. Un tema coherente mejora la experiencia.');
+              suggestions++;
+            }
+
+            // ─ CÁLCULO DE SALUD ────────────────────────────────────────────
+            analysis.health = {
+              score: Math.max(0, 100 - (critical * 30 + warnings * 15 + suggestions * 5)),
+              status: critical > 0 ? '⚠️ Crítico' : warnings > 0 ? '🟡 Advertencias' : suggestions > 0 ? '💡 Mejoras disponibles' : '✅ Óptimo'
+            };
+
+            results.push(analysis);
+          }
+
+          // ─ GENERAR PLAN DE MEJORAS SI SE SOLICITA ──────────────────────
+          if (action === 'generate_improvement_plan') {
+            const plan = [];
+            for (const r of results) {
+              if (r.recommendations.critical.length > 0) {
+                plan.push({
+                  priority: 'CRÍTICO',
+                  dashboard: r.name,
+                  actions: r.recommendations.critical,
+                  timeframe: 'Hoy'
+                });
+              }
+              if (r.recommendations.warning.length > 0) {
+                plan.push({
+                  priority: 'IMPORTANTE',
+                  dashboard: r.name,
+                  actions: r.recommendations.warning,
+                  timeframe: 'Esta semana'
+                });
+              }
+              if (r.recommendations.suggestion.length > 0) {
+                plan.push({
+                  priority: 'MEJORA',
+                  dashboard: r.name,
+                  actions: r.recommendations.suggestion.slice(0, 3),
+                  timeframe: 'Próximas 2 semanas'
+                });
+              }
+            }
+
+            // Guardar en historial
+            const review = {
+              timestamp: new Date().toISOString(),
+              dashboards_analyzed: results.length,
+              critical_issues: critical,
+              warnings: warnings,
+              suggestions: suggestions,
+              improvement_plan: plan
+            };
+            reviewHistory.push(review);
+            if (reviewHistory.length > 52) reviewHistory = reviewHistory.slice(-52); // Mantener 1 año
+            saveJSON(DASHBOARD_REVIEWS_FILE, reviewHistory);
+
+            return {
+              success: true,
+              improvement_plan: plan,
+              summary: `Plan creado: ${critical} críticos, ${warnings} advertencias, ${suggestions} sugerencias`,
+              next_review: '7 días'
+            };
+          }
+
+          // ─ RETORNO DE ANÁLISIS ─────────────────────────────────────────
+          const totalCritical = results.reduce((s, r) => s + r.recommendations.critical.length, 0);
+          const totalWarnings = results.reduce((s, r) => s + r.recommendations.warning.length, 0);
+          const totalSuggestions = results.reduce((s, r) => s + r.recommendations.suggestion.length, 0);
+
+          // Guardar en historial
+          const review = {
+            timestamp: new Date().toISOString(),
+            dashboards_analyzed: results.length,
+            critical_issues: totalCritical,
+            warnings: totalWarnings,
+            suggestions: totalSuggestions,
+            avg_performance_score: Math.round(results.reduce((s, r) => s + r.performance_score, 0) / results.length)
+          };
+          reviewHistory.push(review);
+          if (reviewHistory.length > 52) reviewHistory = reviewHistory.slice(-52);
+          saveJSON(DASHBOARD_REVIEWS_FILE, reviewHistory);
+
+          return {
+            success: true,
+            dashboards_analyzed: results.length,
+            analysis: results,
+            summary: {
+              total_critical: totalCritical,
+              total_warnings: totalWarnings,
+              total_suggestions: totalSuggestions,
+              avg_performance: Math.round(results.reduce((s, r) => s + r.performance_score, 0) / results.length),
+              health: results.map(r => `${r.name}: ${r.health.status}`).join(' | ')
+            }
+          };
+
+        } catch (err) {
+          return { error: 'Error analizando dashboards: ' + err.message };
+        }
+      }
+
       default:
         return { error: `Tool desconocida: ${name}` };
     }
@@ -6577,6 +6892,63 @@ app.get('/api/ha-states-simple', async (req, res) => {
   }
 });
 
+// ── Historial y estadísticas de reviews de dashboards ────────────────────────
+app.get('/api/dashboard-reviews', (req, res) => {
+  try {
+    const reviews = loadJSON(DASHBOARD_REVIEWS_FILE, []);
+
+    // Calcular estadísticas
+    let totalReviews = reviews.length;
+    let avgCritical = 0, avgWarnings = 0, avgSuggestions = 0;
+    let criticalTrend = 0, warningsTrend = 0;
+
+    if (totalReviews > 0) {
+      avgCritical = Math.round(reviews.reduce((s, r) => s + (r.critical_issues || 0), 0) / totalReviews);
+      avgWarnings = Math.round(reviews.reduce((s, r) => s + (r.warnings || 0), 0) / totalReviews);
+      avgSuggestions = Math.round(reviews.reduce((s, r) => s + (r.suggestions || 0), 0) / totalReviews);
+
+      // Tendencia: comparar primeras 2 vs últimas 2 reviews
+      if (totalReviews >= 4) {
+        const firstTwo = reviews.slice(0, 2);
+        const lastTwo = reviews.slice(-2);
+        const avgFirstCritical = Math.round(firstTwo.reduce((s, r) => s + (r.critical_issues || 0), 0) / 2);
+        const avgLastCritical = Math.round(lastTwo.reduce((s, r) => s + (r.critical_issues || 0), 0) / 2);
+        criticalTrend = avgFirstCritical - avgLastCritical; // positivo = mejora
+
+        const avgFirstWarnings = Math.round(firstTwo.reduce((s, r) => s + (r.warnings || 0), 0) / 2);
+        const avgLastWarnings = Math.round(lastTwo.reduce((s, r) => s + (r.warnings || 0), 0) / 2);
+        warningsTrend = avgFirstWarnings - avgLastWarnings;
+      }
+    }
+
+    // Últimas 5 reviews para timeline
+    const recent = reviews.slice(-5).map(r => ({
+      timestamp: r.timestamp,
+      critical: r.critical_issues || 0,
+      warnings: r.warnings || 0,
+      suggestions: r.suggestions || 0,
+      dashboards: r.dashboards_analyzed || r.dashboards_count || 0
+    }));
+
+    res.json({
+      total_reviews: totalReviews,
+      last_review: reviews.length > 0 ? reviews[reviews.length - 1].timestamp : null,
+      statistics: {
+        avg_critical: avgCritical,
+        avg_warnings: avgWarnings,
+        avg_suggestions: avgSuggestions
+      },
+      trends: {
+        critical_improvement: criticalTrend > 0 ? `↓ ${criticalTrend} críticos` : criticalTrend < 0 ? `↑ ${Math.abs(criticalTrend)} críticos` : 'Sin cambio',
+        warnings_improvement: warningsTrend > 0 ? `↓ ${warningsTrend} advertencias` : warningsTrend < 0 ? `↑ ${Math.abs(warningsTrend)} advertencias` : 'Sin cambio'
+      },
+      recent_reviews: recent
+    });
+  } catch (e) {
+    res.json({ error: e.message });
+  }
+});
+
 // Visor 3D Three.js
 app.get('/3d-map', (req, res) => {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -7131,6 +7503,112 @@ app.listen(PORT, '0.0.0.0', () => {
 
   // Monitor de emergencias + NEXUS watchers (cada 30 segundos)
   setInterval(() => { checkEmergencies(); nexusWatchers(); }, 30_000);
+
+  // ─ REVISIÓN SEMANAL DE DASHBOARD ─────────────────────────────────────────
+  // Ejecutar cada lunes a las 9:00 AM, luego cada 7 días
+  // Si node-cron no está instalado, fallback a setInterval semanal
+  scheduleTask('weekly-dashboard-review', '0 9 * * 1', async () => {
+    try {
+      console.log('[TASK] Iniciando revisión semanal de dashboard...');
+
+      // Obtener todos los dashboards
+      const dashboards = await haGet('/lovelace/dashboards');
+      if (!dashboards || dashboards.length === 0) {
+        console.log('[TASK] No hay dashboards para revisar');
+        return;
+      }
+
+      // Ejecutar análisis completo
+      const reviewResults = [];
+      let totalCritical = 0, totalWarnings = 0, totalSuggestions = 0;
+
+      for (const db of dashboards) {
+        const config = await haGet(`/lovelace/dashboards/${db.id}`);
+        const views = config.views || [];
+        const configStr = JSON.stringify(config);
+
+        const analysis = {
+          name: db.title,
+          id: db.id,
+          total_cards: views.reduce((sum, v) => sum + (v.cards?.length || 0), 0),
+          recommendations: { critical: [], warning: [], suggestion: [] }
+        };
+
+        // Análisis básico
+        if (views.length === 0) {
+          analysis.recommendations.critical.push('Sin vistas organizadas');
+          totalCritical++;
+        }
+
+        const totalCards = analysis.total_cards;
+        if (totalCards === 0 && views.length > 0) {
+          analysis.recommendations.critical.push('Dashboard vacío');
+          totalCritical++;
+        } else if (totalCards > 100) {
+          analysis.recommendations.critical.push(`${totalCards} cards (demasiadas, máx: 50-60)`);
+          totalCritical++;
+        }
+
+        // Análisis de vistas
+        views.forEach((v, i) => {
+          const cards = v.cards || [];
+          if (cards.length === 0) {
+            analysis.recommendations.warning.push(`Vista "${v.title || `#${i+1}`}" vacía`);
+            totalWarnings++;
+          } else if (cards.length > 20) {
+            analysis.recommendations.warning.push(`Vista "${v.title || `#${i+1}`}" (${cards.length} cards)`);
+            totalWarnings++;
+          }
+        });
+
+        reviewResults.push(analysis);
+      }
+
+      // Guardar revisión en historial
+      const reviewHistoryFile = path.join(DATA_DIR, 'dashboard_reviews.json');
+      const reviewHistory = loadJSON(reviewHistoryFile, []);
+      reviewHistory.push({
+        timestamp: new Date().toISOString(),
+        dashboards_count: reviewResults.length,
+        critical: totalCritical,
+        warnings: totalWarnings,
+        suggestions: totalSuggestions,
+        results: reviewResults
+      });
+      if (reviewHistory.length > 52) reviewHistory = reviewHistory.slice(-52);
+      saveJSON(reviewHistoryFile, reviewHistory);
+
+      // Notificar resultados
+      const summary = `📊 REVISIÓN SEMANAL DE DASHBOARD\n` +
+        `Dashboards: ${reviewResults.length}\n` +
+        `🔴 Críticos: ${totalCritical} | 🟡 Advertencias: ${totalWarnings} | 💡 Sugerencias: ${totalSuggestions}`;
+
+      console.log(`[TASK] Revisión completada: ${summary.replace(/\n/g, ' ')}`);
+
+      // Enviar notificación a Telegram si está configurado
+      try {
+        await haPost('/services/telegram_bot/send_message', {
+          target: 'admin',
+          message: summary
+        }).catch(() => null);
+      } catch (e) {
+        console.log(`[TASK] Telegram no disponible (no crítico): ${e.message}`);
+      }
+
+      // Notificar a clientes SSE activos
+      pushToAll({
+        type: 'dashboard_review',
+        critical: totalCritical,
+        warnings: totalWarnings,
+        summary: summary
+      });
+
+    } catch (err) {
+      console.log(`[TASK ERROR] weekly-dashboard-review: ${err.message}`);
+    }
+  });
+
+  console.log('[boot] Revisión semanal de dashboard programada (lunes 9:00 AM)');
 });
 
 // ── Monitor de emergencias autónomas ────────────────────────────────────────

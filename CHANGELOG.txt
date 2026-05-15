@@ -3,6 +3,58 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.24.0 (2026-05-15) — Revisión profesional semanal de dashboards Lovelace
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVA HERRAMIENTA: review_dashboard
+
+  Auditoría profesional automática de dashboards Lovelace para mantenerlos como un profesional.
+
+  CARACTERÍSTICAS:
+
+  ✓ Análisis multi-dimensional:
+    - Verificación estructural: vistas, cards, organización
+    - Performance scoring: cálculo de impacto según densidad de cards
+    - Análisis de UX: títulos, navegación, consistencia visual
+    - Estética: variedad de tipos de cards, coherencia visual
+    - Completitud: entidades detectadas vs mostradas en dashboard
+    - Accesibilidad: contraste, legibilidad, tema
+
+  ✓ Categorización de recomendaciones:
+    - 🔴 CRÍTICAS: bloquean funcionalidad (dashboard vacío, sin vistas)
+    - 🟡 ADVERTENCIAS: impacto en performance/UX (too many cards, broken views)
+    - 💡 SUGERENCIAS: mejoras optativas (variedad visual, titles, entities missing)
+
+  ✓ Plan de mejoras automático:
+    - Priorizado por urgencia: Hoy (crítico) > Esta semana (advertencia) > 2 semanas (sugerencia)
+    - Acciones concretas y ordenadas
+    - Genera historial de evolución (track improvements over 1 year)
+
+  ✓ Ejecución semanal automática:
+    - Scheduled task: cada lunes 09:00 AM
+    - Scans ALL dashboards
+    - Guarda histórico de reviews (últimas 52 = 1 año)
+    - Notifica vía Telegram si está configurado
+    - SSE push a clientes activos
+
+  Actions disponibles:
+  - analyze_all: auditoría completa de todos los dashboards (por defecto)
+  - analyze_one: analiza solo un dashboard específico
+  - generate_improvement_plan: crea plan actionable priorizado por criticidad
+
+CAMBIOS INTERNOS:
+
+  ✓ Nuevo sistema de tareas programadas (scheduleTask)
+    - Usa node-cron si está disponible (precisión de minutos)
+    - Fallback a setInterval semanal si node-cron no está instalado
+    - Persistent execution history (SCHEDULED_TASKS_FILE)
+
+  ✓ Historial de reviews (DASHBOARD_REVIEWS_FILE)
+    - Mantiene último año de auditorías
+    - Tracking de tendencias: "Hace 2 semanas 25 cards, hoy 22"
+    - Compara métricas de sesión a sesión
+
+────────────────────────────────────────────────────────────────────────────────
 v3.23.0 (2026-05-15) — exec_command, DALL-E, mapa 3D, transparencia + auto-optimización continua
 ────────────────────────────────────────────────────────────────────────────────
 
