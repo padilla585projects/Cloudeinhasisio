@@ -965,6 +965,56 @@ const tools = [
     }
   },
 
+  // ─── Editar automatización ───
+  {
+    name: 'edit_automation',
+    description: 'Edita una automatización existente en /config/automations.yaml buscándola por alias o id. Reemplaza la entrada completa con el nuevo YAML proporcionado y recarga las automatizaciones.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        identifier: { type: 'string', description: 'Alias o id de la automatización a editar' },
+        yaml_content: { type: 'string', description: 'Nuevo YAML completo para esta automatización (un único objeto, sin el guión de lista)' }
+      },
+      required: ['identifier', 'yaml_content']
+    }
+  },
+
+  // ─── Eliminar automatización ───
+  {
+    name: 'delete_automation',
+    description: 'Elimina una automatización de /config/automations.yaml buscándola por alias o id. Hace backup automático antes de borrar y recarga las automatizaciones.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        identifier: { type: 'string', description: 'Alias o id de la automatización a eliminar' }
+      },
+      required: ['identifier']
+    }
+  },
+
+  // ─── Renderizar template Jinja2 ───
+  {
+    name: 'template_render',
+    description: 'Renderiza un template Jinja2 usando la API de Home Assistant. Útil para probar expresiones de templates, calcular valores dinámicos o depurar condiciones antes de usarlas en automatizaciones.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        template: { type: 'string', description: 'Template Jinja2 a renderizar, por ejemplo: "{{ states(\'sensor.temperatura\') }}"' }
+      },
+      required: ['template']
+    }
+  },
+
+  // ─── Puntuación de instalación ───
+  {
+    name: 'score_installation',
+    description: 'Evalúa la calidad de la instalación de Home Assistant en varias dimensiones y devuelve una puntuación de 0 a 100 junto con recomendaciones específicas de mejora.',
+    input_schema: {
+      type: 'object',
+      properties: {}
+    }
+  },
+
   // ─── Auditoría de Lovelace ───
   {
     name: 'review_dashboard',

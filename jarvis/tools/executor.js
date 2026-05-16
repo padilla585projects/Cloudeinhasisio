@@ -408,6 +408,13 @@ async function executeTool(name, input) {
       // ─── Memoria y aprendizaje ───
       case 'save_memory': {
         state.userMemory.push({ note: input.note, category: input.category, savedAt: new Date().toISOString() });
+        // Cap: máximo 500 notas — elimina las más antiguas si se supera
+        const MEMORY_CAP = 500;
+        if (state.userMemory.length > MEMORY_CAP) {
+          const removed = state.userMemory.length - MEMORY_CAP;
+          state.userMemory.splice(0, removed);
+          console.log(`[memory] Cap alcanzado — eliminadas ${removed} notas antiguas`);
+        }
         saveJSON(C.MEMORY_FILE, state.userMemory);
         console.log(`[memory] +${input.category}: "${input.note}"`);
         return { success: true, total: state.userMemory.length };
@@ -3473,6 +3480,190 @@ ${dots}`;
         } catch (e) {
           return { error: 'dev_workspace error: ' + e.message };
         }
+      }
+
+      // ─── edit_automation ───
+      case 'edit_automation': {
+        const automationsPath = path.join(C.HA_CONFIG, 'automations.yaml');
+
+        // 1. Validar YAML nuevo
+        const yamlValidErr = validateYamlSyntax(input.yaml_content);
+        if (yamlValidErr) {
+          return { error: `YAML inválido — automatización NO editada: ${yamlValidErr}` };
+        }
+
+        // 2. Leer y parsear automations.yaml
+        if (!fs.existsSync(automationsPath)) {
+          return { error: 'automations.yaml no existe' };
+        }
+        let automations;
+        try {
+          automations = yaml.load(fs.readFileSync(automationsPath, 'utf8')) || [];
+        } catch (e) {
+          return { error: `No se pudo parsear automations.yaml: ${e.message}` };
+        }
+        if (!Array.isArray(automations)) {
+          return { error: 'automations.yaml no contiene una lista' };
+        }
+
+        // 3. Buscar por alias o id
+        const idx = automations.findIndex(e => e.alias === input.identifier || String(e.id) === String(input.identifier));
+        if (idx === -1) {
+          const available = automations.map(e => e.alias || e.id || '(sin nombre)').slice(0, 20);
+          return { error: `Automatización "${input.identifier}" no encontrada`, available_aliases: available };
+        }
+        const oldAlias = automations[idx].alias || automations[idx].id;
+
+        // 4. Parsear el nuevo YAML y reemplazar
+        let newEntry;
+        try {
+          newEntry = yaml.load(input.yaml_content);
+        } catch (e) {
+          return { error: `No se pudo parsear el nuevo YAML: ${e.message}` };
+        }
+        automations[idx] = newEntry;
+
+        // 5. Backup y escribir
+        autoBackup(automationsPath);
+        const newContent = yaml.dump(automations, { lineWidth: -1 });
+        const writeErr = validateYamlSyntax(newContent);
+        if (writeErr) return { error: `El archivo resultante tendría YAML inválido: ${writeErr}` };
+        fs.writeFileSync(automationsPath, newContent);
+
+        // 6. Reload
+        try { await haPost('/services/automation/reload', {}); } catch {}
+
+        return { success: true, message: `Automatización editada correctamente`, old_alias: oldAlias, new_alias: newEntry.alias || newEntry.id || '(sin nombre)' };
+      }
+
+      // ─── delete_automation ───
+      case 'delete_automation': {
+        const automationsPath = path.join(C.HA_CONFIG, 'automations.yaml');
+
+        // 1. Leer y parsear
+        if (!fs.existsSync(automationsPath)) {
+          return { error: 'automations.yaml no existe' };
+        }
+        let automations;
+        try {
+          automations = yaml.load(fs.readFileSync(automationsPath, 'utf8')) || [];
+        } catch (e) {
+          return { error: `No se pudo parsear automations.yaml: ${e.message}` };
+        }
+        if (!Array.isArray(automations)) {
+          return { error: 'automations.yaml no contiene una lista' };
+        }
+
+        // 2. Buscar por alias o id
+        const idx = automations.findIndex(e => e.alias === input.identifier || String(e.id) === String(input.identifier));
+        if (idx === -1) {
+          const available = automations.map(e => e.alias || e.id || '(sin nombre)').slice(0, 20);
+          return { error: `Automatización "${input.identifier}" no encontrada`, available_aliases: available };
+        }
+        const deletedName = automations[idx].alias || automations[idx].id || '(sin nombre)';
+
+        // 3. Backup, eliminar y escribir
+        autoBackup(automationsPath);
+        automations.splice(idx, 1);
+        const newContent = yaml.dump(automations, { lineWidth: -1 });
+        fs.writeFileSync(automationsPath, newContent);
+
+        // 4. Reload
+        try { await haPost('/services/automation/reload', {}); } catch {}
+
+        return { success: true, message: `Automatización "${deletedName}" eliminada correctamente`, deleted: deletedName };
+      }
+
+      // ─── template_render ───
+      case 'template_render': {
+        const response = await fetch(C.HA_URL + '/api/template', {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer ' + C.HA_TOKEN,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ template: input.template })
+        });
+        const text = await response.text();
+        if (!response.ok) {
+          return { error: `HA template error ${response.status}: ${text}` };
+        }
+        return { result: text };
+      }
+
+      // ─── score_installation ───
+      case 'score_installation': {
+        // 1. Obtener todas las entidades
+        const states = await haGet('/states');
+        const totalEntities = states.length;
+        const unavailableEntities = states.filter(e => e.state === 'unavailable' || e.state === 'unknown');
+        const unavailableCount = unavailableEntities.length;
+
+        // Entidades sin friendly_name (el nombre es igual al entity_id o vacío)
+        const unnamedEntities = states.filter(e => {
+          const fn = e.attributes?.friendly_name;
+          if (!fn) return true;
+          // Si friendly_name parece un entity_id autogenerado (ej. "sensor.some_thing_abc123")
+          return fn === e.entity_id || /^[a-z_]+\.[a-z0-9_]+$/.test(fn);
+        });
+        const unnamedCount = unnamedEntities.length;
+
+        // 2. Leer automations.yaml
+        const automationsPath = path.join(C.HA_CONFIG, 'automations.yaml');
+        let automationsTotal = 0;
+        let automationsNoAlias = 0;
+        let automationsAutoId = 0;
+        try {
+          if (fs.existsSync(automationsPath)) {
+            const parsed = yaml.load(fs.readFileSync(automationsPath, 'utf8')) || [];
+            if (Array.isArray(parsed)) {
+              automationsTotal = parsed.length;
+              automationsNoAlias = parsed.filter(a => !a.alias || a.alias.trim() === '').length;
+              automationsAutoId = parsed.filter(a => a.id && String(a.id).startsWith('automation_')).length;
+            }
+          }
+        } catch {}
+
+        // 3. Calcular score
+        let score = 100;
+        const unavailablePenalty = Math.min(unavailableCount * 1, 20);
+        const unnamedPenalty = Math.min(unnamedCount * 0.5, 15);
+        const noAliasPenalty = Math.min(automationsNoAlias * 2, 15);
+        const autoIdPenalty = automationsAutoId > 10 ? 10 : 0;
+
+        score -= unavailablePenalty;
+        score -= unnamedPenalty;
+        score -= noAliasPenalty;
+        score -= autoIdPenalty;
+        score = Math.round(Math.max(0, Math.min(100, score)));
+
+        // 4. Recomendaciones
+        const recommendations = [];
+        if (unavailableCount > 0) {
+          recommendations.push(`${unavailableCount} entidades en estado unavailable/unknown — revisa las integraciones afectadas`);
+        }
+        if (unnamedCount > 5) {
+          recommendations.push(`${unnamedCount} entidades sin nombre amigable — añade friendly_name en customize.yaml`);
+        }
+        if (automationsNoAlias > 0) {
+          recommendations.push(`${automationsNoAlias} automatizaciones sin alias — añade un alias descriptivo a cada una`);
+        }
+        if (automationsAutoId > 10) {
+          recommendations.push(`${automationsAutoId} automatizaciones con ID autogenerado por HA — considera asignar IDs descriptivos`);
+        }
+        if (recommendations.length < 3) {
+          recommendations.push('Instala HACS y añade cards custom para mejorar la UI de Lovelace');
+        }
+
+        return {
+          score,
+          total_entities: totalEntities,
+          unavailable_count: unavailableCount,
+          unnamed_entities: unnamedCount,
+          automations_total: automationsTotal,
+          automations_no_alias: automationsNoAlias,
+          recommendations
+        };
       }
 
       default:
