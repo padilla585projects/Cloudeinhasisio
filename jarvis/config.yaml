@@ -1,6 +1,6 @@
 name: "Jarvis AI Agent"
 description: "Jarvis — Asistente IA para Home Assistant. Control por voz y texto."
-version: "3.30.0"
+version: "3.30.1"
 slug: "jarvis_ai_agent"
 init: false
 arch:
@@ -39,7 +39,7 @@ options:
   ollama_bg_model: "qwen2.5:3b-instruct"
   local_first: false
   privacy_mode: false
-  agent_net_enabled: false
+  agent_net_enabled: true
   agent_net_url: "https://getaway-gateway.alejandra-app.workers.dev"
   agent_net_invite: "getaway2026"
 schema:

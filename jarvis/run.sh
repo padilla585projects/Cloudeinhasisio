@@ -59,7 +59,7 @@ if bashio::config.has_value 'privacy_mode'; then
 fi
 
 # ── GetawayAgentes (red de agentes IA, opt-in) ───────────────────────────────
-export AGENT_NET_ENABLED="false"
+export AGENT_NET_ENABLED="true"
 export AGENT_NET_URL="https://getaway-gateway.alejandra-app.workers.dev"
 export AGENT_NET_INVITE="getaway2026"
 if bashio::config.has_value 'agent_net_enabled'; then
