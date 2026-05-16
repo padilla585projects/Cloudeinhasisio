@@ -15,6 +15,11 @@ if bashio::config.has_value 'anthropic_api_key'; then
   export ANTHROPIC_API_KEY=$(bashio::config 'anthropic_api_key')
 fi
 
+export DEEPSEEK_API_KEY=""
+if bashio::config.has_value 'deepseek_api_key'; then
+  export DEEPSEEK_API_KEY=$(bashio::config 'deepseek_api_key')
+fi
+
 # Proxmox (opcional)
 export PROXMOX_URL=""
 export PROXMOX_TOKEN=""
@@ -50,9 +55,16 @@ if bashio::config.has_value 'agent_net_invite'; then
   export AGENT_NET_INVITE=$(bashio::config 'agent_net_invite')
 fi
 
-bashio::log.info "Iniciando Jarvis AI Agent v3.30.7..."
+bashio::log.info "Iniciando Jarvis AI Agent v3.31.0..."
 bashio::log.info "Modelos cloud: gpt-4o-mini (bg) + gpt-4.1-mini (principal) + claude-sonnet-4-5 (dev)"
-bashio::log.info "☁️ Modelos: gpt-4.1-mini (principal) + gpt-4o-mini (rápido) + claude-sonnet-4-5 (dev)"
+bashio::log.info "☁️ Núcleos activos:"
+bashio::log.info "  · OpenAI: gpt-4.1-mini (principal) + gpt-4o-mini (rápido)"
+if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+  bashio::log.info "  · Anthropic: claude-sonnet-4-5 (dev)"
+fi
+if [ -n "${DEEPSEEK_API_KEY:-}" ]; then
+  bashio::log.info "  · DeepSeek: deepseek-chat (análisis) + deepseek-reasoner R1 (razonamiento)"
+fi
 if [ -n "${SERPER_API_KEY:-}" ]; then
   bashio::log.info "Busqueda: Google (Serper)"
 else

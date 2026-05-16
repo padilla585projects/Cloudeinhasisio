@@ -1,5 +1,5 @@
 'use strict';
-const { MODEL, BG_MODEL, CLAUDE_MODEL } = require('../utils/constants');
+const { MODEL, BG_MODEL, CLAUDE_MODEL, DEEPSEEK_MODEL, DEEPSEEK_R1_MODEL } = require('../utils/constants');
 
 // ── Configuración de expertos NEXUS ──────────────────────────────────────────
 // Cada experto define: modelo, tokens, iteraciones, módulos activos y tools.
@@ -124,6 +124,29 @@ const EXPERTS = {
     tools: ['get_memory', 'save_memory', 'delete_memory', 'learn', 'knowledge_db',
             'analyze_patterns', 'proactive_thought', 'get_entities', 'web_search',
             'web_search_native', 'get_history', 'scan_installation']
+  },
+
+  // ── Núcleos DeepSeek ─────────────────────────────────────────────────────────
+
+  analisis: {
+    model: DEEPSEEK_MODEL, maxTokens: 8192, maxIter: 12,
+    modules: ['base', 'autonomy', 'aprendizaje', 'optimization'],
+    label: 'Análisis (DeepSeek V3)',
+    // Núcleo de investigación: busca, lee, sintetiza. No modifica HA.
+    tools: ['web_search', 'web_search_native', 'fetch_url', 'knowledge_db',
+            'get_memory', 'save_memory', 'learn', 'analyze_patterns',
+            'get_entities', 'get_entity_state', 'get_history',
+            'read_file', 'list_directory', 'get_system_logs', 'get_error_log',
+            'scan_installation', 'ha_knowledge', 'proactive_thought']
+  },
+
+  razonamiento: {
+    model: DEEPSEEK_R1_MODEL, maxTokens: 16000, maxIter: 3,
+    modules: ['base', 'perseverance', 'diagnostico', 'ha_internals', 'ha_control', 'optimization'],
+    label: 'Razonamiento (DeepSeek R1)',
+    // R1 no soporta function calling — razona con el contexto que recibe.
+    // El sistema le inyecta contexto de la casa antes de la llamada.
+    tools: []
   }
 };
 

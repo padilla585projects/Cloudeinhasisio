@@ -1,6 +1,6 @@
 'use strict';
 const fetch = require('node-fetch');
-const { OPENAI_API_KEY, ANTHROPIC_API_KEY } = require('./constants');
+const { OPENAI_API_KEY, ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, DEEPSEEK_URL } = require('./constants');
 const state = require('./state');
 
 // ── Conversión formato Anthropic → OpenAI ────────────────────────────────────
@@ -271,12 +271,69 @@ async function callAnthropic(model, system, messages, aiTools, maxTokens) {
   };
 }
 
-// ── Wrapper unificado: OpenAI o Anthropic según prefijo del modelo ────────────
+// ── DeepSeek (V3 + R1) ────────────────────────────────────────────────────────
+
+async function callDeepSeek(model, system, messages, aiTools, maxTokens) {
+  if (!DEEPSEEK_API_KEY) {
+    const e = new Error('⚠️ DeepSeek API Key no configurada. Ve a Ajustes del add-on → deepseek_api_key.');
+    e.noApiKey = true;
+    throw e;
+  }
+
+  const isReasoner = model === 'deepseek-reasoner';
+  const sanitized = sanitizeMessagesForOpenAI(messages);
+  const msgs = system ? [{ role: 'system', content: system }, ...sanitized] : [...sanitized];
+
+  const body = { model, max_tokens: maxTokens, messages: msgs };
+  // deepseek-reasoner NO soporta function calling
+  if (!isReasoner && aiTools && aiTools.length > 0) body.tools = aiTools;
+
+  const response = await fetch(`${DEEPSEEK_URL}/chat/completions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${DEEPSEEK_API_KEY}` },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`DeepSeek error ${response.status}: ${err}`);
+  }
+
+  const data = await response.json();
+  const choice = data.choices[0];
+  const message = choice.message;
+
+  // R1 expone su cadena de razonamiento — la logueamos para debug
+  if (message.reasoning_content) {
+    const preview = message.reasoning_content.slice(0, 300).replace(/\n/g, ' ');
+    console.log(`[deepseek-r1] 🧠 ${preview}...`);
+  }
+
+  const text = message.content || '';
+  const toolCalls = (message.tool_calls || []).map(tc => ({
+    id: tc.id,
+    name: tc.function.name,
+    input: (() => { try { return JSON.parse(tc.function.arguments); } catch { return {}; } })()
+  }));
+
+  return {
+    text,
+    toolCalls,
+    finishReason: choice.finish_reason || 'stop',
+    message: {
+      role: 'assistant',
+      content: text || null,
+      ...(toolCalls.length > 0 ? { tool_calls: message.tool_calls } : {})
+    },
+    usage: data.usage || {}
+  };
+}
+
+// ── Wrapper unificado ─────────────────────────────────────────────────────────
 
 async function callLLM(model, system, messages, tools, maxTokens) {
-  if (model && model.startsWith('claude-')) {
-    return callAnthropic(model, system, messages, tools, maxTokens);
-  }
+  if (model && model.startsWith('claude-'))    return callAnthropic(model, system, messages, tools, maxTokens);
+  if (model && model.startsWith('deepseek-'))  return callDeepSeek(model, system, messages, tools, maxTokens);
   return callOpenAI(model, system, messages, tools, maxTokens);
 }
 
@@ -349,6 +406,7 @@ async function callImageEdit(imageBuffer, prompt, maskBuffer = null, size = '102
 module.exports = {
   callOpenAI,
   callAnthropic,
+  callDeepSeek,
   callLLM,
   callWhisper,
   callImageEdit,

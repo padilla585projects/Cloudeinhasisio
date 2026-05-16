@@ -54,6 +54,10 @@ async function nexusRoute(message) {
     return { expert: 'aprendizaje', source: 'regex', confidence: 0.85 };
   if (/lee|escribe|lista|archivo|fichero|directorio|config|yaml|json/.test(text) && text.length < 100)
     return { expert: 'archivo', source: 'regex', confidence: 0.8 };
+  if (/\brazona\b|an[aá]lisis profundo|piensa.*fondo|explica.*detalle.*por qu[eé]|r1\b|deepseek.?r1|cadena de pensamiento/.test(text))
+    return { expert: 'razonamiento', source: 'regex', confidence: 0.9 };
+  if (/investiga|analiza|compara|resume|s[ií]ntesis|busca.*informaci[oó]n|qu[eé] opinas|informe|deepseek/.test(text))
+    return { expert: 'analisis', source: 'regex', confidence: 0.85 };
   if (/^(hola|ok|vale|gracias|s[ií]|no |perfecto|genial|bien)/.test(text.trim()) && text.length < 30)
     return { expert: 'rapido', source: 'regex', confidence: 0.95 };
   if (text.length < 80 && /enciende|apaga|sube|baja|activa|desactiva|pon|quita|temperatura|humedad|estado de|qu[eé] hay/.test(text))
