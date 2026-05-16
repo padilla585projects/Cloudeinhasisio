@@ -29,6 +29,30 @@ Técnico:
   - router.js: regex nuevas para analisis y razonamiento
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.31.2 (2026-05-17) — FEAT: Paneles visuales + simulate_automation + seguridad
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO: Entity cards visuales en el chat
+  - Jarvis puede responder con bloques ```entity-cards [...JSON...]```
+  - El frontend los renderiza como mini-tarjetas con icono, nombre y estado
+  - Color coding: verde=on, gris=off, rojo=unavailable, violeta=playing
+  - Atributos extra: brillo %, temperatura, humedad, batería, posición
+
+NUEVO: simulate_automation (dry-run de automatizaciones)
+  - Lee automations.yaml, encuentra la automatización por alias o id
+  - Enriquece cada trigger con el estado real actual de HA
+  - Devuelve informe completo sin ejecutar ninguna acción
+  - Disponible para el experto 'automatizacion'
+
+SEGURIDAD: exec_command — blocklist de comandos destructivos
+  - Bloquea: rm -rf /, mkfs, dd if=, > /dev/sdX, shred, wipefs, fdisk, fork bomb
+  - Error claro con instrucción de hacerlo manualmente desde consola
+
+SEGURIDAD: call_service — validación de domain y service
+  - Rechaza valores que no sean [a-z0-9_]+ (previene inyección de paths)
+  - Error descriptivo indicando el valor inválido recibido
+
+────────────────────────────────────────────────────────────────────────────────
 v3.30.7 (2026-05-16) — REFACTOR: Eliminar Ollama
 ────────────────────────────────────────────────────────────────────────────────
 
