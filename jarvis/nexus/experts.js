@@ -24,7 +24,8 @@ const EXPERTS = {
             'get_history', 'get_automations', 'create_automation', 'reload_config',
             'read_file', 'write_file', 'patch_file', 'validate_yaml', 'list_directory',
             'save_memory', 'get_memory', 'learn', 'web_search', 'ha_knowledge',
-            'scan_installation', 'check_config', 'speak', 'telegram_send', 'rollback']
+            'scan_installation', 'check_config', 'speak', 'telegram_send', 'rollback',
+            'dev_workspace']
   },
 
   diagnostico: {
@@ -74,7 +75,8 @@ const EXPERTS = {
             'rollback', 'exec_command', 'update_self', 'create_addon', 'github_push',
             'analyze_github_repos', 'web_search', 'fetch_url', 'ha_supervisor',
             'validate_yaml', 'update_ui', 'nexus_manage', 'create_custom_tool',
-            'run_custom_tool', 'house_3d_map', 'learn', 'knowledge_db']
+            'run_custom_tool', 'house_3d_map', 'learn', 'knowledge_db',
+            'dev_workspace']
   },
 
   multimedia: {
@@ -82,8 +84,8 @@ const EXPERTS = {
     modules: ['base', 'autonomy', 'multimedia', 'ha_control', 'optimization', 'filesystem', 'inamovible'],
     label: 'Multimedia',
     tools: ['call_service', 'speak', 'alexa_bidirectional', 'get_entities',
-            'get_entity_state', 'generate_image', 'telegram_send_image',
-            'web_search', 'fetch_url', 'save_memory']
+            'get_entity_state', 'generate_image', 'image_edit', 'telegram_send_image',
+            'web_search', 'fetch_url', 'save_memory', 'read_file']
   },
 
   energia: {
