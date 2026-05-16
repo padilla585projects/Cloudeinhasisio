@@ -2902,6 +2902,26 @@ ${dots}`;
         const { command, language = 'bash', script, timeout = 15, working_dir = '/app' } = input;
         const timeoutMs = Math.min(timeout * 1000, 30000);
 
+        // Blocklist de comandos destructivos
+        const BLOCKED_PATTERNS = [
+          /rm\s+-[rRf]{1,3}\s+\//, // rm -rf / o similares apuntando a /
+          /rm\s+--no-preserve-root/,
+          /mkfs(\.\w+)?/,           // formatear sistemas de archivos
+          /dd\s+if=/,               // copia de disco destructiva
+          />\s*\/dev\/(s|h|v|x)d/,  // escribir a dispositivos de bloque
+          /shred\b/,                 // sobreescribir archivos de forma segura/destructiva
+          /wipefs\b/,                // borrar firmas de sistemas de archivos
+          /fdisk\b/,                 // particionado de disco
+          /parted\b/,                // particionado de disco
+          /format\s+[a-z]:/i,        // format de Windows (por si acaso)
+          /:\(\)\{.*\}\s*;.*:/,      // fork bomb
+        ];
+        const cmdToCheck = command || script || '';
+        const blocked = BLOCKED_PATTERNS.find(p => p.test(cmdToCheck));
+        if (blocked) {
+          return { error: `Comando bloqueado por seguridad: patrón peligroso detectado. Si necesitas esta operación, hazla manualmente desde la consola de HA.` };
+        }
+
         // Validar directorio de trabajo
         const validDirs = ['/app', '/config', '/data', '/share'];
         if (!validDirs.includes(working_dir)) {

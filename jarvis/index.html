@@ -606,6 +606,44 @@
   .html-render-block img { max-width: 100%; border-radius: 8px; display: block; }
   .html-render-block svg { max-width: 100%; height: auto; display: block; }
 
+  /* ── Entity Cards (paneles visuales de entidades HA) ── */
+  .entity-cards-grid {
+    display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0;
+  }
+  .entity-card {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 13px;
+    min-width: 130px; max-width: 190px;
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    cursor: default;
+    transition: border-color 0.15s;
+  }
+  .entity-card:hover { border-color: rgba(0,212,255,0.35); }
+  .entity-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0;
+    height: 2px; background: var(--border);
+  }
+  .entity-card.state-on::before  { background: #22c55e; }
+  .entity-card.state-off::before { background: var(--border); }
+  .entity-card.state-unavailable::before { background: #ef4444; }
+  .entity-card.state-playing::before    { background: #a78bfa; }
+  .entity-card-icon  { font-size: 18px; margin-bottom: 4px; line-height: 1; }
+  .entity-card-name  {
+    font-size: 11px; color: var(--text2);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    margin-bottom: 3px;
+  }
+  .entity-card-state { font-size: 14px; font-weight: 600; color: var(--text); }
+  .entity-card-state.on          { color: #22c55e; }
+  .entity-card-state.off         { color: var(--text2); }
+  .entity-card-state.unavailable { color: #ef4444; }
+  .entity-card-state.playing     { color: #a78bfa; }
+  .entity-card-extra { font-size: 11px; color: var(--text2); margin-top: 3px; }
+
   /* ── MODO VOZ ─────────────────────────────────────────────────── */
   #voice-mode-overlay {
     display: none; position: fixed; inset: 0;
@@ -883,6 +921,61 @@
         wrapper.className = 'html-render-block';
         wrapper.innerHTML = raw;
         block.closest('pre').replaceWith(wrapper);
+
+      } else if (block.classList.contains('language-entity-cards')) {
+        // Paneles visuales de entidades HA
+        try {
+          const data = JSON.parse(block.textContent);
+          const items = Array.isArray(data) ? data : [data];
+          const ICONS = {
+            light: { on: '💡', off: '○' },
+            switch: { on: '🔌', off: '○' },
+            sensor: { _: '📊' },
+            binary_sensor: { on: '🔵', off: '⚪' },
+            climate: { _: '🌡️' },
+            media_player: { playing: '🔊', paused: '⏸', idle: '⏹', _: '🔊' },
+            camera: { _: '📷' },
+            cover: { open: '🪟', closed: '🪟', _: '🪟' },
+            person: { home: '🏠', not_home: '🚶', _: '👤' },
+            input_boolean: { on: '✅', off: '⬜' },
+            automation: { on: '⚙️', off: '○' },
+            script: { _: '📜' },
+            scene: { _: '🎭' },
+            weather: { _: '🌤️' },
+            vacuum: { _: '🤖' },
+            lock: { locked: '🔒', unlocked: '🔓', _: '🔒' },
+          };
+          const grid = document.createElement('div');
+          grid.className = 'entity-cards-grid';
+          items.forEach(item => {
+            const domain = (item.entity_id || '').split('.')[0] || 'sensor';
+            const st = (item.state || '').toLowerCase();
+            const domainIcons = ICONS[domain] || {};
+            const icon = domainIcons[st] || domainIcons['_'] || '📍';
+            const stateKey = ['on','off','unavailable','playing','paused'].includes(st) ? st : '';
+            const unit = item.unit_of_measurement || item.unit || '';
+            const displayState = unit ? `${item.state} ${unit}` : item.state;
+            const extras = [];
+            if (item.brightness !== undefined) extras.push(`💡 ${Math.round(item.brightness / 2.55)}%`);
+            if (item.temperature !== undefined) extras.push(`🌡️ ${item.temperature}°C`);
+            if (item.humidity    !== undefined) extras.push(`💧 ${item.humidity}%`);
+            if (item.battery     !== undefined) extras.push(`🔋 ${item.battery}%`);
+            if (item.current_position !== undefined) extras.push(`↕ ${item.current_position}%`);
+            const card = document.createElement('div');
+            card.className = `entity-card state-${st.replace(/[^a-z0-9]/g, '-')}`;
+            card.innerHTML = `
+              <div class="entity-card-icon">${icon}</div>
+              <div class="entity-card-name">${item.friendly_name || item.entity_id || domain}</div>
+              <div class="entity-card-state ${stateKey}">${displayState}</div>
+              ${extras.length ? `<div class="entity-card-extra">${extras.join(' · ')}</div>` : ''}
+            `;
+            grid.appendChild(card);
+          });
+          block.closest('pre').replaceWith(grid);
+        } catch(e) {
+          hljs.highlightElement(block);
+        }
+
       } else {
         hljs.highlightElement(block);
       }
