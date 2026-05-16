@@ -72,7 +72,7 @@ if bashio::config.has_value 'agent_net_invite'; then
   export AGENT_NET_INVITE=$(bashio::config 'agent_net_invite')
 fi
 
-bashio::log.info "Iniciando Jarvis AI Agent v3.30.5..."
+bashio::log.info "Iniciando Jarvis AI Agent v3.30.6..."
 bashio::log.info "Modelos cloud: gpt-4o-mini (bg) + gpt-4.1-mini (principal) + claude-sonnet-4-5 (dev)"
 bashio::log.info "IA local (Ollama): ${OLLAMA_URL} | modelo: ${OLLAMA_MODEL}"
 if [ "${PRIVACY_MODE}" = "true" ]; then

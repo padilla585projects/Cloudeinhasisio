@@ -151,6 +151,11 @@ function convertToolsToAnthropic(openAITools) {
 // ── Llamada a OpenAI ──────────────────────────────────────────────────────────
 
 async function callOpenAI(model, system, messages, aiTools, maxTokens) {
+  if (!OPENAI_API_KEY) {
+    const e = new Error('⚠️ OpenAI API Key no configurada. Ve a Ajustes del add-on → openai_api_key.');
+    e.noApiKey = true;
+    throw e;
+  }
   const sanitized = sanitizeMessagesForOpenAI(messages);
   const msgs = system ? [{ role: 'system', content: system }, ...sanitized] : [...sanitized];
   const body = { model, max_tokens: maxTokens, messages: msgs };
@@ -381,6 +386,7 @@ async function callLLM(model, system, messages, tools, maxTokens) {
       console.log(`[llm-fallback] ${m} falló: ${e.message.slice(0, 120)}`);
       // Solo hacer fallback en errores de red, 5xx, timeout, 429
       const msg = (e.message || '').toLowerCase();
+      if (e.noApiKey) throw e; // API key no configurada — no tiene sentido hacer fallback
       const isRetryable = msg.includes('econnref') || msg.includes('timeout') || msg.includes('etimedout')
                        || msg.includes('enotfound') || msg.includes('socket') || msg.includes('network')
                        || /\b(5\d\d|429)\b/.test(msg);
