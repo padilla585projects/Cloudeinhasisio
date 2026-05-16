@@ -5,8 +5,9 @@ const path = require('path');
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const OPENAI_API_KEY    = process.env.OPENAI_API_KEY    || '';
 const SERPER_API_KEY    = process.env.SERPER_API_KEY    || '';
-const MODEL             = 'gpt-4.1-mini';   // Consultas complejas
-const BG_MODEL          = 'gpt-4o-mini';    // Background + consultas simples
+const MODEL             = 'gpt-4.1-mini';             // Consultas complejas (OpenAI)
+const BG_MODEL          = 'gpt-4o-mini';             // Background + consultas simples (OpenAI)
+const CLAUDE_MODEL      = 'claude-sonnet-4-5';        // Razonamiento profundo (Anthropic)
 const HA_TOKEN          = process.env.HA_TOKEN;
 const HA_URL            = process.env.HA_URL  || 'http://supervisor/core';
 const LANGUAGE          = process.env.LANGUAGE || 'es';
@@ -40,7 +41,7 @@ const PENDING_TASK_FILE      = path.join(DATA_DIR, 'pending_task.json');
 
 module.exports = {
   ANTHROPIC_API_KEY, OPENAI_API_KEY, SERPER_API_KEY,
-  MODEL, BG_MODEL,
+  MODEL, BG_MODEL, CLAUDE_MODEL,
   HA_TOKEN, HA_URL, LANGUAGE,
   PROXMOX_URL, PROXMOX_TOKEN, PROXMOX_NODE,
   GITHUB_TOKEN, GITHUB_REPO, GITHUB_BRANCH,
