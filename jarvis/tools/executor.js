@@ -78,6 +78,13 @@ async function executeTool(name, input) {
       }
 
       case 'call_service': {
+        // Validar formato domain y service (solo letras, números, guión bajo)
+        if (!input.domain || !/^[a-z0-9_]+$/.test(input.domain)) {
+          return { error: `Dominio inválido: "${input.domain}". Solo se permiten letras minúsculas, números y guiones bajos.` };
+        }
+        if (!input.service || !/^[a-z0-9_]+$/.test(input.service)) {
+          return { error: `Servicio inválido: "${input.service}". Solo se permiten letras minúsculas, números y guiones bajos.` };
+        }
         const body = { ...(input.service_data || {}) };
         if (input.entity_id) body.entity_id = input.entity_id;
         await haPost(`/services/${input.domain}/${input.service}`, body);
