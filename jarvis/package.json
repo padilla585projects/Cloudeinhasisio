@@ -8,6 +8,8 @@
     "node-fetch": "^2.7.0",
     "cors": "^2.8.5",
     "node-edge-tts": "^1.2.10",
-    "js-yaml": "^4.1.0"
+    "js-yaml": "^4.1.0",
+    "form-data": "^4.0.0",
+    "multer": "^1.4.5-lts.1"
   }
 }

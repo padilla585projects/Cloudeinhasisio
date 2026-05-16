@@ -275,10 +275,78 @@ async function callLLM(model, system, messages, tools, maxTokens) {
   return callOpenAI(model, system, messages, tools, maxTokens);
 }
 
+// ── Whisper STT ───────────────────────────────────────────────────────────────
+
+/**
+ * Transcribe audio usando OpenAI Whisper.
+ * @param {Buffer} audioBuffer  — bytes del audio
+ * @param {string} filename     — nombre con extensión (.webm, .mp3, .wav, .m4a, .ogg)
+ * @param {string} language     — código ISO (es, en, ...) o null para auto-detect
+ * @returns {Promise<{text: string, language: string}>}
+ */
+async function callWhisper(audioBuffer, filename = 'audio.webm', language = 'es') {
+  if (!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY no configurada');
+  const FormData = require('form-data');
+  const form = new FormData();
+  form.append('file', audioBuffer, { filename, contentType: 'audio/webm' });
+  form.append('model', 'whisper-1');
+  if (language) form.append('language', language);
+  form.append('response_format', 'json');
+
+  const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, ...form.getHeaders() },
+    body: form
+  });
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Whisper error ${response.status}: ${err}`);
+  }
+  const data = await response.json();
+  return { text: data.text || '', language: data.language || language };
+}
+
+// ── DALL-E image edit / variation ─────────────────────────────────────────────
+
+/**
+ * Edita una imagen existente con DALL-E (image edit endpoint).
+ * @param {Buffer} imageBuffer  — PNG con canal alpha para zona transparente, o sin alpha
+ * @param {string} prompt
+ * @param {Buffer|null} maskBuffer — máscara PNG donde transparente = zona a editar
+ * @param {string} size — '1024x1024' | '512x512' | '256x256'
+ * @returns {Promise<{url: string, b64: string}>}
+ */
+async function callImageEdit(imageBuffer, prompt, maskBuffer = null, size = '1024x1024') {
+  if (!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY no configurada');
+  const FormData = require('form-data');
+  const form = new FormData();
+  form.append('image', imageBuffer, { filename: 'image.png', contentType: 'image/png' });
+  if (maskBuffer) form.append('mask', maskBuffer, { filename: 'mask.png', contentType: 'image/png' });
+  form.append('prompt', prompt);
+  form.append('model', 'dall-e-2');  // dall-e-3 no soporta edit; dall-e-2 sí
+  form.append('size', size);
+  form.append('response_format', 'b64_json');
+  form.append('n', '1');
+
+  const response = await fetch('https://api.openai.com/v1/images/edits', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, ...form.getHeaders() },
+    body: form
+  });
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`DALL-E edit error ${response.status}: ${err}`);
+  }
+  const data = await response.json();
+  return { b64: data.data[0].b64_json, url: null };
+}
+
 module.exports = {
   callOpenAI,
   callAnthropic,
   callLLM,
+  callWhisper,
+  callImageEdit,
   sanitizeMessagesForOpenAI,
   stripImagesFromHistory,
   convertMessagesToAnthropic,
