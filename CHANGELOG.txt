@@ -3,6 +3,39 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.26.0 (2026-05-16) — Bloque B: NEXUS L0-L4 + dual-model + tool scoping
+────────────────────────────────────────────────────────────────────────────────
+
+FEATURE: Sistema de capas de prompt L0-L4 (nexus/layers.js)
+  L0  Identidad estática de Jarvis — nunca cambia, cacheable en Anthropic
+  L1  Módulos de dominio del experto activo
+  L2  Contexto dinámico (memoria, learnings, pensamientos)
+  L3  Estado live de HA (sensores, dispositivos)
+  L4  Catálogo de tools scopeado al experto (nuevo)
+
+FEATURE: Tool scoping por experto — reducción media de ~77% de tokens en tool defs
+  rapido         11/63  ↓83%     archivo    9/63  ↓86%
+  multimedia     10/63  ↓84%     energia   11/63  ↓83%
+  emergencia     16/63  ↓75%     seguridad 14/63  ↓78%
+  red            13/63  ↓79%     aprendizaje 11/63 ↓83%
+  automatizacion 21/63  ↓67%     diagnostico 19/63 ↓70%
+  ha_control     23/63  ↓63%     dev         22/63 ↓65%
+
+FEATURE: Dual-model — callLLM() enruta automáticamente
+  Modelos GPT (gpt-4.1-mini, gpt-4o-mini) → OpenAI API (sin cambios)
+  Modelos Claude (claude-*) → Anthropic API con prompt caching en L0+L1
+  Experto 'dev' usa claude-sonnet-4-5 por defecto (razonamiento profundo)
+
+FEATURE: callAnthropic() — nuevo wrapper Anthropic en utils/llm.js
+  Convierte historial OpenAI → Anthropic (agrupa tool_results en user msg)
+  Convierte tools OpenAI → Anthropic (input_schema)
+  Convierte respuesta Anthropic → formato OpenAI (loop agéntico sin cambios)
+  Prompt caching automático: bloque L0+L1 marcado ephemeral
+
+CHORE: nexusLogLayerStats() — log de stats por experto en cada request
+  "[nexus-layers] expert=ha_control model=gpt-4.1-mini modules=9 tools=23/63 (↓63%)"
+
+────────────────────────────────────────────────────────────────────────────────
 v3.25.0 (2026-05-16) — Bloque A: Modularización completa del monolito
 ────────────────────────────────────────────────────────────────────────────────
 
