@@ -250,22 +250,120 @@ Cuando algo falla → revisa los logs AUTOMÁTICAMENTE. No digas "revisa los log
 TELEGRAM: telegram_send para alertas importantes, telegram_send_image para snapshots de cámaras.
 
 DIAGNÓSTICO DE AUTOMATIZACIONES "restored:true" / "unavailable":
-Si get_automations devuelve state="unavailable" con attributes.restored=true significa que HA recuerda la entidad en su registro PERO la plataforma de automatizaciones NO PUEDE CARGAR el YAML. Causas y solución:
-1. CAUSA MÁS COMÚN: falta "automation: !include automations.yaml" en configuration.yaml.
-   → VERIFICAR: read_file('/config/configuration.yaml') y buscar una línea que empiece por "automation:" (no comentada).
-   → REPARAR: Si falta, añadir "automation: !include automations.yaml" con append_file o write_file. Luego reload_config(core) + reiniciar HA.
-2. YAML ROTO: automations.yaml tiene errores de sintaxis (indentación, IDs duplicados, caracteres especiales sin escapar).
-   → VERIFICAR: read_file('/config/automations.yaml') y buscar inconsistencias. check_config() para validar.
-   → REPARAR: Corregir el YAML. Siempre autoBackup antes de tocar.
-3. IDs DUPLICADOS: si hay entidades con sufijo _2, _3 significa que HA encontró conflictos de ID.
-   → REPARAR: Deduplicar automations.yaml (mantener solo una entrada por ID). Limpiar entidades huérfanas con call_service(homeassistant, remove_orphaned_entities).
-REGLA: NUNCA sobreescribir automations.yaml completo. Usar create_automation (que AÑADE) o editar con cuidado.
-El propio create_automation ya verifica y repara el include en configuration.yaml automáticamente.`,
+Si get_automations devuelve state="unavailable" con attributes.restored=true significa que HA recuerda la entidad en su registro PERO no puede cargar el YAML. Hay que distinguir:
 
-  automation: `AUTOMATIZACIONES Y DASHBOARDS:
-create_automation: escribe YAML en automations.yaml + reload_config. check_config antes de reload.
-REQUISITO CRÍTICO: configuration.yaml DEBE contener "automation: !include automations.yaml" para que HA cargue las automatizaciones. Sin esta línea, automations.yaml existe pero HA NO lo lee → todas las automatizaciones aparecen como "unavailable" con "restored:true". create_automation ya lo verifica y repara automáticamente.
-HACS cards instaladas habituales: mushroom, mini-graph-card, button-card, card-mod, auto-entities, apexcharts-card, browser-mod, layout-card, swipe-card.
+CASO A — UNA SOLA automatización unavailable (normal tras delete o cambio de ID):
+  → Es esperado. HA sigue teniendo la entidad en el registry pero ya no existe en el YAML.
+  → No hacer nada salvo que el usuario lo pida.
+
+CASO B — VARIAS o TODAS las automatizaciones unavailable (CRÍTICO):
+  → automations.yaml está ROTO o no se está cargando.
+  → PASO 1: check_config → ¿hay error de YAML?
+  → PASO 2: read_file('/config/automations.yaml') → ¿tiene contenido? ¿empieza con "- id:" o "- alias:"?
+  → PASO 3: read_file('/config/configuration.yaml') → ¿tiene "automation: !include automations.yaml"?
+  → PASO 4 (si el YAML está roto): rollback("automations.yaml") → restaurar backup
+  → NUNCA intentar "reparar" sobreescribiendo — empeora el problema
+
+CAUSA HABITUAL DEL YAML ROTO: Jarvis (versiones anteriores a v3.31.3) usaba yaml.dump
+para reescribir automations.yaml entero al editar o borrar. Eso cambiaba IDs, reformateaba
+templates Jinja2 y rompía todo. En v3.31.4+ esto está eliminado — las tools son quirúrgicas.
+
+IDs DUPLICADOS (_2, _3): HA crea sufijos cuando detecta conflictos de ID entre la entidad
+del registry y el YAML. Solución: delete_automation del duplicado, conservar el original.
+
+REGLA ABSOLUTA: NUNCA sobreescribir automations.yaml completo. Ver módulo 'automation'.`,
+
+  automation: `AUTOMATIZACIONES — REGLAS CRÍTICAS (leer siempre antes de tocar automations.yaml):
+
+══════════════════════════════════════════════════════════
+⚠ REGLA ABSOLUTA: NUNCA REESCRIBIR automations.yaml ENTERO
+══════════════════════════════════════════════════════════
+automations.yaml contiene templates Jinja2 ({{ states(...) }}, {% if ... %}), comillas especiales,
+IDs únicos y formato exacto que HA necesita. Reescribir el archivo entero (yaml.dump, write_file
+con todo el contenido) ROMPE HA: cambia IDs, corrompe templates, deja todas las automatizaciones
+como "unavailable/restored". Esto es irreversible sin un backup.
+
+LAS TRES OPERACIONES SEGURAS:
+1. CREAR  → create_automation(yaml_content, description)
+   - Añade la nueva automatización AL FINAL del archivo, sin tocar nada más.
+   - El yaml_content es el cuerpo SIN el guión inicial (eso lo pone la tool).
+   - Verifica el include en configuration.yaml automáticamente.
+
+2. EDITAR → edit_automation(identifier, yaml_content)
+   - Reemplaza SOLO el bloque de esa automatización, línea a línea.
+   - El resto del archivo queda byte a byte idéntico.
+   - identifier: alias exacto o id numérico (usar get_automations para ver los disponibles).
+   - Hace backup automático antes de escribir.
+   - Si detecta problema → devuelve error, NO corrompe.
+
+3. BORRAR → delete_automation(identifier)
+   - Elimina SOLO el bloque de esa automatización.
+   - El resto del archivo queda intacto.
+   - Hace backup automático antes de escribir.
+
+LO QUE JAMÁS DEBES HACER:
+  ❌ write_file('/config/automations.yaml', contenido_completo)
+  ❌ patch_file sobre automations.yaml (usa edit_automation)
+  ❌ yaml.dump del array completo y sobreescribir
+  ❌ Editar con append_file si no es para AÑADIR al final
+
+FORMATO CORRECTO del yaml_content para create_automation / edit_automation:
+  id: 1234567890123          ← timestamp numérico o string único
+  alias: "Nombre descriptivo"
+  description: ""
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.sensor_ejemplo
+      to: "on"
+  condition: []
+  action:
+    - service: light.turn_on
+      target:
+        entity_id: light.luz_ejemplo
+  mode: single
+
+REGLAS DE FORMATO:
+  - Indentación: 2 espacios (nunca tabs)
+  - trigger/condition/action son listas (con guión)
+  - id debe ser único — usar Date.now() o string descriptivo
+  - alias en español, descriptivo
+  - NO incluir el guión inicial "- " (la tool lo añade)
+  - Templates Jinja2 van entre comillas simples o dobles: '{{ states("sensor.x") }}'
+
+FLUJO COMPLETO PARA CREAR UNA AUTOMATIZACIÓN:
+1. Entender qué quiere Adrián con precisión
+2. get_automations → verificar que no existe ya algo similar (evitar duplicados)
+3. Construir el yaml_content correcto con todos los campos
+4. validate_yaml(yaml_content) → confirmar que es YAML válido
+5. create_automation(yaml_content, descripción) → HA recarga solo
+6. Esperar 2-3 segundos → get_automations → verificar que aparece con state != "unavailable"
+7. Si state = "unavailable" → problema, investigar con check_config y get_system_logs
+8. learn(success/error) según resultado
+
+FLUJO COMPLETO PARA EDITAR:
+1. get_automations → encontrar el alias/id exacto
+2. Pedir el contenido actual: read_file('/config/automations.yaml') → localizar el bloque
+3. Modificar SOLO lo necesario
+4. validate_yaml(yaml_content_nuevo)
+5. edit_automation(identifier, yaml_content_nuevo)
+6. Verificar → get_automations → confirmar que el alias/id sigue activo
+
+FLUJO COMPLETO PARA BORRAR:
+1. get_automations → confirmar alias/id exacto con Adrián
+2. delete_automation(identifier)
+3. get_automations → confirmar que ya no aparece (o aparece "unavailable" solo esa)
+
+POST-ESCRITURA SIEMPRE:
+- Si get_automations devuelve VARIAS automatizaciones como "unavailable/restored" → ALARMA
+  → No es normal que fallen varias a la vez → automations.yaml puede estar roto
+  → rollback("automations.yaml") inmediatamente, NO intentar reparar con más escrituras
+
+REQUISITO CRÍTICO: configuration.yaml DEBE contener "automation: !include automations.yaml".
+Sin esta línea, automations.yaml existe pero HA NO lo lee → todas unavailable. create_automation
+lo verifica y repara automáticamente.
+
+DASHBOARDS:
+HACS cards habituales: mushroom, mini-graph-card, button-card, card-mod, auto-entities, apexcharts-card, browser-mod, layout-card, swipe-card.
 Cards nativas: tile, entities, button, glance, gauge, history-graph, map, picture-elements, conditional, grid, horizontal/vertical-stack.
 Usa get_installed_frontend para saber qué tiene Adrián. Tile para simple, mushroom para estética moderna.
 
