@@ -3,6 +3,25 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.30.2 (2026-05-16) — HOTFIX: agent_network.js no estaba en git
+────────────────────────────────────────────────────────────────────────────────
+
+🚨 BUG: El archivo jarvis/background/agent_network.js se creó en v3.30.0
+pero quedó UNTRACKED en git — el Stop hook auto-commit solo registra
+modificaciones de archivos ya conocidos, no crea tracking para archivos
+nuevos. Resultado: el módulo no llegó a GitHub.
+
+SÍNTOMA: Al construir el contenedor, server.js fallaba al arrancar:
+  Error: Cannot find module './background/agent_network'
+  at Object.<anonymous> (/app/server.js:27:22)
+
+FIX: git add manual + commit explícito de agent_network.js (295 líneas).
+Bump de versión 3.30.1 → 3.30.2 para forzar a HA a redetectar update.
+
+LECCIÓN: Los hooks auto-commit no pillan archivos nuevos sin staging
+previo. Para futuros bloques con módulos nuevos: hacer `git add` explícito.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.30.1 (2026-05-16) — GetawayAgentes ACTIVADA por defecto
 ────────────────────────────────────────────────────────────────────────────────
 
