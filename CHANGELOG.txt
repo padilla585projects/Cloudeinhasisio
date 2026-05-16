@@ -3,6 +3,17 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.31.4 (2026-05-17) — FIX CRÍTICO: Eliminados fallbacks yaml.dump en edit/delete_automation
+────────────────────────────────────────────────────────────────────────────────
+
+FIX CRÍTICO — edit_automation y delete_automation:
+  - Eliminado el fallback a yaml.dump cuando topLevelStarts.length !== automations.length
+  - yaml.dump reformataba TODO el archivo: cambiaba IDs, rompía templates Jinja2, corrompía HA
+  - Ahora devuelve error explícito en lugar de corromper: "No se puede editar de forma segura"
+  - Añadida verificación post-escritura en edit_automation: si hay automations "restored" tras
+    el reload, avisa y recomienda usar rollback para restaurar el backup previo
+
+────────────────────────────────────────────────────────────────────────────────
 v3.31.0 (2026-05-16) — FEAT: Núcleos DeepSeek V3 + R1 en NEXUS
 ────────────────────────────────────────────────────────────────────────────────
 

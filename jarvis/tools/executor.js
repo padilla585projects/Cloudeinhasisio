@@ -3565,12 +3565,9 @@ ${dots}`;
           ];
           newContent = newLines.join('\n');
         } else {
-          // Fallback si el conteo no cuadra (archivo atípico)
-          let newEntry;
-          try { newEntry = yaml.load(input.yaml_content); }
-          catch (e) { return { error: `No se pudo parsear el nuevo YAML: ${e.message}` }; }
-          automations[idx] = newEntry;
-          newContent = yaml.dump(automations, { lineWidth: -1, noRefs: true, quotingType: '"' });
+          // NUNCA usar yaml.dump como fallback — reformatearía todo el archivo y corrompería
+          // templates Jinja2, IDs y formato original. Devolver error y pedir edición manual.
+          return { error: `No se puede editar de forma segura: el archivo automations.yaml tiene una estructura atípica (${topLevelStarts.length} bloques a nivel raíz detectados vs ${automations.length} entradas parseadas). Edita la automatización manualmente desde el editor de HA o el File Editor.` };
         }
 
         const writeErr = validateYamlSyntax(newContent);
@@ -3578,10 +3575,21 @@ ${dots}`;
         fs.writeFileSync(automationsPath, newContent);
 
         try { await haPost('/services/automation/reload', {}); } catch {}
+        await new Promise(r => setTimeout(r, 2500));
+
+        // Verificar que no hay "restored" tras el reload
+        let restoredWarning = '';
+        try {
+          const states = await haGet('/states');
+          const restored = states.filter(e => e.entity_id.startsWith('automation.') && e.attributes?.restored === true);
+          if (restored.length > 0) {
+            restoredWarning = ` ⚠ ALERTA: ${restored.length} automatizaciones en estado "restored" tras editar. Ejecuta rollback("automations.yaml") para restaurar el backup previo a esta edición.`;
+          }
+        } catch {}
 
         let newAlias = '(sin alias)';
         try { const p = yaml.load(input.yaml_content); newAlias = p?.alias || p?.id || '(sin alias)'; } catch {}
-        return { success: true, message: `Automatización editada. Sólo el bloque "${oldAlias}" fue modificado — el resto del archivo quedó intacto.`, old_alias: oldAlias, new_alias: newAlias };
+        return { success: true, message: `Automatización editada. Sólo el bloque "${oldAlias}" fue modificado — el resto del archivo quedó intacto.${restoredWarning}`, old_alias: oldAlias, new_alias: newAlias };
       }
 
       // ─── delete_automation ───
@@ -3623,8 +3631,8 @@ ${dots}`;
           const newLines   = [...lines.slice(0, blockStart), ...lines.slice(blockEnd)];
           newContent = newLines.join('\n').replace(/\n{3,}/g, '\n\n'); // limpiar líneas vacías extra
         } else {
-          automations.splice(idx, 1);
-          newContent = yaml.dump(automations, { lineWidth: -1, noRefs: true, quotingType: '"' });
+          // NUNCA usar yaml.dump como fallback — corrompería todo el archivo.
+          return { error: `No se puede eliminar de forma segura: el archivo automations.yaml tiene una estructura atípica (${topLevelStarts.length} bloques a nivel raíz detectados vs ${automations.length} entradas parseadas). Elimina la automatización manualmente desde HA o el File Editor.` };
         }
 
         fs.writeFileSync(automationsPath, newContent);
