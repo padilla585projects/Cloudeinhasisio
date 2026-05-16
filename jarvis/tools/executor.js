@@ -12,7 +12,8 @@ let yaml; try { yaml = require('js-yaml'); } catch { yaml = null; }
 const state = require('../utils/state');
 const { loadJSON, saveJSON, validateYamlSyntax, validateHAStructure, autoBackup } = require('../utils/persistence');
 const { haGet, haPost, supervisorGet } = require('../utils/ha-api');
-const { callOpenAI } = require('../utils/llm');
+const { callOpenAI, callImageEdit } = require('../utils/llm');
+const { execSync, spawnSync } = require('child_process');
 const C = require('../utils/constants');
 const { scanInstallation } = require('../utils/scan');
 

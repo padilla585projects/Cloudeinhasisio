@@ -794,6 +794,40 @@ const tools = [
     }
   },
 
+  // ─── Edición de imágenes (DALL-E edit + vision) ───
+  {
+    name: 'image_edit',
+    description: 'Edita una imagen existente con DALL-E (inpainting). Recibe la ruta del archivo de imagen original y un prompt describiendo el cambio. Opcionalmente acepta una máscara PNG (zonas transparentes = áreas a editar). Devuelve la ruta del archivo nuevo en /share/jarvis/images/. Útil para retocar fotos, modificar planos, cambiar elementos visuales. Para análisis visual sin editar, usa read_file sobre la imagen (la visión está integrada en el chat).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        image_path: { type: 'string', description: 'Ruta absoluta a la imagen origen (PNG). Debe ser cuadrada para mejores resultados.' },
+        prompt: { type: 'string', description: 'Descripción de qué cambiar. Sé específico sobre la zona y el resultado deseado.' },
+        mask_path: { type: 'string', description: 'Opcional: ruta a PNG de máscara (transparente = editar, opaco = mantener). Si no se da, edita toda la imagen.' },
+        size: { type: 'string', enum: ['256x256', '512x512', '1024x1024'], description: 'Default: 1024x1024' }
+      },
+      required: ['image_path', 'prompt']
+    }
+  },
+
+  // ─── Workspace de desarrollo (sandbox + iteración) ───
+  {
+    name: 'dev_workspace',
+    description: 'Workspace privado para prototipar código, ejecutar pruebas, iterar sobre archivos sin afectar /config ni la instalación real. Usa /data/workspace/ como sandbox. Acciones: create (nuevo workspace), write (archivo), read (archivo), list (todos los archivos), exec (ejecuta python/bash/node sobre los archivos), test (ejecuta tests), apply (promociona el workspace a /config tras éxito), discard (descarta el workspace). Úsalo SIEMPRE antes de tocar /config en cambios complejos.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['create', 'write', 'read', 'list', 'exec', 'test', 'apply', 'discard'], description: 'Operación a realizar' },
+        workspace_id: { type: 'string', description: 'ID del workspace (string corto, ej. "automation-fix"). Required excepto en list.' },
+        file: { type: 'string', description: 'Ruta relativa dentro del workspace (ej. "test.yaml", "src/main.js")' },
+        content: { type: 'string', description: 'Contenido a escribir (para action=write)' },
+        command: { type: 'string', description: 'Comando a ejecutar (para action=exec, ej. "node test.js", "python validate.py")' },
+        target_path: { type: 'string', description: 'Ruta destino al hacer apply (ej. "/config/automations.yaml"). Required para apply.' }
+      },
+      required: ['action']
+    }
+  },
+
   // ─── Plano SVG interactivo ───
   {
     name: 'render_floorplan',

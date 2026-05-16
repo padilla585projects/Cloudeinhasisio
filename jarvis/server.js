@@ -934,6 +934,42 @@ app.post('/api/tts', async (req, res) => {
   }
 });
 
+// ── Whisper STT — transcripción de audio del usuario ────────────────────────
+// El frontend envía audio base64 (desde MediaRecorder) en JSON: { audio: 'data:audio/webm;base64,...', language?: 'es' }
+// O bytes raw multipart/form-data si en el futuro se prefiere subida directa.
+app.post('/api/transcribe', async (req, res) => {
+  try {
+    if (!C.OPENAI_API_KEY) return res.status(400).json({ error: 'OPENAI_API_KEY no configurada' });
+
+    const { audio, language = 'es', filename } = req.body || {};
+    if (!audio) return res.status(400).json({ error: 'audio (base64) requerido' });
+
+    // Aceptar tanto data URL como base64 puro
+    const m = audio.match(/^data:([^;]+);base64,(.+)$/s);
+    const mime = m ? m[1] : 'audio/webm';
+    const b64  = m ? m[2] : audio;
+    const buffer = Buffer.from(b64, 'base64');
+
+    // Adivinar extensión por mime
+    const ext = mime.includes('webm') ? 'webm'
+              : mime.includes('mp3')  ? 'mp3'
+              : mime.includes('wav')  ? 'wav'
+              : mime.includes('mp4')  ? 'mp4'
+              : mime.includes('m4a')  ? 'm4a'
+              : mime.includes('ogg')  ? 'ogg' : 'webm';
+
+    const fname = filename || `voz-${Date.now()}.${ext}`;
+    console.log(`[whisper] Transcribiendo ${Math.round(buffer.length/1024)}KB (${mime}) lang=${language}`);
+
+    const result = await callWhisper(buffer, fname, language);
+    console.log(`[whisper] → "${result.text.slice(0, 80)}..."`);
+    res.json({ text: result.text, language: result.language });
+  } catch (e) {
+    console.error('[whisper] Error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Modo ahorro
 app.post('/api/saver', (req, res) => {
   state.saverMode = req.body.enabled !== undefined ? !!req.body.enabled : !state.saverMode;
