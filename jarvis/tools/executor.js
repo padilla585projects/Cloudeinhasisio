@@ -3511,6 +3511,7 @@ ${dots}`;
 
       // ─── edit_automation ───
       case 'edit_automation': {
+        if (!yaml) return { error: 'js-yaml no disponible' };
         const automationsPath = path.join(C.HA_CONFIG, 'automations.yaml');
 
         // 1. Validar YAML nuevo
@@ -3519,86 +3520,117 @@ ${dots}`;
           return { error: `YAML inválido — automatización NO editada: ${yamlValidErr}` };
         }
 
-        // 2. Leer y parsear automations.yaml
-        if (!fs.existsSync(automationsPath)) {
-          return { error: 'automations.yaml no existe' };
-        }
+        // 2. Leer archivo
+        if (!fs.existsSync(automationsPath)) return { error: 'automations.yaml no existe' };
+        const rawContent = fs.readFileSync(automationsPath, 'utf8');
+
+        // 3. Parsear para localizar el índice
         let automations;
-        try {
-          automations = yaml.load(fs.readFileSync(automationsPath, 'utf8')) || [];
-        } catch (e) {
-          return { error: `No se pudo parsear automations.yaml: ${e.message}` };
-        }
-        if (!Array.isArray(automations)) {
-          return { error: 'automations.yaml no contiene una lista' };
-        }
+        try { automations = yaml.load(rawContent) || []; }
+        catch (e) { return { error: `No se pudo parsear automations.yaml: ${e.message}` }; }
+        if (!Array.isArray(automations)) return { error: 'automations.yaml no contiene una lista' };
 
-        // 3. Buscar por alias o id
-        const idx = automations.findIndex(e => e.alias === input.identifier || String(e.id) === String(input.identifier));
+        const id = input.identifier;
+        const idx = automations.findIndex(a =>
+          a.alias === id ||
+          (a.alias || '').toLowerCase() === (id || '').toLowerCase() ||
+          String(a.id) === String(id)
+        );
         if (idx === -1) {
-          const available = automations.map(e => e.alias || e.id || '(sin nombre)').slice(0, 20);
-          return { error: `Automatización "${input.identifier}" no encontrada`, available_aliases: available };
+          const available = automations.map(a => a.alias || a.id || '(sin nombre)').slice(0, 20);
+          return { error: `Automatización "${id}" no encontrada`, available_aliases: available };
         }
-        const oldAlias = automations[idx].alias || automations[idx].id;
+        const oldAlias = automations[idx].alias || automations[idx].id || '(sin alias)';
 
-        // 4. Parsear el nuevo YAML y reemplazar
-        let newEntry;
-        try {
-          newEntry = yaml.load(input.yaml_content);
-        } catch (e) {
-          return { error: `No se pudo parsear el nuevo YAML: ${e.message}` };
-        }
-        automations[idx] = newEntry;
+        // 4. Localizar el bloque en el texto original y reemplazarlo
+        //    sin pasar el archivo por yaml.dump (que reformatea TODO y corrompe templates)
+        const lines = rawContent.split('\n');
+        const topLevelStarts = [];
+        lines.forEach((line, i) => { if (/^-(\s|$)/.test(line)) topLevelStarts.push(i); });
 
-        // 5. Backup y escribir
         autoBackup(automationsPath);
-        const newContent = yaml.dump(automations, { lineWidth: -1 });
+
+        let newContent;
+        if (topLevelStarts.length === automations.length) {
+          // Reemplazar solo el bloque afectado, el resto queda intacto
+          const blockStart = topLevelStarts[idx];
+          const blockEnd   = idx + 1 < topLevelStarts.length ? topLevelStarts[idx + 1] : lines.length;
+          const newBlock   = ('- ' + input.yaml_content.replace(/\n/g, '\n  ')).split('\n');
+          // Preservar línea vacía de separación si la había antes del siguiente bloque
+          const newLines = [
+            ...lines.slice(0, blockStart),
+            ...newBlock,
+            ...(lines[blockEnd - 1] === '' ? [] : ['']),  // separación
+            ...lines.slice(blockEnd)
+          ];
+          newContent = newLines.join('\n');
+        } else {
+          // Fallback si el conteo no cuadra (archivo atípico)
+          let newEntry;
+          try { newEntry = yaml.load(input.yaml_content); }
+          catch (e) { return { error: `No se pudo parsear el nuevo YAML: ${e.message}` }; }
+          automations[idx] = newEntry;
+          newContent = yaml.dump(automations, { lineWidth: -1, noRefs: true, quotingType: '"' });
+        }
+
         const writeErr = validateYamlSyntax(newContent);
-        if (writeErr) return { error: `El archivo resultante tendría YAML inválido: ${writeErr}` };
+        if (writeErr) return { error: `El archivo resultante tendría YAML inválido: ${writeErr}. Automatización NO modificada.` };
         fs.writeFileSync(automationsPath, newContent);
 
-        // 6. Reload
         try { await haPost('/services/automation/reload', {}); } catch {}
 
-        return { success: true, message: `Automatización editada correctamente`, old_alias: oldAlias, new_alias: newEntry.alias || newEntry.id || '(sin nombre)' };
+        let newAlias = '(sin alias)';
+        try { const p = yaml.load(input.yaml_content); newAlias = p?.alias || p?.id || '(sin alias)'; } catch {}
+        return { success: true, message: `Automatización editada. Sólo el bloque "${oldAlias}" fue modificado — el resto del archivo quedó intacto.`, old_alias: oldAlias, new_alias: newAlias };
       }
 
       // ─── delete_automation ───
       case 'delete_automation': {
+        if (!yaml) return { error: 'js-yaml no disponible' };
         const automationsPath = path.join(C.HA_CONFIG, 'automations.yaml');
 
-        // 1. Leer y parsear
-        if (!fs.existsSync(automationsPath)) {
-          return { error: 'automations.yaml no existe' };
-        }
-        let automations;
-        try {
-          automations = yaml.load(fs.readFileSync(automationsPath, 'utf8')) || [];
-        } catch (e) {
-          return { error: `No se pudo parsear automations.yaml: ${e.message}` };
-        }
-        if (!Array.isArray(automations)) {
-          return { error: 'automations.yaml no contiene una lista' };
-        }
+        if (!fs.existsSync(automationsPath)) return { error: 'automations.yaml no existe' };
+        const rawContent = fs.readFileSync(automationsPath, 'utf8');
 
-        // 2. Buscar por alias o id
-        const idx = automations.findIndex(e => e.alias === input.identifier || String(e.id) === String(input.identifier));
+        let automations;
+        try { automations = yaml.load(rawContent) || []; }
+        catch (e) { return { error: `No se pudo parsear automations.yaml: ${e.message}` }; }
+        if (!Array.isArray(automations)) return { error: 'automations.yaml no contiene una lista' };
+
+        const id = input.identifier;
+        const idx = automations.findIndex(a =>
+          a.alias === id ||
+          (a.alias || '').toLowerCase() === (id || '').toLowerCase() ||
+          String(a.id) === String(id)
+        );
         if (idx === -1) {
-          const available = automations.map(e => e.alias || e.id || '(sin nombre)').slice(0, 20);
-          return { error: `Automatización "${input.identifier}" no encontrada`, available_aliases: available };
+          const available = automations.map(a => a.alias || a.id || '(sin nombre)').slice(0, 20);
+          return { error: `Automatización "${id}" no encontrada`, available_aliases: available };
         }
         const deletedName = automations[idx].alias || automations[idx].id || '(sin nombre)';
 
-        // 3. Backup, eliminar y escribir
-        autoBackup(automationsPath);
-        automations.splice(idx, 1);
-        const newContent = yaml.dump(automations, { lineWidth: -1 });
-        fs.writeFileSync(automationsPath, newContent);
+        // Eliminar el bloque a nivel de texto, sin reformatear el resto
+        const lines = rawContent.split('\n');
+        const topLevelStarts = [];
+        lines.forEach((line, i) => { if (/^-(\s|$)/.test(line)) topLevelStarts.push(i); });
 
-        // 4. Reload
+        autoBackup(automationsPath);
+
+        let newContent;
+        if (topLevelStarts.length === automations.length) {
+          const blockStart = topLevelStarts[idx];
+          const blockEnd   = idx + 1 < topLevelStarts.length ? topLevelStarts[idx + 1] : lines.length;
+          const newLines   = [...lines.slice(0, blockStart), ...lines.slice(blockEnd)];
+          newContent = newLines.join('\n').replace(/\n{3,}/g, '\n\n'); // limpiar líneas vacías extra
+        } else {
+          automations.splice(idx, 1);
+          newContent = yaml.dump(automations, { lineWidth: -1, noRefs: true, quotingType: '"' });
+        }
+
+        fs.writeFileSync(automationsPath, newContent);
         try { await haPost('/services/automation/reload', {}); } catch {}
 
-        return { success: true, message: `Automatización "${deletedName}" eliminada correctamente`, deleted: deletedName };
+        return { success: true, message: `Automatización "${deletedName}" eliminada. El resto del archivo quedó intacto.`, deleted: deletedName };
       }
 
       // ─── template_render ───

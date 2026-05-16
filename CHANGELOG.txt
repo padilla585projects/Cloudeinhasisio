@@ -29,6 +29,24 @@ Técnico:
   - router.js: regex nuevas para analisis y razonamiento
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.31.3 (2026-05-17) — FIX CRÍTICO: edit/delete_automation no reformatea el archivo
+────────────────────────────────────────────────────────────────────────────────
+
+BUG: edit_automation y delete_automation hacían yaml.load() → cambio → yaml.dump()
+sobre el archivo COMPLETO. Esto reformateaba todas las automatizaciones:
+  - Las templates Jinja2 {{ ... }} podían quedar con escape incorrecto
+  - Las listas vacías (condition: []) cambiaban de representación
+  - El orden de las claves podía cambiar
+  - HA dejaba de reconocer correctamente algunas automatizaciones
+
+FIX: Reemplazo basado en texto (string-based block replacement):
+  1. Se parsea el YAML solo para localizar el índice de la automatización
+  2. Se detectan los bloques a nivel de texto (líneas que empiezan con "- ")
+  3. Solo se reemplaza/elimina el bloque afectado en el texto original
+  4. El resto del archivo queda byte-a-byte idéntico
+  Fallback: si el conteo de bloques no cuadra, usa yaml.dump solo como último recurso.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.31.2 (2026-05-17) — FEAT: Paneles visuales + simulate_automation + seguridad
 ────────────────────────────────────────────────────────────────────────────────
 
