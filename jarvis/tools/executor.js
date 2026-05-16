@@ -3229,6 +3229,166 @@ ${dots}`;
         }
       }
 
+      // ─── image_edit (DALL-E inpainting) ─────────────────────────────────────
+      case 'image_edit': {
+        const { image_path, prompt, mask_path, size = '1024x1024' } = input;
+        if (!C.OPENAI_API_KEY) return { error: 'OPENAI_API_KEY no configurada' };
+        if (!image_path || !prompt) return { error: 'image_path y prompt requeridos' };
+        if (!fs.existsSync(image_path)) return { error: `No existe: ${image_path}` };
+
+        try {
+          const imgBuffer = fs.readFileSync(image_path);
+          const maskBuffer = mask_path && fs.existsSync(mask_path) ? fs.readFileSync(mask_path) : null;
+
+          const result = await callImageEdit(imgBuffer, prompt, maskBuffer, size);
+
+          const imagesDir = path.join(C.HA_SHARE, 'jarvis', 'images');
+          if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true });
+          const filename = `edit_${Date.now()}.png`;
+          const filepath = path.join(imagesDir, filename);
+          fs.writeFileSync(filepath, Buffer.from(result.b64, 'base64'));
+
+          return {
+            success: true,
+            image_url: `/share/jarvis/images/${filename}`,
+            filepath,
+            filename,
+            prompt,
+            size,
+            source: image_path
+          };
+        } catch (e) {
+          return { error: 'Error editando imagen: ' + e.message };
+        }
+      }
+
+      // ─── dev_workspace (sandbox de prototipado) ─────────────────────────────
+      case 'dev_workspace': {
+        const { action, workspace_id, file, content, command, target_path } = input;
+        const wsRoot = path.join(C.DATA_DIR, 'workspace');
+        if (!fs.existsSync(wsRoot)) fs.mkdirSync(wsRoot, { recursive: true });
+
+        // list es la única acción que no necesita workspace_id
+        if (action !== 'list' && !workspace_id) {
+          return { error: 'workspace_id requerido para action=' + action };
+        }
+        // Sanitizar workspace_id
+        if (workspace_id && !/^[a-zA-Z0-9_-]+$/.test(workspace_id)) {
+          return { error: 'workspace_id solo puede contener [a-zA-Z0-9_-]' };
+        }
+        const wsDir = workspace_id ? path.join(wsRoot, workspace_id) : wsRoot;
+
+        try {
+          if (action === 'list') {
+            // Lista todos los workspaces y sus archivos
+            const result = {};
+            if (!fs.existsSync(wsRoot)) return { workspaces: {} };
+            for (const ws of fs.readdirSync(wsRoot)) {
+              const wsPath = path.join(wsRoot, ws);
+              if (!fs.statSync(wsPath).isDirectory()) continue;
+              const files = [];
+              const walk = (dir, prefix = '') => {
+                for (const e of fs.readdirSync(dir)) {
+                  const full = path.join(dir, e);
+                  const rel = prefix ? `${prefix}/${e}` : e;
+                  const st = fs.statSync(full);
+                  if (st.isDirectory()) walk(full, rel);
+                  else files.push({ path: rel, size: st.size });
+                }
+              };
+              walk(wsPath);
+              result[ws] = { files, created: fs.statSync(wsPath).birthtime };
+            }
+            return { workspaces: result };
+          }
+
+          if (action === 'create') {
+            if (fs.existsSync(wsDir)) return { error: `Workspace ${workspace_id} ya existe — usa write/exec o discard primero` };
+            fs.mkdirSync(wsDir, { recursive: true });
+            return { success: true, workspace_id, path: wsDir, message: 'Workspace creado. Usa write para añadir archivos.' };
+          }
+
+          if (action === 'write') {
+            if (!file || content === undefined) return { error: 'file y content requeridos' };
+            if (!fs.existsSync(wsDir)) fs.mkdirSync(wsDir, { recursive: true });
+            // Prevenir path traversal
+            const fullPath = path.resolve(wsDir, file);
+            if (!fullPath.startsWith(wsDir)) return { error: 'Path traversal detectado' };
+            fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+            fs.writeFileSync(fullPath, content, 'utf8');
+            return { success: true, file, size: content.length, path: fullPath };
+          }
+
+          if (action === 'read') {
+            if (!file) return { error: 'file requerido' };
+            const fullPath = path.resolve(wsDir, file);
+            if (!fullPath.startsWith(wsDir)) return { error: 'Path traversal detectado' };
+            if (!fs.existsSync(fullPath)) return { error: `No existe: ${file}` };
+            return { success: true, file, content: fs.readFileSync(fullPath, 'utf8') };
+          }
+
+          if (action === 'exec' || action === 'test') {
+            if (!command) return { error: 'command requerido' };
+            if (!fs.existsSync(wsDir)) return { error: `Workspace ${workspace_id} no existe` };
+            // Whitelist de comandos: bash, sh, node, python, python3, pytest, npm, yaml-validation
+            const cmdBin = command.trim().split(/\s+/)[0];
+            const allowed = ['node', 'npm', 'python', 'python3', 'pytest', 'pip', 'pip3', 'bash', 'sh', 'yamllint', 'jq', 'yq', 'cat', 'ls', 'echo', 'grep', 'sed', 'awk', 'curl', 'wget', 'diff'];
+            if (!allowed.includes(cmdBin)) return { error: `Comando ${cmdBin} no permitido en workspace. Allowed: ${allowed.join(', ')}` };
+            try {
+              const proc = spawnSync('sh', ['-c', command], {
+                cwd: wsDir,
+                timeout: 30000,
+                encoding: 'utf8',
+                maxBuffer: 5 * 1024 * 1024
+              });
+              return {
+                success: proc.status === 0,
+                exit_code: proc.status,
+                stdout: (proc.stdout || '').slice(0, 8000),
+                stderr: (proc.stderr || '').slice(0, 4000),
+                command,
+                workspace_id
+              };
+            } catch (e) {
+              return { error: 'exec falló: ' + e.message };
+            }
+          }
+
+          if (action === 'apply') {
+            if (!file || !target_path) return { error: 'file y target_path requeridos' };
+            // Solo permitir aplicar a /config, /share, /data (no /addons que es ro)
+            const safePrefixes = [C.HA_CONFIG, C.HA_SHARE, C.DATA_DIR];
+            if (!safePrefixes.some(p => target_path.startsWith(p))) {
+              return { error: `target_path debe empezar por ${safePrefixes.join(' / ')}` };
+            }
+            const srcPath = path.resolve(wsDir, file);
+            if (!srcPath.startsWith(wsDir)) return { error: 'Path traversal detectado' };
+            if (!fs.existsSync(srcPath)) return { error: `No existe en workspace: ${file}` };
+            // Auto-backup del destino si existe
+            if (fs.existsSync(target_path)) {
+              try {
+                const { autoBackup } = require('../utils/persistence');
+                autoBackup(target_path);
+              } catch (e) { /* sin backup, seguir */ }
+            }
+            fs.mkdirSync(path.dirname(target_path), { recursive: true });
+            fs.copyFileSync(srcPath, target_path);
+            return { success: true, applied: file, target: target_path, message: 'Archivo promovido. Recuerda reload_config si afecta a HA.' };
+          }
+
+          if (action === 'discard') {
+            if (!fs.existsSync(wsDir)) return { error: `Workspace ${workspace_id} no existe` };
+            // Borrar recursivamente
+            fs.rmSync(wsDir, { recursive: true, force: true });
+            return { success: true, message: `Workspace ${workspace_id} eliminado` };
+          }
+
+          return { error: `Action desconocida: ${action}` };
+        } catch (e) {
+          return { error: 'dev_workspace error: ' + e.message };
+        }
+      }
+
       default:
         return { error: `Tool desconocida: ${name}` };
     }
