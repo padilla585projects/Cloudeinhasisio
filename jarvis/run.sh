@@ -72,7 +72,7 @@ if bashio::config.has_value 'agent_net_invite'; then
   export AGENT_NET_INVITE=$(bashio::config 'agent_net_invite')
 fi
 
-bashio::log.info "Iniciando Jarvis AI Agent v3.30.4..."
+bashio::log.info "Iniciando Jarvis AI Agent v3.30.5..."
 bashio::log.info "Modelos cloud: gpt-4o-mini (bg) + gpt-4.1-mini (principal) + claude-sonnet-4-5 (dev)"
 bashio::log.info "IA local (Ollama): ${OLLAMA_URL} | modelo: ${OLLAMA_MODEL}"
 if [ "${PRIVACY_MODE}" = "true" ]; then
@@ -94,6 +94,13 @@ if [ "${AGENT_NET_ENABLED}" = "true" ]; then
   bashio::log.info "🤝 GetawayAgentes: HABILITADA (${AGENT_NET_URL})"
 else
   bashio::log.info "GetawayAgentes: deshabilitada (poner agent_net_enabled: true para activar)"
+fi
+
+# Garantiza que todas las deps están instaladas (por si el layer npm está cacheado)
+cd /app
+if ! node -e "require('node-cron')" 2>/dev/null; then
+  bashio::log.info "Instalando dependencias npm faltantes..."
+  npm install --production
 fi
 
 node /app/server.js

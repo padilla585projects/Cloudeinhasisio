@@ -6,7 +6,9 @@ RUN apk add --no-cache nodejs npm iproute2 iputils
 WORKDIR /app
 
 COPY package.json ./
-RUN npm install --production
+# ARG VERSION fuerza rebuild del layer npm en cada versión nueva (rompe cache de Docker)
+ARG VERSION=3.30.5
+RUN echo "Instalando deps para Jarvis v${VERSION}..." && npm install --production
 
 # Código principal
 COPY server.js ./
