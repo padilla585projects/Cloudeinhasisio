@@ -1,6 +1,6 @@
 name: "Jarvis AI Agent"
 description: "Jarvis — Asistente IA para Home Assistant. Control por voz y texto."
-version: "3.30.2"
+version: "3.30.3"
 slug: "jarvis_ai_agent"
 init: false
 arch:

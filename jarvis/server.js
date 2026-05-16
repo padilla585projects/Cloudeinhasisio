@@ -24,7 +24,21 @@ const { captureStateSnapshot, analyzePatterns } = require('./background/patterns
 const { knowledgeExpansionLoop, distillLearnings } = require('./background/knowledge');
 const { checkSelfUpdate, checkSystemUpdates } = require('./background/updates');
 const { checkEmergencies, bootRecoverScripts, bootSelfCheck, bootLearnHA, bootLearnOwnProject } = require('./background/selfcheck');
-const agentNetwork = require('./background/agent_network');
+
+// agent_network es OPCIONAL — si el archivo falta (deployment incompleto, build cache, etc.)
+// NO debe tirar abajo todo el add-on. Stub silencioso como fallback.
+let agentNetwork;
+try {
+  agentNetwork = require('./background/agent_network');
+} catch (e) {
+  console.log(`[boot] agent_network no disponible (${e.code || 'error'}: ${e.message.slice(0,80)}). Jarvis arranca SIN red de agentes.`);
+  agentNetwork = {
+    start:    async () => {},
+    stop:     () => {},
+    statusInfo: () => ({ enabled: false, reachable: false, error: 'module not loaded' }),
+    handleRemoteTask: async () => ({ summary: 'agent_network no cargado en este build' })
+  };
+}
 
 // ── Inyectar en state lo que los módulos necesitan acceder ───────────────────
 state.openAITools = openAITools;

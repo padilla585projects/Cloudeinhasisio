@@ -3,6 +3,24 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.30.3 (2026-05-16) — HARDENING: arranque resiliente ante módulos faltantes
+────────────────────────────────────────────────────────────────────────────────
+
+DEFENSIVE: El require de agent_network ahora va envuelto en try/catch.
+Si el módulo falta por cualquier motivo (build incompleto, cache Docker,
+archivo no commiteado), Jarvis arranca igualmente con un stub silencioso
+y simplemente registra:
+    [boot] agent_network no disponible (MODULE_NOT_FOUND: ...).
+    Jarvis arranca SIN red de agentes.
+
+Antes este caso provocaba un CRASH LOOP del contenedor entero
+(falla require → server.js sale → s6 reinicia → falla otra vez...).
+Ahora Jarvis es robusto frente a deployments parciales.
+
+REGLA NUEVA: Cualquier módulo background opcional debe envolverse así.
+Si en v3.31+ añadimos otro background_module nuevo, mismo patrón.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.30.2 (2026-05-16) — HOTFIX: agent_network.js no estaba en git
 ────────────────────────────────────────────────────────────────────────────────
 
