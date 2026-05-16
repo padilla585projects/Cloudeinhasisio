@@ -317,20 +317,26 @@ app.post('/api/chat', async (req, res) => {
     const activeModel = nexusExpert.model;
     const activeMaxTokens = nexusExpert.maxTokens;
     const activeMaxIter = nexusExpert.maxIter;
-    console.log(`[nexus] ${nexusExpert.label} | model=${activeModel} | health=${nexusGetScore(nexusExpertName)}`);
+    const layerInfo = nexusLogLayerStats(nexusExpertName);
+    console.log(`[nexus] ${nexusExpert.label} | model=${activeModel} | health=${nexusGetScore(nexusExpertName)} | tools=${layerInfo.tools}/${layerInfo.toolsTotal}`);
+
+    // Bloque B: tool scoping — solo las tools del experto activo
+    const scopedTools = nexusGetToolsForExpert(nexusExpertName);
 
     let currentMessages = [...state.conversationHistory];
     let finalText = '';
     let iterations = 0;
     const MAX_ITERATIONS = state.saverMode ? 8 : activeMaxIter;
     let consecutiveTextOnly = 0;
-    const systemPrompt = nexusAssemblePrompt(nexusExpertName) + buildDynamicContext();
+    // Bloque B: assembleSystemPrompt ya integra L0-L4 (incluye buildDynamicContext via L2)
+    const systemPrompt = nexusAssemblePrompt(nexusExpertName);
 
     while (iterations < MAX_ITERATIONS) {
       iterations++;
       let result;
       try {
-        result = await callOpenAI(activeModel, systemPrompt, currentMessages, openAITools, activeMaxTokens);
+        // Bloque B: callLLM enruta a OpenAI o Anthropic según el modelo del experto
+        result = await callLLM(activeModel, systemPrompt, currentMessages, scopedTools, activeMaxTokens);
       } catch (err) {
         console.log(`[jarvis] Error API iter=${iterations}: ${err.message}`);
         if (err.message.includes('429') || err.message.includes('503')) {
@@ -342,7 +348,7 @@ app.post('/api/chat', async (req, res) => {
           stripImagesFromHistory();
           currentMessages = sanitizeMessagesForOpenAI([...state.conversationHistory], true);
           try {
-            result = await callOpenAI(activeModel, systemPrompt, currentMessages, openAITools, activeMaxTokens);
+            result = await callLLM(activeModel, systemPrompt, currentMessages, scopedTools, activeMaxTokens);
           } catch (err2) {
             sendEvent({ type: 'error', error: `Error API: ${err2.message}` });
             break;
