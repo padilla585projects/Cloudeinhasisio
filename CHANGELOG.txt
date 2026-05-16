@@ -3,6 +3,57 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.30.0 (2026-05-16) — GetawayAgentes: red de agentes IA (knowledge sharing)
+────────────────────────────────────────────────────────────────────────────────
+
+FEATURE: Módulo background/agent_network.js
+  Jarvis se une a la red GetawayAgentes (admin: Adrián) como agente
+  "share-knowledge". Persistente vía WebSocket con reconexión automática
+  (backoff exponencial 5s → 60s máx).
+
+PRIVACIDAD ESTRICTA (no negociable):
+  - Tareas remotas se ejecutan con system prompt que PROHIBE expresamente:
+    * Compartir entidades, estados, dispositivos del HA de Adrián
+    * Compartir paths, IPs, tokens, configuraciones privadas
+    * Acceder a memoria, learnings, historial personal
+  - SIN tools en tareas remotas → solo conocimiento puro del LLM
+  - Idioma: responde en el del que pregunta
+  - Si la tarea pide datos privados, declina educadamente
+
+CAPABILITIES registradas:
+  home-assistant-expertise, automation-design, yaml-validation,
+  lovelace-dashboards, esphome-help, zigbee-zwave-troubleshooting,
+  code-generation-js-python, docker-proxmox-help, web-search,
+  tts-stt-knowledge, spanish-english-bilingual
+
+MENSAJES SOPORTADOS:
+  heartbeat        → heartbeat_ack
+  task_assigned    → task_result {summary, agent}
+  agent_message    → agent_message {to, content}
+
+CONFIG: 3 opciones nuevas en config.yaml (opt-in, default false)
+  agent_net_enabled:  false                                       (poner true para activar)
+  agent_net_url:      "https://getaway-gateway.alejandra-app.workers.dev"
+  agent_net_invite:   "getaway2026"
+
+CRED PERSISTENCE:
+  Token + agent_id se cachean en /data/agent_network.json con permisos 0600
+  El primer arranque hace POST /agents/join, después solo reusa el token
+
+ENDPOINT: GET /api/agent_network/status
+  Devuelve { enabled, connected, agent_id, gateway, capabilities, ... }
+
+DEPENDENCIES: añadido 'ws@^8.18.0' a package.json (WebSocket client Node)
+
+ACTIVACIÓN:
+  En configuración del add-on poner: agent_net_enabled: true
+  Reiniciar add-on → en logs verás:
+    🤝 GetawayAgentes: HABILITADA
+    [agent-net] Uniéndose a GetawayAgentes como Jarvis ...
+    [agent-net] ✓ Unido. agent_id: xxxx
+    [agent-net] ✓ WS conectado como Jarvis
+
+────────────────────────────────────────────────────────────────────────────────
 v3.29.1 (2026-05-16) — HOTFIX CRÍTICO: Dockerfile no copiaba los módulos nuevos
 ────────────────────────────────────────────────────────────────────────────────
 

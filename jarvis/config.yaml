@@ -39,6 +39,9 @@ options:
   ollama_bg_model: "qwen2.5:3b-instruct"
   local_first: false
   privacy_mode: false
+  agent_net_enabled: false
+  agent_net_url: "https://getaway-gateway.alejandra-app.workers.dev"
+  agent_net_invite: "getaway2026"
 schema:
   openai_api_key: str
   serper_api_key: str?
@@ -53,3 +56,6 @@ schema:
   ollama_bg_model: str?
   local_first: bool?
   privacy_mode: bool?
+  agent_net_enabled: bool?
+  agent_net_url: str?
+  agent_net_invite: str?
