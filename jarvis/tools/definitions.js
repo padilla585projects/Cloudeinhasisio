@@ -1028,6 +1028,22 @@ const tools = [
       },
       required: ['action']
     }
+  },
+
+  // ─── Simulación de automatizaciones ───
+  {
+    name: 'simulate_automation',
+    description: 'Simula una automatización sin ejecutarla. Analiza sus triggers, condiciones y acciones y describe paso a paso qué pasaría si se disparara ahora mismo.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        identifier: {
+          type: 'string',
+          description: 'Alias o id de la automatización a simular'
+        }
+      },
+      required: ['identifier']
+    }
   }
 ];
 

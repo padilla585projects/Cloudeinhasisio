@@ -3666,6 +3666,70 @@ ${dots}`;
         };
       }
 
+      case 'simulate_automation': {
+        if (!yaml) return { error: 'js-yaml no está disponible en este entorno' };
+        const automationsPath = '/config/automations.yaml';
+        let automations = [];
+        try {
+          const raw = fs.readFileSync(automationsPath, 'utf8');
+          const parsed = yaml.load(raw);
+          automations = Array.isArray(parsed) ? parsed : (parsed ? [parsed] : []);
+        } catch (e) {
+          return { error: `No se pudo leer automations.yaml: ${e.message}` };
+        }
+
+        const id = input.identifier;
+        const a = automations.find(x =>
+          (x.alias && x.alias.toLowerCase() === id.toLowerCase()) ||
+          x.id === id
+        );
+
+        if (!a) {
+          return {
+            error: 'Automatización no encontrada',
+            available: automations.map(x => x.alias || x.id).filter(Boolean)
+          };
+        }
+
+        // Resolve current state for entity-based triggers
+        const triggerList = (Array.isArray(a.trigger) ? a.trigger : [a.trigger]).filter(Boolean);
+        const enrichedTriggers = await Promise.all(triggerList.map(async t => {
+          const entry = { type: t.platform || t.trigger || 'unknown', details: t };
+          const entityId = t.entity_id || (Array.isArray(t.entity_id) ? t.entity_id[0] : null);
+          if (entityId) {
+            try {
+              const stateData = await haGet('/states/' + (Array.isArray(entityId) ? entityId[0] : entityId));
+              entry.current_state = stateData ? { state: stateData.state, attributes: stateData.attributes } : null;
+            } catch (_) {
+              entry.current_state = null;
+            }
+          }
+          return entry;
+        }));
+
+        const conditionList = (Array.isArray(a.condition) ? a.condition : a.condition ? [a.condition] : []);
+        const actionList = (Array.isArray(a.action) ? a.action : [a.action]).filter(Boolean);
+
+        return {
+          automation: a.alias || a.id,
+          description: a.description || null,
+          mode: a.mode || 'single',
+          dry_run: true,
+          triggers: enrichedTriggers,
+          conditions: conditionList.map(c => ({
+            type: c.condition || 'unknown',
+            details: c
+          })),
+          actions: actionList.map(act => {
+            if (act.service || act.action) return { type: 'service', call: act.service || act.action, data: act.data || act.target || {} };
+            if (act.delay) return { type: 'delay', duration: act.delay };
+            if (act.condition) return { type: 'condition_check', condition: act.condition };
+            return { type: 'other', raw: act };
+          }),
+          note: 'Simulación sin ejecutar — ninguna acción real fue tomada'
+        };
+      }
+
       default:
         return { error: `Tool desconocida: ${name}` };
     }
