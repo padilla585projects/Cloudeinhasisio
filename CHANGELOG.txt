@@ -3,6 +3,29 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.30.4 (2026-05-16) — FIX: node-cron no declarado + scheduleTask resiliente
+────────────────────────────────────────────────────────────────────────────────
+
+🚨 BUG: scheduleTask() hacía require('node-cron') pero el paquete NO
+estaba declarado en package.json. Al ejecutarse el primer setTimeout
+de scheduled tasks (~weekly-dashboard-review), el require fallaba y
+tiraba el proceso entero. Esto se sumaba al problema de agent_network.
+
+Además el try/catch existente NO protegía el require — estaba fuera.
+
+FIX en 2 frentes:
+  1. Añadido "node-cron": "^3.0.3" a package.json (la dep correcta).
+  2. Movido const cron = require('node-cron') DENTRO del try, así si
+     por alguna razón npm install no lo instalase, caemos al fallback
+     con setInterval en vez de crashear.
+
+VERIFICACIÓN: cross-check de TODOS los require() externos vs deps:
+  cors, express, form-data, js-yaml, node-cron, node-edge-tts,
+  node-fetch, ws → todos en package.json ✓
+  child_process, crypto, dgram, fs, net, path → built-ins de Node ✓
+  multer declarado pero sin require activo (extra dep, no rompe)
+
+────────────────────────────────────────────────────────────────────────────────
 v3.30.3 (2026-05-16) — HARDENING: arranque resiliente ante módulos faltantes
 ────────────────────────────────────────────────────────────────────────────────
 

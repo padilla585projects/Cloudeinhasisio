@@ -104,11 +104,12 @@ function calcCost(usage) {
 
 // ── Sistema de tareas programadas ─────────────────────────────────────────────
 function scheduleTask(taskName, cronExpression, taskFn) {
-  const cron = require('node-cron');
   const nextRun = calculateNextRun(cronExpression);
   console.log(`[SCHEDULER] Tarea "${taskName}" programada. Próxima ejecución: ${nextRun}`);
 
+  // El require va dentro del try — si node-cron no está instalado, caemos al fallback con setInterval.
   try {
+    const cron = require('node-cron');
     cron.schedule(cronExpression, async () => {
       console.log(`[TASK] Ejecutando: ${taskName}`);
       try {
@@ -121,7 +122,7 @@ function scheduleTask(taskName, cronExpression, taskFn) {
       saveJSON(C.SCHEDULED_TASKS_FILE, state.scheduledTasks);
     });
   } catch (e) {
-    console.log(`[SCHEDULER] Error con node-cron (normal si no está instalado): ${e.message}`);
+    console.log(`[SCHEDULER] node-cron no disponible (${e.code || 'error'}). Usando setInterval como fallback para "${taskName}".`);
     const interval = parseSimpleCron(cronExpression);
     setInterval(async () => {
       console.log(`[TASK] Ejecutando: ${taskName}`);
