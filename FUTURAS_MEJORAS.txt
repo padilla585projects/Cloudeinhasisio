@@ -36,11 +36,10 @@ SPRINT 1 — INTELIGENCIA                                              ALTA
     - 3 paginas por boot, cada 6h, hasta completar
     - Almacena en knowledge_db para consulta futura
 
-[ ] Scoring de la instalacion
-    - "Tu instalacion tiene un 72/100 en optimizacion"
-    - Detectar: automatizaciones sin usar, entidades sin nombre amigable,
-      integraciones desactualizadas, dispositivos offline
-    - Plan de mejora paso a paso
+[v] Scoring de la instalacion (HECHO v3.31.1)
+    - Tool score_installation: score 0-100 con desglose por categoría
+    - Detecta: entidades unavailable/unnamed, automatizaciones sin alias
+    - Genera recomendaciones específicas
 
 [ ] Rutinas por voz natural
     - "Jarvis, cuando llegue a casa enciende el salon y pon musica"
@@ -99,8 +98,9 @@ SPRINT 4 — UX Y OPERATIVAS                                           MEDIA
     - "Estado de la casa?" → cards con iconos, no solo texto
     - Mini-graficas de temperatura/consumo inline (SVG)
 
-[ ] Comandos rapidos (slash commands)
-    - /scan, /estado, /backup, /undo, /score, /diagnostico
+[v] Comandos rapidos (slash commands) (HECHO v3.31.1)
+    - /estado /scan /score /diagnostico /backup /logs /memoria /ayuda
+    - Menú desplegable al escribir "/" con descripción y autoexpansión
 
 [v] Backup inteligente (HECHO v3.20.x)
     - write_file y append_file hacen backup automatico antes de escribir
@@ -160,7 +160,7 @@ DEUDA TECNICA (ver ANALISIS_MEJORAS.txt para detalle completo)
 [ ] call_service: sin validacion de dominio/servicio antes del POST
 [ ] Cifrar agent_network.json (API keys en texto plano en /data)
 [ ] Borrar carpeta ClaudeInHassio/ (prototipo v1.1.0 abandonado)
-[ ] Cap a memory.json (learnings.json tiene cap de 200, memory.json no)
+[v] Cap a memory.json (HECHO v3.31.1) — cap 500 notas, elimina las más antiguas
 [ ] Trocear server.js (8618 lineas monoliticas — propuesta en ANALISIS_MEJORAS.txt)
 
 ================================================================================
