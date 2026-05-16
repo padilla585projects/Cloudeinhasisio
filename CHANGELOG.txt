@@ -3,6 +3,42 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.25.0 (2026-05-16) — Bloque A: Modularización completa del monolito
+────────────────────────────────────────────────────────────────────────────────
+
+REFACTOR: server.js pasa de 8700 líneas a ~1200. Toda la lógica de negocio
+extraída a módulos independientes sin cambio de comportamiento (Bloque A del
+Plan NEXUS v2).
+
+Estructura nueva:
+  jarvis/utils/
+    state.js        — estado mutable compartido (patrón singleton)
+    constants.js    — variables de entorno y rutas
+    persistence.js  — loadJSON/saveJSON/validateYaml/autoBackup
+    ha-api.js       — haGet/haPost/supervisorGet
+    scan.js         — scanInstallation
+    llm.js          — callOpenAI/sanitizeMessages
+    context.js      — updateLiveContext/buildDynamicContext
+  jarvis/tools/
+    definitions.js  — array tools[] + openAITools[] (63 tools)
+    executor.js     — executeTool() completo (~3250 líneas)
+  jarvis/nexus/
+    modules.js      — NEXUS_MODULES (22 módulos de prompt)
+    experts.js      — EXPERTS (12 expertos con config)
+    health.js       — health scoring + expertos dinámicos
+    router.js       — nexusRoute + nexusAssemblePrompt
+    assembler.js    — buildSystemPrompt/buildSystemPromptArray
+  jarvis/background/
+    proactive.js    — proactiveThinkingLoop
+    patterns.js     — captureStateSnapshot/analyzePatterns
+    knowledge.js    — knowledgeExpansionLoop/distillLearnings
+    updates.js      — checkSelfUpdate/checkSystemUpdates
+    selfcheck.js    — bootSelfCheck/bootLearnHA/checkEmergencies
+
+Verificación: node --check pasa en los 19 archivos. 63 tools, 12 expertos,
+22 módulos NEXUS — todos los cross-references validados en runtime.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.24.1 (2026-05-15) — Limpieza de duplicados en executeTool
 ────────────────────────────────────────────────────────────────────────────────
 
