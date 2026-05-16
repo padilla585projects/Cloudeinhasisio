@@ -1,6 +1,6 @@
 'use strict';
 const fetch = require('node-fetch');
-const { OPENAI_API_KEY, ANTHROPIC_API_KEY } = require('./constants');
+const { OPENAI_API_KEY, ANTHROPIC_API_KEY, OLLAMA_URL, OLLAMA_MODEL, OLLAMA_BG_MODEL, LOCAL_FIRST, PRIVACY_MODE } = require('./constants');
 const state = require('./state');
 
 // ── Conversión formato Anthropic → OpenAI ────────────────────────────────────
@@ -266,13 +266,131 @@ async function callAnthropic(model, system, messages, aiTools, maxTokens) {
   };
 }
 
-// ── Wrapper unificado: detecta modelo y enruta ────────────────────────────────
+// ── Ollama (compatible OpenAI: /v1/chat/completions) ─────────────────────────
+
+/**
+ * Llama a Ollama usando su endpoint OpenAI-compatible.
+ * Formato de modelo: 'ollama/qwen2.5:7b-instruct' o solo 'ollama' (usa OLLAMA_MODEL default).
+ * Si OLLAMA_URL apunta a localhost, el contenedor del add-on probablemente NO podrá alcanzarlo
+ * — configurar OLLAMA_URL a la IP de la LAN donde corre Ollama (ej: http://192.168.1.50:11434).
+ */
+async function callOllama(model, system, messages, aiTools, maxTokens) {
+  // Extraer modelo real: 'ollama/qwen2.5:7b' → 'qwen2.5:7b'
+  const realModel = model.startsWith('ollama/')
+    ? model.slice('ollama/'.length)
+    : model.startsWith('ollama:')
+      ? model.slice('ollama:'.length)
+      : (model === 'ollama' ? OLLAMA_MODEL : model);
+
+  const sanitized = sanitizeMessagesForOpenAI(messages);
+  const msgs = system ? [{ role: 'system', content: system }, ...sanitized] : [...sanitized];
+
+  const body = { model: realModel, max_tokens: maxTokens, messages: msgs, stream: false };
+  if (aiTools && aiTools.length > 0) body.tools = aiTools;
+
+  const url = `${OLLAMA_URL.replace(/\/$/, '')}/v1/chat/completions`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    timeout: 90000
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Ollama error ${response.status}: ${err.slice(0, 300)}`);
+  }
+
+  const data = await response.json();
+  const choice = data.choices?.[0];
+  if (!choice) throw new Error('Ollama respuesta vacía: ' + JSON.stringify(data).slice(0, 200));
+  const message = choice.message || {};
+  return {
+    text: message.content || '',
+    toolCalls: (message.tool_calls || []).map(tc => ({
+      id: tc.id || `call_${Math.random().toString(36).slice(2)}`,
+      name: tc.function?.name || tc.name,
+      input: (() => {
+        const raw = tc.function?.arguments ?? tc.arguments ?? {};
+        if (typeof raw === 'string') { try { return JSON.parse(raw); } catch { return {}; } }
+        return raw;
+      })()
+    })),
+    finishReason: choice.finish_reason || 'stop',
+    message,
+    usage: data.usage || {}
+  };
+}
+
+/**
+ * Comprueba si Ollama está alcanzable (GET /api/tags).
+ * @returns {Promise<{ok: boolean, models?: string[], error?: string}>}
+ */
+async function checkOllamaHealth() {
+  try {
+    const r = await fetch(`${OLLAMA_URL.replace(/\/$/, '')}/api/tags`, { timeout: 4000 });
+    if (!r.ok) return { ok: false, error: `HTTP ${r.status}` };
+    const d = await r.json();
+    return { ok: true, models: (d.models || []).map(m => m.name) };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+// ── Wrapper unificado: detecta modelo + fallback automático a Ollama ─────────
+
+/**
+ * Decide la cadena de modelos a probar para un request.
+ * - Si PRIVACY_MODE: solo Ollama
+ * - Si LOCAL_FIRST: Ollama → cloud
+ * - Si modelo es ollama/*: Ollama → cloud (por si Ollama no responde)
+ * - Si modelo es cloud (gpt-*/claude-*): cloud → Ollama (fallback offline)
+ */
+function buildModelChain(primaryModel) {
+  if (PRIVACY_MODE) {
+    return [primaryModel.startsWith('ollama') ? primaryModel : `ollama/${OLLAMA_MODEL}`];
+  }
+  const localModel = `ollama/${OLLAMA_MODEL}`;
+  const isLocal = primaryModel && (primaryModel.startsWith('ollama/') || primaryModel.startsWith('ollama:') || primaryModel === 'ollama');
+  if (isLocal) return [primaryModel, 'gpt-4.1-mini'];  // si Ollama cae, usar OpenAI
+  if (LOCAL_FIRST) return [localModel, primaryModel];  // local primero, cloud si falla
+  return [primaryModel, localModel];                   // cloud primero, local si falla
+}
 
 async function callLLM(model, system, messages, tools, maxTokens) {
-  if (model && model.startsWith('claude-')) {
-    return callAnthropic(model, system, messages, tools, maxTokens);
+  const chain = buildModelChain(model);
+  let lastErr;
+  for (let i = 0; i < chain.length; i++) {
+    const m = chain[i];
+    try {
+      if (m && (m.startsWith('ollama/') || m.startsWith('ollama:') || m === 'ollama')) {
+        const r = await callOllama(m, system, messages, tools, maxTokens);
+        if (i > 0) console.log(`[llm-fallback] ✓ Ollama (${m}) tras fallar ${chain[0]}`);
+        return r;
+      }
+      if (m && m.startsWith('claude-')) {
+        const r = await callAnthropic(m, system, messages, tools, maxTokens);
+        if (i > 0) console.log(`[llm-fallback] ✓ Anthropic (${m}) tras fallar ${chain[0]}`);
+        return r;
+      }
+      const r = await callOpenAI(m, system, messages, tools, maxTokens);
+      if (i > 0) console.log(`[llm-fallback] ✓ OpenAI (${m}) tras fallar ${chain[0]}`);
+      return r;
+    } catch (e) {
+      lastErr = e;
+      console.log(`[llm-fallback] ${m} falló: ${e.message.slice(0, 120)}`);
+      // Solo hacer fallback en errores de red, 5xx, timeout, 429
+      const msg = (e.message || '').toLowerCase();
+      const isRetryable = msg.includes('econnref') || msg.includes('timeout') || msg.includes('etimedout')
+                       || msg.includes('enotfound') || msg.includes('socket') || msg.includes('network')
+                       || /\b(5\d\d|429)\b/.test(msg);
+      if (!isRetryable && i < chain.length - 1) {
+        // Error no recuperable → no intentar siguientes
+        throw e;
+      }
+    }
   }
-  return callOpenAI(model, system, messages, tools, maxTokens);
+  throw lastErr || new Error('Todos los modelos fallaron');
 }
 
 // ── Whisper STT ───────────────────────────────────────────────────────────────
@@ -344,9 +462,12 @@ async function callImageEdit(imageBuffer, prompt, maskBuffer = null, size = '102
 module.exports = {
   callOpenAI,
   callAnthropic,
+  callOllama,
   callLLM,
   callWhisper,
   callImageEdit,
+  checkOllamaHealth,
+  buildModelChain,
   sanitizeMessagesForOpenAI,
   stripImagesFromHistory,
   convertMessagesToAnthropic,

@@ -3,6 +3,58 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.29.0 (2026-05-16) — IA local (Ollama) integrada como modelo principal
+────────────────────────────────────────────────────────────────────────────────
+
+FEATURE: callOllama() en utils/llm.js
+  Cliente para Ollama via su endpoint OpenAI-compatible (/v1/chat/completions)
+  Soporta tool calling para modelos compatibles (qwen2.5, llama3.1, mistral-nemo)
+  Formato de modelo: 'ollama/qwen2.5:7b-instruct' o 'ollama' (usa default)
+  Timeout 90s para inferencia CPU lenta
+
+FEATURE: callLLM() ahora tiene CADENA DE MODELOS con fallback automático
+  buildModelChain(primaryModel) decide la cadena según modo:
+    - PRIVACY_MODE=true:  [ollama]
+    - LOCAL_FIRST=true:   [ollama, cloud]
+    - default (cloud):    [cloud, ollama]      ← fallback offline gratis
+    - modelo es ollama:   [ollama, gpt-4.1-mini]  ← si Ollama cae, cloud
+  Solo hace fallback en errores recuperables (red, 5xx, 429, timeout)
+  Errores 4xx no recuperables fallan rápido sin probar siguientes
+
+FEATURE: checkOllamaHealth() — comprueba si Ollama es alcanzable
+  GET /api/tags en OLLAMA_URL con timeout 4s
+  Devuelve { ok, models: ['qwen2.5:7b', ...], error? }
+
+FEATURE: Experto 'rapido' ahora usa Ollama por defecto
+  model: ollama/qwen2.5:7b-instruct
+  Comandos cortos (encender/apagar, estado) → 0€ + ultra rápido
+  Si Ollama cae → fallback automático a gpt-4.1-mini
+
+FEATURE: Endpoint GET /api/ollama/status
+  Devuelve { url, model, reachable, models_installed, ... }
+  Permite al frontend mostrar estado de la IA local
+
+CONFIG: Nuevas opciones en config.yaml
+  ollama_url:       'http://localhost:11434'        (URL del servidor Ollama)
+  ollama_model:     'qwen2.5:7b-instruct'           (modelo principal local)
+  ollama_bg_model:  'qwen2.5:3b-instruct'           (modelo background local)
+  local_first:      false                            (true = Ollama primero)
+  privacy_mode:     false                            (true = solo Ollama, sin cloud)
+
+INFRA: run.sh exporta todas las nuevas env vars desde bashio config
+
+NOTAS DE INSTALACIÓN:
+  Para usar IA local, instala Ollama en alguna parte de tu red:
+    LXC Proxmox (recomendado): pct create + apt install + curl install.sh
+    Docker:    docker run -d -p 11434:11434 --name ollama ollama/ollama
+    HA add-on: existe un add-on oficial 'Ollama' en HACS
+  Luego:
+    ollama pull qwen2.5:7b-instruct
+    ollama pull qwen2.5:3b-instruct
+  En el add-on de Jarvis, configura:
+    ollama_url: http://<IP-LAN>:11434
+
+────────────────────────────────────────────────────────────────────────────────
 v3.28.0 (2026-05-16) — Bloque C completo: Whisper UI + Onyx default + web_search_native
 ────────────────────────────────────────────────────────────────────────────────
 

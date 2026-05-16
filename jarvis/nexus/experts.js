@@ -1,5 +1,6 @@
 'use strict';
-const { MODEL, BG_MODEL, CLAUDE_MODEL } = require('../utils/constants');
+const { MODEL, BG_MODEL, CLAUDE_MODEL, OLLAMA_MODEL } = require('../utils/constants');
+const LOCAL = `ollama/${OLLAMA_MODEL}`;  // alias para experto local
 
 // ── Configuración de expertos NEXUS ──────────────────────────────────────────
 // Cada experto define: modelo, tokens, iteraciones, módulos activos y tools.
@@ -8,9 +9,9 @@ const { MODEL, BG_MODEL, CLAUDE_MODEL } = require('../utils/constants');
 
 const EXPERTS = {
   rapido: {
-    model: BG_MODEL, maxTokens: 2048, maxIter: 6,
+    model: LOCAL, maxTokens: 2048, maxIter: 6,
     modules: ['base', 'autonomy', 'optimization'],
-    label: 'Rápido',
+    label: 'Rápido (Local)',
     tools: ['get_entities', 'search_entities', 'get_entity_state', 'call_service',
             'save_memory', 'get_memory', 'speak', 'web_search', 'fetch_url',
             'list_directory', 'read_file']
