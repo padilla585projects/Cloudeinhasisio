@@ -1,6 +1,6 @@
 'use strict';
 const fetch = require('node-fetch');
-const { OPENAI_API_KEY } = require('./constants');
+const { OPENAI_API_KEY, ANTHROPIC_API_KEY } = require('./constants');
 const state = require('./state');
 
 // ── Conversión formato Anthropic → OpenAI ────────────────────────────────────
@@ -40,7 +40,115 @@ function stripImagesFromHistory() {
   });
 }
 
-// ── Llamada unificada a OpenAI ────────────────────────────────────────────────
+// ── Conversión OpenAI → Anthropic ────────────────────────────────────────────
+
+function convertMessagesToAnthropic(openAIMessages) {
+  const result = [];
+  let i = 0;
+  while (i < openAIMessages.length) {
+    const msg = openAIMessages[i];
+
+    if (msg.role === 'system') {
+      // Los system messages van como system param en Anthropic, no en messages[]
+      i++; continue;
+    }
+
+    if (msg.role === 'tool') {
+      // Agrupar todos los tool_results consecutivos en un único user message
+      const toolResults = [];
+      while (i < openAIMessages.length && openAIMessages[i].role === 'tool') {
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: openAIMessages[i].tool_call_id,
+          content: String(openAIMessages[i].content || '')
+        });
+        i++;
+      }
+      result.push({ role: 'user', content: toolResults });
+      continue;
+    }
+
+    if (msg.role === 'user') {
+      if (typeof msg.content === 'string') {
+        result.push({ role: 'user', content: [{ type: 'text', text: msg.content }] });
+      } else if (Array.isArray(msg.content)) {
+        const content = [];
+        for (const block of msg.content) {
+          if (block.type === 'text') {
+            content.push(block);
+          } else if (block.type === 'image_url') {
+            const url = block.image_url?.url || '';
+            const m = url.match(/^data:([^;]+);base64,(.+)$/s);
+            if (m) {
+              content.push({ type: 'image', source: { type: 'base64', media_type: m[1], data: m[2] } });
+            } else {
+              content.push({ type: 'text', text: `[imagen: ${url.slice(0, 80)}]` });
+            }
+          } else if (block.type === 'tool_result') {
+            content.push(block);
+          } else {
+            content.push({ type: 'text', text: block.text || JSON.stringify(block) });
+          }
+        }
+        if (content.length === 0) content.push({ type: 'text', text: '[mensaje vacío]' });
+        result.push({ role: 'user', content });
+      }
+      i++; continue;
+    }
+
+    if (msg.role === 'assistant') {
+      const content = [];
+      // Texto
+      const text = typeof msg.content === 'string' ? msg.content : (Array.isArray(msg.content) ? msg.content.find(b => b.type === 'text')?.text : null);
+      if (text) content.push({ type: 'text', text });
+      // Tool calls
+      if (msg.tool_calls && msg.tool_calls.length > 0) {
+        for (const tc of msg.tool_calls) {
+          let input = {};
+          try { input = JSON.parse(tc.function?.arguments || '{}'); } catch {}
+          content.push({ type: 'tool_use', id: tc.id, name: tc.function?.name || 'unknown', input });
+        }
+      }
+      if (content.length === 0) content.push({ type: 'text', text: '' });
+      result.push({ role: 'assistant', content });
+      i++; continue;
+    }
+
+    i++;
+  }
+
+  // Anthropic requiere que el primer mensaje sea 'user' y que no haya dos del mismo rol seguidos
+  // Asegurar alternancia básica
+  const cleaned = [];
+  for (const m of result) {
+    if (cleaned.length > 0 && cleaned[cleaned.length - 1].role === m.role) {
+      // Combinar con el anterior si es el mismo rol
+      const prev = cleaned[cleaned.length - 1];
+      const combined = Array.isArray(prev.content) ? prev.content : [{ type: 'text', text: String(prev.content) }];
+      const addContent = Array.isArray(m.content) ? m.content : [{ type: 'text', text: String(m.content) }];
+      cleaned[cleaned.length - 1] = { role: m.role, content: [...combined, ...addContent] };
+    } else {
+      cleaned.push(m);
+    }
+  }
+
+  if (cleaned.length > 0 && cleaned[0].role !== 'user') {
+    cleaned.unshift({ role: 'user', content: [{ type: 'text', text: '[inicio de conversación]' }] });
+  }
+
+  return cleaned;
+}
+
+function convertToolsToAnthropic(openAITools) {
+  if (!openAITools || openAITools.length === 0) return [];
+  return openAITools.map(t => ({
+    name: t.function.name,
+    description: t.function.description,
+    input_schema: t.function.parameters || { type: 'object', properties: {} }
+  }));
+}
+
+// ── Llamada a OpenAI ──────────────────────────────────────────────────────────
 
 async function callOpenAI(model, system, messages, aiTools, maxTokens) {
   const sanitized = sanitizeMessagesForOpenAI(messages);
@@ -75,4 +183,104 @@ async function callOpenAI(model, system, messages, aiTools, maxTokens) {
   };
 }
 
-module.exports = { callOpenAI, sanitizeMessagesForOpenAI, stripImagesFromHistory };
+// ── Llamada a Anthropic Claude ────────────────────────────────────────────────
+
+async function callAnthropic(model, system, messages, aiTools, maxTokens) {
+  if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY no configurada');
+
+  const anthropicMsgs = convertMessagesToAnthropic(messages);
+  const anthropicTools = convertToolsToAnthropic(aiTools);
+
+  // Sistema como array de bloques para prompt caching (L0 marcado como cacheable)
+  const systemBlocks = [];
+  if (system) {
+    // Dividir: la primera mitad (identidad + dominio) es cacheable; la segunda (contexto dinámico) no
+    const midpoint = Math.floor(system.length * 0.6);
+    const staticPart = system.slice(0, midpoint);
+    const dynamicPart = system.slice(midpoint);
+    if (staticPart) systemBlocks.push({ type: 'text', text: staticPart, cache_control: { type: 'ephemeral' } });
+    if (dynamicPart) systemBlocks.push({ type: 'text', text: dynamicPart });
+  }
+
+  const body = {
+    model,
+    max_tokens: maxTokens,
+    system: systemBlocks.length > 0 ? systemBlocks : undefined,
+    messages: anthropicMsgs
+  };
+  if (anthropicTools.length > 0) body.tools = anthropicTools;
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+      'anthropic-beta': 'prompt-caching-2024-07-31'
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Anthropic error ${response.status}: ${err}`);
+  }
+
+  const data = await response.json();
+
+  // Convertir respuesta Anthropic → formato OpenAI (para que server.js no cambie)
+  let text = '';
+  const toolCalls = [];
+  for (const block of (data.content || [])) {
+    if (block.type === 'text') text += block.text;
+    if (block.type === 'tool_use') {
+      toolCalls.push({ id: block.id, name: block.name, input: block.input || {} });
+    }
+  }
+
+  const finishReason = data.stop_reason === 'tool_use' ? 'tool_calls' : 'stop';
+
+  // Reconstruir message en formato OpenAI para que el loop pueda pushearlo de vuelta
+  const openAIMessage = {
+    role: 'assistant',
+    content: text || null,
+    tool_calls: toolCalls.map(tc => ({
+      id: tc.id,
+      type: 'function',
+      function: { name: tc.name, arguments: JSON.stringify(tc.input) }
+    }))
+  };
+  if (openAIMessage.tool_calls.length === 0) delete openAIMessage.tool_calls;
+
+  return {
+    text,
+    toolCalls,
+    finishReason,
+    message: openAIMessage,
+    usage: {
+      prompt_tokens: data.usage?.input_tokens || 0,
+      completion_tokens: data.usage?.output_tokens || 0,
+      cache_read_input_tokens: data.usage?.cache_read_input_tokens || 0,
+      cache_creation_input_tokens: data.usage?.cache_creation_input_tokens || 0
+    }
+  };
+}
+
+// ── Wrapper unificado: detecta modelo y enruta ────────────────────────────────
+
+async function callLLM(model, system, messages, tools, maxTokens) {
+  if (model && model.startsWith('claude-')) {
+    return callAnthropic(model, system, messages, tools, maxTokens);
+  }
+  return callOpenAI(model, system, messages, tools, maxTokens);
+}
+
+module.exports = {
+  callOpenAI,
+  callAnthropic,
+  callLLM,
+  sanitizeMessagesForOpenAI,
+  stripImagesFromHistory,
+  convertMessagesToAnthropic,
+  convertToolsToAnthropic
+};
