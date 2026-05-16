@@ -342,9 +342,9 @@ async function checkOllamaHealth() {
 /**
  * Decide la cadena de modelos a probar para un request.
  * - Si PRIVACY_MODE: solo Ollama
- * - Si LOCAL_FIRST: Ollama → cloud
- * - Si modelo es ollama/*: Ollama → cloud (por si Ollama no responde)
- * - Si modelo es cloud (gpt-*/claude-*): cloud → Ollama (fallback offline)
+ * - Si LOCAL_FIRST: Ollama luego cloud
+ * - Si modelo empieza por 'ollama': Ollama luego cloud (por si Ollama no responde)
+ * - Si modelo es cloud (gpt o claude): cloud luego Ollama (fallback offline)
  */
 function buildModelChain(primaryModel) {
   if (PRIVACY_MODE) {
