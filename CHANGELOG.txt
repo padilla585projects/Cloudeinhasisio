@@ -3,6 +3,28 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.29.1 (2026-05-16) — HOTFIX CRÍTICO: Dockerfile no copiaba los módulos nuevos
+────────────────────────────────────────────────────────────────────────────────
+
+🚨 BUG: Desde v3.25.0 (Bloque A) el Dockerfile solo copiaba server.js + index.html.
+Los nuevos directorios utils/, tools/, nexus/, background/ NO se copiaban al
+contenedor, así que Jarvis fallaba al arrancar con:
+    Error: Cannot find module './utils/state'
+
+FIX: Añadidas las directivas COPY para los 4 directorios nuevos:
+    COPY utils/      ./utils/
+    COPY tools/      ./tools/
+    COPY nexus/      ./nexus/
+    COPY background/ ./background/
+
+IMPACTO: Sin este fix, ninguna versión 3.25.x → 3.29.0 funcionaba en HA.
+Solo afecta a builds nuevos del add-on. Si ya tenías una imagen anterior
+construida (v3.24.x), seguía funcionando hasta que actualizases.
+
+LECCIÓN: Cuando se refactoriza un monolito a módulos, revisar SIEMPRE
+el Dockerfile + cualquier sistema de packaging.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.29.0 (2026-05-16) — IA local (Ollama) integrada como modelo principal
 ────────────────────────────────────────────────────────────────────────────────
 

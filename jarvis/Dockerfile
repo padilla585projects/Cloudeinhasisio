@@ -8,8 +8,15 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install --production
 
+# Código principal
 COPY server.js ./
 COPY index.html ./
+
+# Módulos extraídos durante Bloque A (v3.25.0+) — IMPRESCINDIBLE
+COPY utils/      ./utils/
+COPY tools/      ./tools/
+COPY nexus/      ./nexus/
+COPY background/ ./background/
 
 COPY run.sh /run.sh
 RUN chmod +x /run.sh
