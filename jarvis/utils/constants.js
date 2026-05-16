@@ -8,11 +8,6 @@ const SERPER_API_KEY    = process.env.SERPER_API_KEY    || '';
 const MODEL             = 'gpt-4.1-mini';             // Consultas complejas (OpenAI)
 const BG_MODEL          = 'gpt-4o-mini';             // Background + consultas simples (OpenAI)
 const CLAUDE_MODEL      = 'claude-sonnet-4-5';        // Razonamiento profundo (Anthropic)
-const OLLAMA_URL        = process.env.OLLAMA_URL   || 'http://localhost:11434';
-const OLLAMA_MODEL      = process.env.OLLAMA_MODEL || 'qwen2.5:7b-instruct';   // Modelo principal local
-const OLLAMA_BG_MODEL   = process.env.OLLAMA_BG_MODEL || 'qwen2.5:3b-instruct'; // Modelo background local (más pequeño)
-const LOCAL_FIRST       = (process.env.LOCAL_FIRST || 'false').toLowerCase() === 'true';  // Local como principal
-const PRIVACY_MODE      = (process.env.PRIVACY_MODE || 'false').toLowerCase() === 'true'; // Todo local, nada de cloud
 const HA_TOKEN          = process.env.HA_TOKEN;
 const HA_URL            = process.env.HA_URL  || 'http://supervisor/core';
 const LANGUAGE          = process.env.LANGUAGE || 'es';
@@ -47,7 +42,6 @@ const PENDING_TASK_FILE      = path.join(DATA_DIR, 'pending_task.json');
 module.exports = {
   ANTHROPIC_API_KEY, OPENAI_API_KEY, SERPER_API_KEY,
   MODEL, BG_MODEL, CLAUDE_MODEL,
-  OLLAMA_URL, OLLAMA_MODEL, OLLAMA_BG_MODEL, LOCAL_FIRST, PRIVACY_MODE,
   HA_TOKEN, HA_URL, LANGUAGE,
   PROXMOX_URL, PROXMOX_TOKEN, PROXMOX_NODE,
   GITHUB_TOKEN, GITHUB_REPO, GITHUB_BRANCH,

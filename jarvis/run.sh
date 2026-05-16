@@ -35,28 +35,6 @@ if bashio::config.has_value 'github_token'; then
   export GITHUB_TOKEN=$(bashio::config 'github_token')
 fi
 
-# ── Ollama (IA local, opcional) ──────────────────────────────────────────────
-export OLLAMA_URL="http://localhost:11434"
-export OLLAMA_MODEL="qwen2.5:7b-instruct"
-export OLLAMA_BG_MODEL="qwen2.5:3b-instruct"
-export LOCAL_FIRST="false"
-export PRIVACY_MODE="false"
-
-if bashio::config.has_value 'ollama_url'; then
-  export OLLAMA_URL=$(bashio::config 'ollama_url')
-fi
-if bashio::config.has_value 'ollama_model'; then
-  export OLLAMA_MODEL=$(bashio::config 'ollama_model')
-fi
-if bashio::config.has_value 'ollama_bg_model'; then
-  export OLLAMA_BG_MODEL=$(bashio::config 'ollama_bg_model')
-fi
-if bashio::config.has_value 'local_first'; then
-  export LOCAL_FIRST=$(bashio::config 'local_first')
-fi
-if bashio::config.has_value 'privacy_mode'; then
-  export PRIVACY_MODE=$(bashio::config 'privacy_mode')
-fi
 
 # ── GetawayAgentes (red de agentes IA, opt-in) ───────────────────────────────
 export AGENT_NET_ENABLED="true"
@@ -72,16 +50,9 @@ if bashio::config.has_value 'agent_net_invite'; then
   export AGENT_NET_INVITE=$(bashio::config 'agent_net_invite')
 fi
 
-bashio::log.info "Iniciando Jarvis AI Agent v3.30.6..."
+bashio::log.info "Iniciando Jarvis AI Agent v3.30.7..."
 bashio::log.info "Modelos cloud: gpt-4o-mini (bg) + gpt-4.1-mini (principal) + claude-sonnet-4-5 (dev)"
-bashio::log.info "IA local (Ollama): ${OLLAMA_URL} | modelo: ${OLLAMA_MODEL}"
-if [ "${PRIVACY_MODE}" = "true" ]; then
-  bashio::log.info "🔒 MODO PRIVACIDAD: todo el tráfico va a Ollama, nada de cloud"
-elif [ "${LOCAL_FIRST}" = "true" ]; then
-  bashio::log.info "🏠 LOCAL_FIRST: Ollama primero, cloud como fallback"
-else
-  bashio::log.info "☁️ Cloud primero, Ollama como fallback offline"
-fi
+bashio::log.info "☁️ Modelos: gpt-4.1-mini (principal) + gpt-4o-mini (rápido) + claude-sonnet-4-5 (dev)"
 if [ -n "${SERPER_API_KEY:-}" ]; then
   bashio::log.info "Busqueda: Google (Serper)"
 else

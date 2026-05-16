@@ -7,7 +7,7 @@ WORKDIR /app
 
 COPY package.json ./
 # ARG VERSION fuerza rebuild del layer npm en cada versión nueva (rompe cache de Docker)
-ARG VERSION=3.30.6
+ARG VERSION=3.30.7
 RUN echo "Instalando deps para Jarvis v${VERSION}..." && npm install --production
 
 # Código principal

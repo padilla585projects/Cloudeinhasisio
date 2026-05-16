@@ -12,7 +12,7 @@ const C       = require('./utils/constants');
 const { loadJSON, saveJSON, autoBackup } = require('./utils/persistence');
 const { haGet, haPost }      = require('./utils/ha-api');
 const { scanInstallation }   = require('./utils/scan');
-const { callLLM, callOpenAI, callWhisper, callImageEdit, checkOllamaHealth, sanitizeMessagesForOpenAI, stripImagesFromHistory } = require('./utils/llm');
+const { callLLM, callOpenAI, callWhisper, callImageEdit, sanitizeMessagesForOpenAI, stripImagesFromHistory } = require('./utils/llm');
 const { updateLiveContext, buildDynamicContext } = require('./utils/context');
 const { tools, openAITools } = require('./tools/definitions');
 const { executeTool }        = require('./tools/executor');
@@ -992,20 +992,6 @@ app.get('/api/agent_network/status', (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Ollama status — comprueba si la IA local está reachable ─────────────────
-app.get('/api/ollama/status', async (req, res) => {
-  const health = await checkOllamaHealth();
-  res.json({
-    url: C.OLLAMA_URL,
-    model: C.OLLAMA_MODEL,
-    bg_model: C.OLLAMA_BG_MODEL,
-    local_first: C.LOCAL_FIRST,
-    privacy_mode: C.PRIVACY_MODE,
-    reachable: health.ok,
-    models_installed: health.models || [],
-    error: health.error || null
-  });
-});
 
 // Modo ahorro
 app.post('/api/saver', (req, res) => {
