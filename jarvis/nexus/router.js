@@ -6,6 +6,7 @@ const state = require('../utils/state');
 const { EXPERTS } = require('./experts');
 const { nexusGetScore } = require('./health');
 const { NEXUS_MODULES } = require('./modules');
+const { assembleSystemPrompt, getScopedTools, layerStats } = require('./layers');
 
 // ── Helpers de expertos ───────────────────────────────────────────────────────
 
@@ -85,17 +86,38 @@ async function nexusRoute(message) {
   return { expert: 'ha_control', source: 'fallback', confidence: 0.6 };
 }
 
-// ── NEXUS Ensamblador de prompts ──────────────────────────────────────────────
+// ── NEXUS Ensamblador de prompts (usa layers L0-L4) ───────────────────────────
 
 function nexusAssemblePrompt(expertName) {
-  const all = nexusGetAllExperts();
-  const expert = all[expertName] || EXPERTS.ha_control;
-  const parts = expert.modules.map(m => nexusGetModule(m)).filter(Boolean);
-  let prompt = parts.join('\n\n') + '\n\n';
-  prompt += `HERRAMIENTAS (${tools.length} disponibles):\n`;
-  prompt += tools.map(t => '- ' + t.name + ': ' + t.description.split('.')[0]).join('\n') + '\n';
-  if (state.dynamicExperts[expertName]) prompt += `\n[Experto dinámico: ${expert.label}]\n`;
-  return prompt;
+  return assembleSystemPrompt(expertName);
 }
 
-module.exports = { nexusRoute, nexusAssemblePrompt, nexusGetAllExperts, nexusGetModule, nexusPickExpert };
+// ── Tool scoping ──────────────────────────────────────────────────────────────
+
+/**
+ * Devuelve las tools en formato OpenAI filtradas para el experto.
+ * Si el experto no define tools[], devuelve todas.
+ */
+function nexusGetToolsForExpert(expertName) {
+  const allOpenAITools = state.openAITools || [];
+  return getScopedTools(expertName, allOpenAITools);
+}
+
+/**
+ * Log stats de layers para debugging.
+ */
+function nexusLogLayerStats(expertName) {
+  const stats = layerStats(expertName);
+  console.log(`[nexus-layers] expert=${stats.expert} model=${stats.model} modules=${stats.modules} tools=${stats.tools}/${stats.toolsTotal} (↓${stats.reduction})`);
+  return stats;
+}
+
+module.exports = {
+  nexusRoute,
+  nexusAssemblePrompt,
+  nexusGetAllExperts,
+  nexusGetModule,
+  nexusPickExpert,
+  nexusGetToolsForExpert,
+  nexusLogLayerStats
+};
