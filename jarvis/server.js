@@ -24,6 +24,7 @@ const { captureStateSnapshot, analyzePatterns } = require('./background/patterns
 const { knowledgeExpansionLoop, distillLearnings } = require('./background/knowledge');
 const { checkSelfUpdate, checkSystemUpdates } = require('./background/updates');
 const { checkEmergencies, bootRecoverScripts, bootSelfCheck, bootLearnHA, bootLearnOwnProject } = require('./background/selfcheck');
+const agentNetwork = require('./background/agent_network');
 
 // ── Inyectar en state lo que los módulos necesitan acceder ───────────────────
 state.openAITools = openAITools;
@@ -970,6 +971,12 @@ app.post('/api/transcribe', async (req, res) => {
   }
 });
 
+// ── GetawayAgentes — estado de la red de agentes ────────────────────────────
+app.get('/api/agent_network/status', (req, res) => {
+  try { res.json(agentNetwork.statusInfo()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Ollama status — comprueba si la IA local está reachable ─────────────────
 app.get('/api/ollama/status', async (req, res) => {
   const health = await checkOllamaHealth();
@@ -1170,6 +1177,9 @@ app.listen(PORT, '0.0.0.0', () => {
   setTimeout(bootLearnOwnProject, 20_000);
 
   setInterval(() => { checkEmergencies(); nexusWatchers(); }, 30_000);
+
+  // ── GetawayAgentes — red de agentes (opt-in via AGENT_NET_ENABLED=true) ──
+  setTimeout(() => agentNetwork.start().catch(e => console.log('[agent-net] start error:', e.message)), 8_000);
 
   // Revisión semanal de dashboard (lunes 9:00 AM)
   scheduleTask('weekly-dashboard-review', '0 9 * * 1', async () => {
