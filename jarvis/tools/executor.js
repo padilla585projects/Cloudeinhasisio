@@ -3229,6 +3229,92 @@ ${dots}`;
         }
       }
 
+      // ─── web_search_native (GPT-4.1 con web search integrado) ──────────────
+      case 'web_search_native': {
+        const { query, context: ctx } = input;
+        if (!C.OPENAI_API_KEY) return { error: 'OPENAI_API_KEY no configurada' };
+        if (!query) return { error: 'query requerido' };
+
+        try {
+          const userMsg = ctx
+            ? `Contexto: ${ctx}\n\nPregunta: ${query}\n\nBusca en internet, lee las fuentes y responde con datos reales y citaciones.`
+            : `${query}\n\nBusca en internet, lee las fuentes y responde con datos reales y citaciones.`;
+
+          // OpenAI Responses API soporta tool 'web_search_preview' nativo en gpt-4.1*
+          const res = await fetch('https://api.openai.com/v1/responses', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${C.OPENAI_API_KEY}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              model: 'gpt-4.1',
+              input: userMsg,
+              tools: [{ type: 'web_search_preview' }],
+              max_output_tokens: 2048
+            })
+          });
+
+          if (!res.ok) {
+            const errText = await res.text();
+            // Fallback al endpoint chat/completions con tool si /responses no está disponible
+            const fbRes = await fetch('https://api.openai.com/v1/chat/completions', {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${C.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: 'gpt-4.1',
+                messages: [{ role: 'user', content: userMsg }],
+                tools: [{ type: 'web_search_preview' }],
+                max_tokens: 2048
+              })
+            });
+            if (!fbRes.ok) {
+              return { error: `web_search_native error: ${errText.slice(0,300)}`, hint: 'Si el modelo o el tool no están disponibles para tu cuenta, usa web_search (DuckDuckGo) como alternativa.' };
+            }
+            const fbData = await fbRes.json();
+            const fbText = fbData.choices?.[0]?.message?.content || '';
+            return { success: true, answer: fbText, source: 'gpt-4.1 web_search (chat)', usage: fbData.usage };
+          }
+
+          const data = await res.json();
+
+          // Extraer texto sintetizado y citaciones de la respuesta /responses
+          let answer = '';
+          const citations = [];
+          const outputs = data.output || data.outputs || [];
+          for (const item of outputs) {
+            if (item.type === 'message' && Array.isArray(item.content)) {
+              for (const c of item.content) {
+                if (c.type === 'output_text' || c.type === 'text') {
+                  answer += c.text || '';
+                  if (Array.isArray(c.annotations)) {
+                    for (const a of c.annotations) {
+                      if (a.type === 'url_citation' || a.url) {
+                        citations.push({ url: a.url, title: a.title || '' });
+                      }
+                    }
+                  }
+                }
+              }
+            } else if (item.type === 'web_search_call') {
+              // ignore — solo es el call interno
+            }
+          }
+          // Fallback: si la respuesta tiene output_text directo
+          if (!answer && data.output_text) answer = data.output_text;
+
+          return {
+            success: true,
+            answer: answer || 'Sin respuesta',
+            citations,
+            usage: data.usage || {},
+            source: 'gpt-4.1 web_search_preview'
+          };
+        } catch (e) {
+          return { error: 'web_search_native falló: ' + e.message };
+        }
+      }
+
       // ─── image_edit (DALL-E inpainting) ─────────────────────────────────────
       case 'image_edit': {
         const { image_path, prompt, mask_path, size = '1024x1024' } = input;

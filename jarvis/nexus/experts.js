@@ -33,7 +33,7 @@ const EXPERTS = {
     modules: ['base', 'perseverance', 'ha_control', 'ha_internals', 'ha_config_engineering', 'diagnostico', 'optimization', 'filesystem', 'inamovible'],
     label: 'Diagnóstico',
     tools: ['get_entities', 'search_entities', 'get_entity_state', 'get_history',
-            'get_system_logs', 'get_error_log', 'check_config', 'web_search', 'fetch_url',
+            'get_system_logs', 'get_error_log', 'check_config', 'web_search', 'web_search_native', 'fetch_url',
             'read_file', 'learn', 'ha_supervisor', 'network', 'get_notifications',
             'get_repairs', 'scan_installation', 'ha_knowledge', 'rollback', 'validate_yaml']
   },
@@ -74,7 +74,7 @@ const EXPERTS = {
     label: 'Desarrollo',
     tools: ['read_file', 'write_file', 'append_file', 'list_directory', 'patch_file',
             'rollback', 'exec_command', 'update_self', 'create_addon', 'github_push',
-            'analyze_github_repos', 'web_search', 'fetch_url', 'ha_supervisor',
+            'analyze_github_repos', 'web_search', 'web_search_native', 'fetch_url', 'ha_supervisor',
             'validate_yaml', 'update_ui', 'nexus_manage', 'create_custom_tool',
             'run_custom_tool', 'house_3d_map', 'learn', 'knowledge_db',
             'dev_workspace']
@@ -123,7 +123,7 @@ const EXPERTS = {
     label: 'Aprendizaje',
     tools: ['get_memory', 'save_memory', 'delete_memory', 'learn', 'knowledge_db',
             'analyze_patterns', 'proactive_thought', 'get_entities', 'web_search',
-            'get_history', 'scan_installation']
+            'web_search_native', 'get_history', 'scan_installation']
   }
 };
 

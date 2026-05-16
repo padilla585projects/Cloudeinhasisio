@@ -3,6 +3,36 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.28.0 (2026-05-16) — Bloque C completo: Whisper UI + Onyx default + web_search_native
+────────────────────────────────────────────────────────────────────────────────
+
+FEATURE: Frontend ahora usa Whisper (no webkitSpeechRecognition)
+  initSTT() reescrito como wrapper sobre MediaRecorder + /api/transcribe
+  Mantiene la misma API (.start/.stop + onresult/onerror/onend) → cero cambios
+  en el resto del código (toggleVoice, vmStartListen, voice mode)
+  VAD integrado: auto-stop tras 1.5s de silencio, timeout máximo 30s
+  Codec preferido: audio/webm;codecs=opus → fallback webm → mp4
+  Soporta Chrome, Edge, Firefox y Safari modernos (cualquiera con MediaRecorder)
+  Ventaja sobre webkitSpeechRecognition:
+    - Mucho mejor precisión en español
+    - Reconoce términos técnicos (entity_id, dominios HA)
+    - No depende del motor del navegador
+
+FEATURE: Voz por defecto de Jarvis ahora es 'openai:onyx'
+  index.html localStorage default: 'openai:onyx' (era 'es-ES-AlvaroNeural')
+  Sección "OpenAI TTS — Premium" ahora aparece PRIMERA en el picker
+  Edge TTS queda como fallback gratuito
+
+FEATURE: Tool 'web_search_native' (#66) — GPT-4.1 con búsqueda web nativa
+  Usa el endpoint /v1/responses con tools: [{type: 'web_search_preview'}]
+  Fallback automático a /v1/chat/completions si /responses no disponible
+  Devuelve respuesta sintetizada + array de citaciones {url, title}
+  Mucho más preciso que web_search (DuckDuckGo) para preguntas actuales
+  Asignado a expertos: diagnostico, dev, aprendizaje
+
+CHORE: Total tools: 65 → 66
+
+────────────────────────────────────────────────────────────────────────────────
 v3.27.0 (2026-05-16) — Bloque C: Whisper STT + image editing + dev_workspace
 ────────────────────────────────────────────────────────────────────────────────
 

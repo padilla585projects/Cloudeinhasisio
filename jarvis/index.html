@@ -1270,7 +1270,7 @@
   let currentAudio = null;
   let ttsAvailable = null;
   let edgeVoices = [];
-  let currentVoice = localStorage.getItem('jarvis_tts_voice') || 'es-ES-AlvaroNeural';
+  let currentVoice = localStorage.getItem('jarvis_tts_voice') || 'openai:onyx';
 
   async function checkTTSAvailable() {
     try {
@@ -1318,8 +1318,8 @@
       return '<div style="padding:6px 12px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;opacity:0.5;color:var(--text);font-family:\'DM Sans\',sans-serif;border-bottom:1px solid rgba(255,255,255,0.06);">' + label + '</div>';
     }
     let html = '';
+    if (openaiList.length) html += sectionHeader('✨ OpenAI TTS — Premium (default Jarvis)') + openaiList.map(renderVoice).join('');
     if (edgeList.length) html += sectionHeader('🎙️ Edge TTS — Gratis') + edgeList.map(renderVoice).join('');
-    if (openaiList.length) html += sectionHeader('✨ OpenAI TTS — Premium') + openaiList.map(renderVoice).join('');
     list.innerHTML = html;
   }
 
@@ -1430,57 +1430,157 @@
     }
   }
 
-  // STT — reconocimiento de voz
+  // STT — Whisper (OpenAI) via MediaRecorder + /api/transcribe
+  // El objeto devuelto imita la interfaz de SpeechRecognition (start/stop + callbacks)
+  // para que el resto del código no cambie.
   function initSTT() {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) return null;
-    const r = new SpeechRecognition();
-    r.lang = 'es-ES';
-    r.continuous = false;
-    r.interimResults = true;
-    r.maxAlternatives = 1;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return null;
 
-    r.onstart = () => {
+    const obj = {
+      _stream: null,
+      _recorder: null,
+      _chunks: [],
+      onstart: null, onresult: null, onerror: null, onend: null,
+      _finished: false,
+      _silenceTimer: null,
+      _audioCtx: null,
+      _analyser: null,
+      _vad: null,
+
+      async start() {
+        try {
+          this._stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        } catch (e) {
+          if (this.onerror) this.onerror({ error: 'mic-denied', message: e.message });
+          return;
+        }
+
+        // Preferir webm/opus que Whisper acepta nativamente
+        const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus'
+                   : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm'
+                   : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '';
+
+        this._chunks = [];
+        this._recorder = new MediaRecorder(this._stream, mime ? { mimeType: mime } : undefined);
+        this._recorder.ondataavailable = (ev) => { if (ev.data && ev.data.size > 0) this._chunks.push(ev.data); };
+        this._recorder.onstop = async () => {
+          // Cleanup VAD
+          if (this._audioCtx) { try { await this._audioCtx.close(); } catch{} this._audioCtx = null; }
+          if (this._silenceTimer) { clearInterval(this._silenceTimer); this._silenceTimer = null; }
+          if (this._stream) { this._stream.getTracks().forEach(t => t.stop()); this._stream = null; }
+
+          if (this._chunks.length === 0) {
+            if (this.onend) this.onend();
+            return;
+          }
+          const blob = new Blob(this._chunks, { type: mime || 'audio/webm' });
+          // Base64 encode
+          const b64 = await new Promise((resolve) => {
+            const fr = new FileReader();
+            fr.onload = () => resolve(fr.result);
+            fr.readAsDataURL(blob);
+          });
+
+          try {
+            const res = await fetch('api/transcribe', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ audio: b64, language: 'es' })
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              if (this.onerror) this.onerror({ error: err.error || 'transcribe-failed' });
+            } else {
+              const data = await res.json();
+              if (this.onresult) {
+                this.onresult({
+                  resultIndex: 0,
+                  results: [[{ transcript: data.text || '' }].concat([], { isFinal: true })]
+                });
+              }
+            }
+          } catch (e) {
+            if (this.onerror) this.onerror({ error: 'network', message: e.message });
+          }
+          if (this.onend) this.onend();
+        };
+
+        this._recorder.start(250);
+        if (this.onstart) this.onstart();
+
+        // VAD simple: parar cuando hay 1.5s de silencio
+        try {
+          this._audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          const src = this._audioCtx.createMediaStreamSource(this._stream);
+          this._analyser = this._audioCtx.createAnalyser();
+          this._analyser.fftSize = 512;
+          src.connect(this._analyser);
+          const buf = new Uint8Array(this._analyser.frequencyBinCount);
+          let lastSound = Date.now();
+          let started = false;
+          this._silenceTimer = setInterval(() => {
+            this._analyser.getByteFrequencyData(buf);
+            const avg = buf.reduce((a,b) => a+b, 0) / buf.length;
+            if (avg > 12) { lastSound = Date.now(); started = true; }
+            // Auto-stop tras 1.5s de silencio, solo si ya empezó a hablar y han pasado >0.8s
+            if (started && Date.now() - lastSound > 1500 && this._recorder && this._recorder.state === 'recording') {
+              this.stop();
+            }
+            // Timeout máximo 30s
+            if (this._recorder && this._recorder.state === 'recording' && Date.now() - this._startTime > 30000) {
+              this.stop();
+            }
+          }, 100);
+          this._startTime = Date.now();
+        } catch (e) {
+          // VAD no crítico — sin él el usuario tiene que pulsar stop
+        }
+      },
+
+      stop() {
+        if (this._recorder && this._recorder.state !== 'inactive') {
+          try { this._recorder.stop(); } catch {}
+        }
+      }
+    };
+
+    // Hooks por defecto (los onresult/onerror/onend reales se asignan abajo)
+    obj.onstart = () => {
       isListening = true;
       stopSpeaking();
       updateMicBtn(true);
       const input = document.getElementById('input');
-      input.placeholder = '🎤 Escuchando...';
+      if (input) input.placeholder = '🎤 Escuchando (Whisper)...';
       if (voiceModeActive) {
         const vmBtn = document.getElementById('vm-mic-btn');
         if (vmBtn) { vmBtn.classList.add('listening'); vmBtn.textContent = '⏹ Escuchando...'; }
       }
     };
 
-    r.onresult = (e) => {
+    obj.onresult = (e) => {
       const input = document.getElementById('input');
-      let interim = '', final = '';
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) final += e.results[i][0].transcript;
-        else interim += e.results[i][0].transcript;
-      }
-      input.value = (final || interim).trim();
+      const transcript = (e.results && e.results[0] && e.results[0][0] && e.results[0][0].transcript) || '';
+      if (!input) return;
+      input.value = transcript.trim();
       autoResize(input);
       if (voiceModeActive) {
         const vmTrans = document.getElementById('vm-transcript');
-        if (vmTrans) vmTrans.textContent = (final || interim).trim();
+        if (vmTrans) vmTrans.textContent = transcript.trim();
       }
-      if (final) {
-        setTimeout(() => {
-          if (input.value.trim()) sendMessage();
-        }, 300);
+      if (input.value.trim()) {
+        setTimeout(() => sendMessage(), 200);
       }
     };
 
-    r.onerror = (e) => {
+    obj.onerror = (e) => {
       if (e.error !== 'no-speech' && e.error !== 'aborted') {
-        console.error('STT error:', e.error);
+        console.error('Whisper STT error:', e.error, e.message || '');
       }
       stopListening();
     };
 
-    r.onend = () => stopListening();
-    return r;
+    obj.onend = () => stopListening();
+    return obj;
   }
 
   function toggleVoice() {
@@ -1489,9 +1589,8 @@
       stopListening();
       return;
     }
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      addMessage('ai', '⚠️ Tu navegador no soporta reconocimiento de voz. Usa Chrome o Edge.');
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      addMessage('ai', '⚠️ Tu navegador no soporta acceso al micrófono. Usa Chrome, Edge o Firefox modernos.');
       return;
     }
     recognition = initSTT();
@@ -2247,8 +2346,7 @@
 
   function vmStartListen() {
     if (!vmAutoListen || isListening) return;
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
     recognition = initSTT();
     if (recognition) recognition.start();
   }

@@ -794,6 +794,20 @@ const tools = [
     }
   },
 
+  // ─── Búsqueda web nativa de GPT-4.1 ───
+  {
+    name: 'web_search_native',
+    description: 'Búsqueda web NATIVA de GPT-4.1 (no DuckDuckGo). Hace que GPT busque en internet con su tool web_search_preview integrado, leyendo páginas en tiempo real con citaciones. Mucho mejor que web_search para preguntas que requieren información actual, comparativas, productos, precios, noticias o documentación reciente. Devuelve respuesta sintetizada con fuentes. Más caro que web_search pero mucho más preciso.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Pregunta o tema a investigar. Sé específico — GPT navega y sintetiza.' },
+        context: { type: 'string', description: 'Contexto extra: por qué lo buscas, qué resultado esperas. Mejora la calidad.' }
+      },
+      required: ['query']
+    }
+  },
+
   // ─── Edición de imágenes (DALL-E edit + vision) ───
   {
     name: 'image_edit',
