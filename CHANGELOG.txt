@@ -3,6 +3,75 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.31.0 (2026-05-16) — FEAT: Núcleos DeepSeek V3 + R1 en NEXUS
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVO: Dos núcleos de IA adicionales integrados en NEXUS.
+
+Núcleo 'analisis' (deepseek-chat / V3):
+  - Especialidad: investigación web, análisis, comparativas, síntesis, informes
+  - Soporta function calling → puede llamar tools (web_search, knowledge_db, etc.)
+  - Router: activa con "investiga", "analiza", "compara", "resume", "deepseek"
+  - Tools: read-only + web (no modifica HA)
+
+Núcleo 'razonamiento' (deepseek-reasoner / R1):
+  - Especialidad: análisis profundo, diagnóstico complejo, chain-of-thought
+  - R1 NO soporta function calling → tools=[] siempre, razona con contexto
+  - Router: activa con "razona", "análisis profundo", "r1", "explica en detalle"
+  - maxTokens: 16000 para respuestas largas de razonamiento
+  - reasoning_content (chain of thought) se loguea en consola para debug
+
+Técnico:
+  - callDeepSeek() en llm.js: maneja V3 y R1, detecta isReasoner por model name
+  - callLLM() actualizado: deepseek-* → callDeepSeek (junto a claude-* y gpt-*)
+  - config.yaml: nuevo campo deepseek_api_key (opcional)
+  - run.sh: exporta DEEPSEEK_API_KEY, log de arranque muestra núcleos activos
+  - router.js: regex nuevas para analisis y razonamiento
+
+────────────────────────────────────────────────────────────────────────────────
+v3.30.7 (2026-05-16) — REFACTOR: Eliminar Ollama
+────────────────────────────────────────────────────────────────────────────────
+
+Ollama eliminado completamente hasta que el usuario tenga hardware disponible.
+
+Eliminado:
+  - callOllama(), checkOllamaHealth(), buildModelChain()
+  - LOCAL_FIRST, PRIVACY_MODE (constants + run.sh + config.yaml)
+  - Experto 'rapido' ya no usa LOCAL — usa BG_MODEL (gpt-4o-mini)
+  - Endpoint /api/ollama/status
+  - Opciones ollama_url, ollama_model, ollama_bg_model, local_first, privacy_mode
+
+callLLM simplificado: claude-* → Anthropic, resto → OpenAI.
+Se reintegrará cuando el usuario adquiera hardware (HP EliteDesk ~150€).
+
+────────────────────────────────────────────────────────────────────────────────
+v3.30.6 (2026-05-16) — FIX: Error claro cuando falta OpenAI API key
+────────────────────────────────────────────────────────────────────────────────
+
+BUG: Sin API key, callOpenAI hacía la petición igualmente → error de red
+retryable → fallback a Ollama → Ollama no disponible → error técnico confuso.
+
+FIX:
+  - callOpenAI detecta OPENAI_API_KEY vacía al inicio, lanza error con
+    e.noApiKey=true y mensaje legible: "⚠️ OpenAI API Key no configurada..."
+  - callLLM: if (e.noApiKey) throw e → no hace fallback, propaga directo
+  - Usuario ve mensaje claro en lugar del error de Ollama
+
+────────────────────────────────────────────────────────────────────────────────
+v3.30.5 (2026-05-16) — FIX: Bust de caché Docker + npm install en run.sh
+────────────────────────────────────────────────────────────────────────────────
+
+BUG: HA reutilizaba el layer Docker de npm install aunque package.json
+hubiera cambiado (node-cron añadido en v3.30.4). Resultado: node-cron
+seguía sin instalarse en el contenedor aunque el código lo requiriera.
+
+FIX doble:
+  1. Dockerfile: ARG VERSION=X.Y.Z incluido en la línea RUN npm install.
+     Al cambiar la versión, Docker no puede cachear ese layer.
+  2. run.sh: antes de lanzar node server.js, comprueba si node-cron existe.
+     Si no, ejecuta npm install --production. Safety net para casos extremos.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.30.4 (2026-05-16) — FIX: node-cron no declarado + scheduleTask resiliente
 ────────────────────────────────────────────────────────────────────────────────
 
