@@ -3,6 +3,27 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.30.1 (2026-05-16) — GetawayAgentes ACTIVADA por defecto
+────────────────────────────────────────────────────────────────────────────────
+
+CHANGE: agent_net_enabled ahora es 'true' por defecto.
+Motivo: Adrián es el admin de la red, sin problemas de seguridad.
+Las garantías de privacidad (no datos HA, no tools en tareas remotas)
+siguen vigentes — es la conexión la que pasa a ser automática.
+
+Cambios:
+  config.yaml:  agent_net_enabled: false → true
+  run.sh:       export AGENT_NET_ENABLED="false" → "true"
+  agent_network.js: default si env no seteado: 'false' → 'true'
+
+Tras actualizar a v3.30.1, Jarvis hará el join automáticamente en su
+primer arranque y se conectará vía WebSocket. El token persiste en
+/data/agent_network.json — reinicios no fuerzan re-join.
+
+Si quisieras desactivarlo puntualmente, poner en config:
+  agent_net_enabled: false
+
+────────────────────────────────────────────────────────────────────────────────
 v3.30.0 (2026-05-16) — GetawayAgentes: red de agentes IA (knowledge sharing)
 ────────────────────────────────────────────────────────────────────────────────
 
