@@ -46,7 +46,8 @@ const EXPERTS = {
             'get_dashboards', 'get_dashboard_config', 'update_dashboard', 'review_dashboard',
             'get_installed_frontend', 'search_hacs_resources', 'install_hacs_resource',
             'read_file', 'write_file', 'append_file', 'patch_file', 'rollback',
-            'validate_yaml', 'list_directory', 'save_memory', 'learn', 'ha_knowledge']
+            'validate_yaml', 'list_directory', 'save_memory', 'learn', 'ha_knowledge',
+            'dev_workspace']
   },
 
   archivo: {

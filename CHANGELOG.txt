@@ -3,6 +3,42 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.27.0 (2026-05-16) — Bloque C: Whisper STT + image editing + dev_workspace
+────────────────────────────────────────────────────────────────────────────────
+
+FEATURE: Endpoint /api/transcribe — STT con OpenAI Whisper
+  Acepta JSON { audio: 'data:audio/webm;base64,...', language?: 'es' }
+  Devuelve { text, language }
+  Detecta extensión por MIME (webm, mp3, wav, mp4, m4a, ogg)
+  Listo para que el frontend conecte MediaRecorder → /api/transcribe
+
+FEATURE: callWhisper() en utils/llm.js
+  Wrapper para POST /v1/audio/transcriptions
+  Multipart con form-data, model=whisper-1
+  Soporta language hint o auto-detect
+
+FEATURE: callImageEdit() en utils/llm.js
+  Wrapper para POST /v1/images/edits (DALL-E 2 inpainting)
+  Acepta imagen + máscara opcional + prompt
+  Devuelve base64 listo para guardar en /share/jarvis/images/
+
+FEATURE: Tool 'image_edit' (#64) — DALL-E inpainting
+  Edita una imagen existente con prompt + máscara opcional
+  Guarda resultado en /share/jarvis/images/edit_<ts>.png
+  Asignado al experto multimedia
+
+FEATURE: Tool 'dev_workspace' (#65) — Sandbox de prototipado
+  Workspace privado en /data/workspace/<id>/ para iterar sin tocar /config
+  Acciones: create, write, read, list, exec, test, apply, discard
+  Whitelist de comandos: node, npm, python, pytest, bash, sh, jq, yamllint...
+  Apply hace auto-backup del destino antes de promover el archivo
+  Path traversal bloqueado
+  Asignado a expertos: dev, ha_control, automatizacion
+
+CHORE: package.json — añadidas deps form-data y multer
+CHORE: Total tools: 63 → 65
+
+────────────────────────────────────────────────────────────────────────────────
 v3.26.0 (2026-05-16) — Bloque B: NEXUS L0-L4 + dual-model + tool scoping
 ────────────────────────────────────────────────────────────────────────────────
 
