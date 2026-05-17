@@ -29,15 +29,15 @@ if bashio::config.has_value 'proxmox_url'; then
   export PROXMOX_URL="$(bashio::config 'proxmox_url')"
 fi
 if bashio::config.has_value 'proxmox_token'; then
-  export PROXMOX_TOKEN=$(bashio::config 'proxmox_token')
+  export PROXMOX_TOKEN="$(bashio::config 'proxmox_token')"
 fi
 if bashio::config.has_value 'proxmox_node'; then
-  export PROXMOX_NODE=$(bashio::config 'proxmox_node')
+  export PROXMOX_NODE="$(bashio::config 'proxmox_node')"
 fi
 
 export GITHUB_TOKEN=""
 if bashio::config.has_value 'github_token'; then
-  export GITHUB_TOKEN=$(bashio::config 'github_token')
+  export GITHUB_TOKEN="$(bashio::config 'github_token')"
 fi
 
 
@@ -46,16 +46,16 @@ export AGENT_NET_ENABLED="true"
 export AGENT_NET_URL="https://getaway-gateway.alejandra-app.workers.dev"
 export AGENT_NET_INVITE="getaway2026"
 if bashio::config.has_value 'agent_net_enabled'; then
-  export AGENT_NET_ENABLED=$(bashio::config 'agent_net_enabled')
+  export AGENT_NET_ENABLED="$(bashio::config 'agent_net_enabled')"
 fi
 if bashio::config.has_value 'agent_net_url'; then
-  export AGENT_NET_URL=$(bashio::config 'agent_net_url')
+  export AGENT_NET_URL="$(bashio::config 'agent_net_url')"
 fi
 if bashio::config.has_value 'agent_net_invite'; then
-  export AGENT_NET_INVITE=$(bashio::config 'agent_net_invite')
+  export AGENT_NET_INVITE="$(bashio::config 'agent_net_invite')"
 fi
 
-bashio::log.info "Iniciando Jarvis AI Agent v3.31.4..."
+bashio::log.info "Iniciando Jarvis AI Agent v3.32.0..."
 bashio::log.info "Modelos cloud: gpt-4o-mini (bg) + gpt-4.1-mini (principal) + claude-sonnet-4-5 (dev)"
 bashio::log.info "☁️ Núcleos activos:"
 bashio::log.info "  · OpenAI: gpt-4.1-mini (principal) + gpt-4o-mini (rápido)"

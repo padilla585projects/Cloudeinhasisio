@@ -125,16 +125,18 @@ async function handleRemoteTask(task) {
   const userMessage = title ? `${title}\n\n${description || ''}` : (description || '');
 
   try {
-    // Sin tools — solo conocimiento puro. Si quisiéramos web search aquí,
-    // habría que pasar un subset de openAITools con web_search/web_search_native/ha_knowledge.
-    // Por ahora respuesta de texto puro, máximo respetuoso con la privacidad.
-    const result = await callLLM(
-      C.MODEL,             // gpt-4.1-mini por defecto
+    // Timeout de 30s para tareas remotas — evita bloquear la red de agentes
+    const taskTimeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Task timeout (30s)')), 30000)
+    );
+    const llmCall = callLLM(
+      C.MODEL,
       systemPrompt,
       [{ role: 'user', content: userMessage }],
-      [],                  // sin tools
+      [],
       2048
     );
+    const result = await Promise.race([llmCall, taskTimeout]);
 
     const summary = (result.text || '').trim() || 'Sin respuesta';
     console.log(`[agent-net] ✓ Tarea ${task_id} respondida (${summary.length} chars)`);
@@ -204,18 +206,23 @@ function connectWS() {
       }
 
       if (msg.type === 'task_assigned') {
+        if (!msg.task_id) { console.log('[agent-net] task_assigned sin task_id — ignorado'); return; }
         const result = await handleRemoteTask(msg);
-        ws.send(JSON.stringify({ type: 'task_result', task_id: msg.task_id, result }));
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'task_result', task_id: msg.task_id, result }));
+        }
         return;
       }
 
       if (msg.type === 'agent_message') {
         const reply = await handleAgentMessage(msg);
-        ws.send(JSON.stringify({
-          type: 'agent_message',
-          to: msg.from || 'admin',
-          content: reply
-        }));
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'agent_message',
+            to: msg.from || 'admin',
+            content: reply
+          }));
+        }
         return;
       }
 

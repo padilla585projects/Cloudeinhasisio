@@ -7,7 +7,7 @@ WORKDIR /app
 
 COPY package.json ./
 # ARG VERSION fuerza rebuild del layer npm en cada versión nueva (rompe cache de Docker)
-ARG VERSION=3.31.4
+ARG VERSION=3.32.0
 RUN echo "Instalando deps para Jarvis v${VERSION}..." && npm install --production
 
 # Código principal
@@ -22,5 +22,8 @@ COPY background/ ./background/
 
 COPY run.sh /run.sh
 RUN chmod +x /run.sh
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3000/api/health', function(r){process.exit(r.statusCode===200?0:1)}).on('error',function(){process.exit(1)})"
 
 CMD ["/run.sh"]

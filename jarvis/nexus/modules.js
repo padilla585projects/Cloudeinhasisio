@@ -388,7 +388,14 @@ AUTO-KNOWLEDGE (aprende y recuerda permanentemente):
 write_file('/data/self_knowledge.json', [{"title":"SECCIÓN","content":"texto"}])
 El formato se inyecta en el system prompt en cada conversación. Úsalo cuando aprendas algo importante de la instalación.
 
-SEGURIDAD: solo /config, /addons(ro), /share, /media(ro), /data. Bloqueado: /proc/, /sys/.`,
+SEGURIDAD: solo /config, /addons(ro), /share, /media(ro), /data. Bloqueado: /proc/, /sys/.
+
+REGLAS DE FILESYSTEM SEGURO:
+- Antes de escribir cualquier archivo de config de HA: leer primero, mostrar qué cambia, pedir confirmación
+- Los backups automáticos están en /data/backups/ — mencionarlos si algo sale mal
+- list_directory antes de asumir qué archivos existen
+- read_file antes de append_file o write_file — nunca escribir a ciegas
+- Si algo sale mal al modificar un archivo crítico: menciona el backup disponible inmediatamente`,
 
   web: `INTERNET Y CONOCIMIENTO EXTERNO:
 web_search: búsqueda en tiempo real. ha_knowledge: documentación oficial HA.
@@ -809,16 +816,6 @@ LECCIÓN APRENDIDA (incidente mayo 2026):
   que scripts.yaml existía → HA no pudo cargar scripts → todos desaparecieron del panel.
   REGLA PERMANENTE: verificar con list_directory que el archivo existe ANTES del include.`,
 
-  // NOTE: This second 'filesystem' key overrides the first one above (lines 4952-4961).
-  // In the original server.js, both keys exist; JavaScript uses the last one.
-  // The first 'filesystem' module (RUTAS CLAVE) is preserved above for completeness,
-  // but at runtime this second definition is the one that takes effect.
-  filesystem: `REGLAS DE FILESYSTEM SEGURO:
-- Antes de escribir cualquier archivo de config de HA: leer primero, mostrar qué cambia, pedir confirmación
-- Los backups automáticos están en /data/backups/ — mencionarlos si algo sale mal
-- list_directory antes de asumir qué archivos existen
-- read_file antes de append_file o write_file — nunca escribir a ciegas
-- Si algo sale mal al modificar un archivo crítico: menciona el backup disponible inmediatamente`
 };
 
 module.exports = { NEXUS_MODULES };

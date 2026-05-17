@@ -3,6 +3,44 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.32.0 (2026-05-17) — HARDENING: Seguridad, robustez y timeouts
+────────────────────────────────────────────────────────────────────────────────
+
+SEGURIDAD:
+  - read_file: path.resolve() antes de validar whitelist → previene path traversal (../../../etc/passwd)
+  - fetch_url: validación de protocolo URL → solo HTTP/HTTPS, bloquea file://, gopher://, etc.
+  - network→ping: validación de host con regex → previene command injection en exec()
+  - network→http_request: bloqueo de loopback (127.0.0.1, localhost) → previene SSRF interno
+  - exec_command: blocklist ampliada → añadidos "curl/wget | sh", "chmod 777 /"
+
+ROBUSTEZ — Timeouts y reintentos:
+  - callOpenAI: AbortController timeout 60s + error sanitizado (oculta API keys en logs)
+  - callAnthropic: AbortController timeout 90s + error sanitizado
+  - callDeepSeek: AbortController timeout 120s + error sanitizado
+  - haGet/haPost/supervisorGet: timeout 15s + hasta 2 reintentos con backoff
+  - executeTool: timeout individual 45s por tool (evita que una tool cuelgue todo el turno)
+  - handleRemoteTask (agent_network): timeout 30s
+
+ROBUSTEZ — Detección de bucles:
+  - Chattering detection: si el bucle agéntico repite las mismas tools 2+ veces sin progreso, detiene y avisa
+  - SSE heartbeat cada 30s + limpieza automática de clientes muertos (>90s sin respuesta)
+
+NEXUS:
+  - layers.js: getScopedTools() diferencia tools:undefined (todas) de tools:[] (ninguna)
+    → razonamiento (DeepSeek R1) ahora recibe 0 tools correctamente
+  - health.js: validación de JSON al cargar dynamic_experts y dynamic_modules
+  - modules.js: fusionadas las dos definiciones duplicadas de 'filesystem'
+
+CONTEXTO Y MEMORIA:
+  - buildDynamicContext: memoria limitada a últimas 50 notas en el prompt (evita prompts >1MB)
+  - scanInstallation: máx 100 entidades por dominio en el mapa (evita OOM)
+
+INFRA:
+  - Dockerfile: añadido HEALTHCHECK cada 30s → HA detecta si server.js crashea
+  - run.sh: todas las variables de bashio::config entre comillas dobles
+  - agent_network.js: validación de campos requeridos + check ws.readyState antes de enviar
+
+────────────────────────────────────────────────────────────────────────────────
 v3.31.4 (2026-05-17) — FIX CRÍTICO: Eliminados fallbacks yaml.dump en edit/delete_automation
 ────────────────────────────────────────────────────────────────────────────────
 
