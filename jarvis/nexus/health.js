@@ -29,12 +29,22 @@ function nexusSaveHealth(health) {
 state.nexusHealth = nexusLoadHealth();
 
 // ── Expertos y módulos dinámicos (creados por Jarvis en runtime) ─────────────
-state.dynamicExperts = loadJSON(path.join(DATA_DIR, 'nexus/dynamic_experts.json'), {});
-state.dynamicModules = loadJSON(path.join(DATA_DIR, 'nexus/dynamic_modules.json'), {});
+
+function loadDynamicJSON(filePath, label) {
+  const data = loadJSON(filePath, {});
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    console.log(`[nexus] ⚠️ ${label} corrupto o inválido — usando {}. Revisa ${filePath}`);
+    return {};
+  }
+  return data;
+}
+
+state.dynamicExperts = loadDynamicJSON(path.join(DATA_DIR, 'nexus/dynamic_experts.json'), 'dynamic_experts');
+state.dynamicModules = loadDynamicJSON(path.join(DATA_DIR, 'nexus/dynamic_modules.json'), 'dynamic_modules');
 
 function nexusReloadDynamic() {
-  state.dynamicExperts = loadJSON(path.join(DATA_DIR, 'nexus/dynamic_experts.json'), {});
-  state.dynamicModules = loadJSON(path.join(DATA_DIR, 'nexus/dynamic_modules.json'), {});
+  state.dynamicExperts = loadDynamicJSON(path.join(DATA_DIR, 'nexus/dynamic_experts.json'), 'dynamic_experts');
+  state.dynamicModules = loadDynamicJSON(path.join(DATA_DIR, 'nexus/dynamic_modules.json'), 'dynamic_modules');
   console.log(`[nexus] Recargado: ${Object.keys(state.dynamicExperts).length} expertos, ${Object.keys(state.dynamicModules).length} módulos dinámicos`);
 }
 

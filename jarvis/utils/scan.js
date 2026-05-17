@@ -14,16 +14,19 @@ async function scanInstallation() {
   try {
     // Entidades y estados
     const states = await haGet('/states');
+    const MAX_ENTITIES_PER_DOMAIN = 100;
     const domains = {};
     for (const e of states) {
       const [domain] = e.entity_id.split('.');
       if (!domains[domain]) domains[domain] = { count: 0, entities: [] };
       domains[domain].count++;
-      domains[domain].entities.push({
-        id: e.entity_id,
-        name: e.attributes?.friendly_name || e.entity_id,
-        state: e.state
-      });
+      if (domains[domain].entities.length < MAX_ENTITIES_PER_DOMAIN) {
+        domains[domain].entities.push({
+          id: e.entity_id,
+          name: e.attributes?.friendly_name || e.entity_id,
+          state: e.state
+        });
+      }
     }
     map.domains = domains;
     map.totalEntities = states.length;

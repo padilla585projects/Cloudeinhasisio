@@ -187,12 +187,13 @@ async function executeTool(name, input) {
           console.log(`[SECURITY] Intento de leer ruta de sistema bloqueado: ${input.filepath}`);
           return { error: 'ACCESO DENEGADO: Las rutas /proc/ y /sys/ están bloqueadas por seguridad. Esta restricción es inamovible.' };
         }
-        const allowed = [C.HA_CONFIG, C.HA_ADDONS, C.HA_SHARE, C.HA_MEDIA, C.DATA_DIR];
-        if (!allowed.some(p => input.filepath.startsWith(p))) {
+        const resolvedFp = path.resolve(input.filepath);
+        const allowed = [C.HA_CONFIG, C.HA_ADDONS, C.HA_SHARE, C.HA_MEDIA, C.DATA_DIR].map(p => path.resolve(p));
+        if (!allowed.some(p => resolvedFp.startsWith(p + path.sep) || resolvedFp === p)) {
           return { error: `Ruta no permitida. Usa: ${allowed.join(', ')}` };
         }
-        if (!fs.existsSync(input.filepath)) return { error: `Archivo no existe: ${input.filepath}` };
-        const content = fs.readFileSync(input.filepath, 'utf8');
+        if (!fs.existsSync(resolvedFp)) return { error: `Archivo no existe: ${input.filepath}` };
+        const content = fs.readFileSync(resolvedFp, 'utf8');
         const lines = content.split('\n');
         const maxLines = input.lines || 200;
         return {
@@ -397,6 +398,15 @@ async function executeTool(name, input) {
         if (['POST', 'PUT', 'PATCH'].includes(method)) {
           console.log(`[SECURITY] Intento de ${method} externo bloqueado: ${input.url}`);
           return { error: `ACCESO DENEGADO: fetch_url solo permite GET. Los métodos POST/PUT/PATCH a servicios externos (registros, formularios, APIs) requieren confirmación explícita de Adrián. Esta restricción es inamovible.` };
+        }
+        // Solo HTTP/HTTPS — prevenir file://, gopher://, etc.
+        try {
+          const parsedUrl = new URL(input.url);
+          if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+            return { error: `Protocolo no permitido: "${parsedUrl.protocol}". Solo HTTP y HTTPS están permitidos.` };
+          }
+        } catch {
+          return { error: `URL inválida: ${input.url}` };
         }
         const res = await fetch(input.url, {
           headers: { 'User-Agent': 'Mozilla/5.0 (compatible; HABot/1.0)' },
@@ -2157,6 +2167,9 @@ Prohibida la copia, redistribucion y uso comercial.`);
 
           case 'ping': {
             if (!host) return { error: 'host es requerido' };
+            if (!/^[a-zA-Z0-9.\-]+$/.test(host) || host.length > 253) {
+              return { error: `Host inválido: "${host}". Solo se permiten IPs o nombres de host alfanuméricos.` };
+            }
             return new Promise(r => {
               exec(`ping -c 3 -W 2 ${host} 2>/dev/null`, (err, stdout) => {
                 if (err && !stdout) return r({ alive: false, host });
@@ -2182,6 +2195,19 @@ Prohibida la copia, redistribucion y uso comercial.`);
 
           case 'http_request': {
             if (!netUrl) return { error: 'url es requerido' };
+            // Bloquear loopback para evitar que se llame a la propia API de HA o del servidor
+            try {
+              const parsedNetUrl = new URL(netUrl);
+              if (!['http:', 'https:'].includes(parsedNetUrl.protocol)) {
+                return { error: `Protocolo no permitido: ${parsedNetUrl.protocol}` };
+              }
+              const loopback = ['127.0.0.1', '::1', '0.0.0.0'];
+              if (loopback.includes(parsedNetUrl.hostname) || parsedNetUrl.hostname === 'localhost') {
+                return { error: `Acceso a loopback bloqueado. Para acceder a la API de HA usa haGet/haPost internamente.` };
+              }
+            } catch {
+              return { error: `URL inválida: ${netUrl}` };
+            }
             const opts = { method: method || 'GET', headers: { 'Content-Type': 'application/json', ...(netHeaders || {}) }, timeout: 8000 };
             if (netBody && method !== 'GET') opts.body = JSON.stringify(netBody);
             const res = await fetch(netUrl, opts);
@@ -2915,6 +2941,9 @@ ${dots}`;
           /parted\b/,                // particionado de disco
           /format\s+[a-z]:/i,        // format de Windows (por si acaso)
           /:\(\)\{.*\}\s*;.*:/,      // fork bomb
+          /curl\s+.*\|\s*(ba)?sh/,   // descargar y ejecutar
+          /wget\s+.*\|\s*(ba)?sh/,   // descargar y ejecutar
+          /chmod\s+[0-7]*7\s+\//,    // chmod 777 / o similar en raíz
         ];
         const cmdToCheck = command || script || '';
         const blocked = BLOCKED_PATTERNS.find(p => p.test(cmdToCheck));

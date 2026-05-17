@@ -161,15 +161,24 @@ async function callOpenAI(model, system, messages, aiTools, maxTokens) {
   const body = { model, max_tokens: maxTokens, messages: msgs };
   if (aiTools && aiTools.length > 0) body.tools = aiTools;
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENAI_API_KEY}` },
-    body: JSON.stringify(body)
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 60000);
+  let response;
+  try {
+    response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENAI_API_KEY}` },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     const err = await response.text();
-    throw new Error(`OpenAI error ${response.status}: ${err}`);
+    const sanitized = err.slice(0, 300).replace(/sk-[a-zA-Z0-9]+/g, '[KEY_REDACTED]');
+    throw new Error(`OpenAI error ${response.status}: ${sanitized}`);
   }
 
   const data = await response.json();
@@ -215,20 +224,29 @@ async function callAnthropic(model, system, messages, aiTools, maxTokens) {
   };
   if (anthropicTools.length > 0) body.tools = anthropicTools;
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-      'anthropic-beta': 'prompt-caching-2024-07-31'
-    },
-    body: JSON.stringify(body)
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 90000);
+  let response;
+  try {
+    response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'prompt-caching-2024-07-31'
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     const err = await response.text();
-    throw new Error(`Anthropic error ${response.status}: ${err}`);
+    const sanitized = err.slice(0, 300).replace(/sk-ant-[a-zA-Z0-9\-]+/g, '[KEY_REDACTED]');
+    throw new Error(`Anthropic error ${response.status}: ${sanitized}`);
   }
 
   const data = await response.json();
@@ -288,15 +306,24 @@ async function callDeepSeek(model, system, messages, aiTools, maxTokens) {
   // deepseek-reasoner NO soporta function calling
   if (!isReasoner && aiTools && aiTools.length > 0) body.tools = aiTools;
 
-  const response = await fetch(`${DEEPSEEK_URL}/chat/completions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${DEEPSEEK_API_KEY}` },
-    body: JSON.stringify(body)
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 120000);
+  let response;
+  try {
+    response = await fetch(`${DEEPSEEK_URL}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${DEEPSEEK_API_KEY}` },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     const err = await response.text();
-    throw new Error(`DeepSeek error ${response.status}: ${err}`);
+    const sanitized = err.slice(0, 300).replace(/[a-zA-Z0-9_\-]{30,}/g, '[REDACTED]');
+    throw new Error(`DeepSeek error ${response.status}: ${sanitized}`);
   }
 
   const data = await response.json();

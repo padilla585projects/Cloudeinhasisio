@@ -74,8 +74,12 @@ function buildL4(expertName) {
   const { tools } = getToolDefs();
   const all = { ...EXPERTS, ...state.dynamicExperts };
   const expert = all[expertName] || EXPERTS.ha_control;
-  const allowed = expert.tools ? new Set(expert.tools) : null;  // null = todas
-  const visible = allowed ? tools.filter(t => allowed.has(t.name)) : tools;
+  // undefined = todas | [] = ninguna | [...] = scoped
+  const visible = expert.tools === undefined
+    ? tools
+    : expert.tools.length === 0
+      ? []
+      : tools.filter(t => new Set(expert.tools).has(t.name));
 
   let layer = `\nHERRAMIENTAS DISPONIBLES (${visible.length} de ${tools.length}):\n`;
   layer += visible.map(t => `- ${t.name}: ${t.description.split('.')[0]}`).join('\n');
@@ -126,7 +130,8 @@ function buildAnthropicSystemBlocks(expertName) {
 function getScopedTools(expertName, allOpenAITools) {
   const all = { ...EXPERTS, ...state.dynamicExperts };
   const expert = all[expertName] || EXPERTS.ha_control;
-  if (!expert.tools) return allOpenAITools;  // sin scoping
+  if (expert.tools === undefined) return allOpenAITools;  // undefined = todas las tools
+  if (expert.tools.length === 0) return [];               // [] = ninguna tool (ej: razonamiento R1)
   const allowed = new Set(expert.tools);
   return allOpenAITools.filter(t => allowed.has(t.function.name));
 }
@@ -138,15 +143,18 @@ function layerStats(expertName) {
   const all = { ...EXPERTS, ...state.dynamicExperts };
   const expert = all[expertName] || EXPERTS.ha_control;
   const { tools } = getToolDefs();
-  const allowed = expert.tools ? new Set(expert.tools) : null;
-  const visible = allowed ? tools.filter(t => allowed.has(t.name)) : tools;
+  const visible = expert.tools === undefined
+    ? tools
+    : expert.tools.length === 0
+      ? []
+      : tools.filter(t => new Set(expert.tools).has(t.name));
   return {
     expert: expertName,
     model: expert.model,
     modules: (expert.modules || []).length,
     tools: visible.length,
     toolsTotal: tools.length,
-    reduction: allowed ? Math.round((1 - visible.length / tools.length) * 100) + '%' : '0%'
+    reduction: expert.tools !== undefined ? Math.round((1 - visible.length / tools.length) * 100) + '%' : '0%'
   };
 }
 

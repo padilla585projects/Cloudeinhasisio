@@ -98,9 +98,10 @@ function buildDynamicContext() {
   if (state.houseContext)   ctx += `\nINSTALACIÓN:\n${state.houseContext}`;
 
   if (state.userMemory.length > 0) {
-    ctx += `\nMEMORIA DEL USUARIO:\n`;
-    for (let i = 0; i < state.userMemory.length; i++)
-      ctx += `[${i}] (${state.userMemory[i].category}) ${state.userMemory[i].note}\n`;
+    const memSlice = state.userMemory.slice(-50); // máx 50 entradas en contexto
+    ctx += `\nMEMORIA DEL USUARIO (${memSlice.length}/${state.userMemory.length}):\n`;
+    for (let i = 0; i < memSlice.length; i++)
+      ctx += `[${state.userMemory.length - memSlice.length + i}] (${memSlice[i].category}) ${memSlice[i].note}\n`;
   }
 
   const distilledRules = loadJSON(path.join(DATA_DIR, 'distilled_rules.json'), []);

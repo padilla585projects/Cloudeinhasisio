@@ -1,23 +1,23 @@
 #!/usr/bin/with-contenv bashio
 
-export OPENAI_API_KEY=$(bashio::config 'openai_api_key')
-export LANGUAGE=$(bashio::config 'language')
+export OPENAI_API_KEY="$(bashio::config 'openai_api_key')"
+export LANGUAGE="$(bashio::config 'language')"
 export HA_TOKEN="${SUPERVISOR_TOKEN}"
 export HA_URL="http://supervisor/core"
 
 export SERPER_API_KEY=""
 if bashio::config.has_value 'serper_api_key'; then
-  export SERPER_API_KEY=$(bashio::config 'serper_api_key')
+  export SERPER_API_KEY="$(bashio::config 'serper_api_key')"
 fi
 
 export ANTHROPIC_API_KEY=""
 if bashio::config.has_value 'anthropic_api_key'; then
-  export ANTHROPIC_API_KEY=$(bashio::config 'anthropic_api_key')
+  export ANTHROPIC_API_KEY="$(bashio::config 'anthropic_api_key')"
 fi
 
 export DEEPSEEK_API_KEY=""
 if bashio::config.has_value 'deepseek_api_key'; then
-  export DEEPSEEK_API_KEY=$(bashio::config 'deepseek_api_key')
+  export DEEPSEEK_API_KEY="$(bashio::config 'deepseek_api_key')"
 fi
 
 # Proxmox (opcional)
@@ -26,7 +26,7 @@ export PROXMOX_TOKEN=""
 export PROXMOX_NODE="pve"
 
 if bashio::config.has_value 'proxmox_url'; then
-  export PROXMOX_URL=$(bashio::config 'proxmox_url')
+  export PROXMOX_URL="$(bashio::config 'proxmox_url')"
 fi
 if bashio::config.has_value 'proxmox_token'; then
   export PROXMOX_TOKEN=$(bashio::config 'proxmox_token')

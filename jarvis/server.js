@@ -344,6 +344,7 @@ app.post('/api/chat', async (req, res) => {
     let iterations = 0;
     const MAX_ITERATIONS = state.saverMode ? 8 : activeMaxIter;
     let consecutiveTextOnly = 0;
+    let lastToolSignature = '';
     // Bloque B: assembleSystemPrompt ya integra L0-L4 (incluye buildDynamicContext via L2)
     const systemPrompt = nexusAssemblePrompt(nexusExpertName);
 
@@ -409,10 +410,24 @@ app.post('/api/chat', async (req, res) => {
         sendEvent({ type: 'tool_start', tool: tc.name, input: tc.input });
       }
 
+      // Detectar chattering (mismas tools repetidas sin progreso)
+      const currentToolSig = result.toolCalls.map(tc => tc.name).sort().join(',');
+      if (currentToolSig === lastToolSignature && iterations > 2) {
+        console.log(`[jarvis] Chattering detectado (${currentToolSig}) en iter=${iterations}. Deteniendo.`);
+        sendEvent({ type: 'text', text: '\n\n⚠️ Detecté que estaba repitiendo las mismas acciones. Parando para evitar un bucle.' });
+        break;
+      }
+      lastToolSignature = currentToolSig;
+
+      // Ejecutar tools con timeout individual de 45s
       const results = await Promise.all(
         result.toolCalls.map(async tc => {
           try {
-            return await executeTool(tc.name, tc.input);
+            const toolPromise = executeTool(tc.name, tc.input);
+            const timeoutPromise = new Promise((_, reject) =>
+              setTimeout(() => reject(new Error(`Tool "${tc.name}" timeout (45s)`)), 45000)
+            );
+            return await Promise.race([toolPromise, timeoutPromise]);
           } catch (err) {
             console.log(`[jarvis] Tool ${tc.name} falló: ${err.message}`);
             return { error: err.message, hint: 'Prueba una aproximación alternativa.' };
@@ -1055,6 +1070,7 @@ app.get('/api/events', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
   res.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`);
+  res.lastHeartbeat = Date.now();
   state.pushClients.add(res);
   req.on('close', () => state.pushClients.delete(res));
 });
@@ -1147,6 +1163,26 @@ app.listen(PORT, '0.0.0.0', () => {
       console.log(`[boot] Error en inicialización (no crítico, el chat funciona): ${err.message}`);
     }
   }, 5000);
+
+  // Heartbeat SSE — limpia conexiones muertas y envía keepalive
+  setInterval(() => {
+    const now = Date.now();
+    const line = `data: ${JSON.stringify({ type: 'heartbeat', ts: now })}\n\n`;
+    for (const res of state.pushClients) {
+      try {
+        res.write(line);
+        res.lastHeartbeat = now;
+      } catch {
+        state.pushClients.delete(res);
+      }
+    }
+    // Eliminar clientes sin heartbeat en más de 90s (probablemente muertos)
+    for (const res of state.pushClients) {
+      if (res.lastHeartbeat && now - res.lastHeartbeat > 90000) {
+        state.pushClients.delete(res);
+      }
+    }
+  }, 30000);
 
   // Timers
   setInterval(updateLiveContext, 60_000);
