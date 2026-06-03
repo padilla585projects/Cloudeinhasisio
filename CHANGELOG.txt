@@ -3,6 +3,23 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.3 (2026-06-03) — NETGUARD clúster-aware: busca el Pi-hole en TODOS los nodos
+────────────────────────────────────────────────────────────────────────────────
+
+PROBLEMA QUE RESUELVE:
+  La instalación real tiene un clúster Proxmox con 2 nodos (pve1 + pve2) y el
+  Pi-hole es el CT 102 en pve2. NETGUARD v3.33.2 (y la tool proxmox_api) usan un
+  único PROXMOX_NODE (por defecto "pve"), así que habría buscado el contenedor en
+  el nodo equivocado y NO lo habría encontrado → no podría reiniciarlo.
+
+netguard.js — restartDnsGuest ahora es CLÚSTER-AWARE:
+  · Enumera todos los nodos vía GET /nodes (descarta offline).
+  · Busca el contenedor de DNS (regex pihole/pi-hole/adguard/unbound/dns) en CADA
+    nodo y actúa sobre el nodo donde realmente vive — sin depender de PROXMOX_NODE.
+  · Mensajes de log/Telegram/proactive_thought ahora incluyen el nodo (p. ej.
+    "reinicié pihole vmid 102 en nodo pve2").
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.2 (2026-06-03) — NETGUARD: auto-reparación de red/DNS (reinicia el Pi-hole solo)
 ────────────────────────────────────────────────────────────────────────────────
 

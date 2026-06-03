@@ -84,39 +84,52 @@ function proxClient() {
 }
 
 // Encuentra y reinicia el contenedor de DNS. Devuelve {acted, guest, mode} o {acted:false, reason}
+// CLÚSTER-AWARE: busca en TODOS los nodos (pve1, pve2, ...), no solo en PROXMOX_NODE,
+// porque el Pi-hole puede vivir en cualquier nodo del clúster.
 async function restartDnsGuest() {
   const px = proxClient();
   if (!px) return { acted: false, reason: 'proxmox_no_configurado' };
 
-  let containers;
+  // 1) Enumerar nodos del clúster
+  let nodes;
   try {
-    const lxc = await px.get(`/nodes/${px.node}/lxc`);
-    containers = (lxc.data || []);
+    const nodeList = await px.get('/nodes');
+    nodes = (nodeList.data || []).filter(n => n.status !== 'offline').map(n => n.node);
   } catch (e) {
-    return { acted: false, reason: `proxmox_inalcanzable: ${e.message}` };
+    // Fallback: si /nodes falla, al menos probar el nodo configurado
+    nodes = [px.node];
   }
+  if (nodes.length === 0) nodes = [px.node];
 
-  const match = containers.find(c => DNS_GUEST_RX.test(c.name || ''));
+  // 2) Buscar el contenedor de DNS en cada nodo
+  let match = null, foundNode = null;
+  for (const node of nodes) {
+    try {
+      const lxc = await px.get(`/nodes/${node}/lxc`);
+      const c = (lxc.data || []).find(c => DNS_GUEST_RX.test(c.name || ''));
+      if (c) { match = c; foundNode = node; break; }
+    } catch { /* nodo inalcanzable, seguir con el siguiente */ }
+  }
   if (!match) return { acted: false, reason: 'sin_contenedor_dns_coincidente' };
 
   const vmid = match.vmid;
   try {
     if (match.status === 'running') {
-      await px.post(`/nodes/${px.node}/lxc/${vmid}/status/reboot`);
-      return { acted: true, guest: match.name, vmid, mode: 'reboot' };
+      await px.post(`/nodes/${foundNode}/lxc/${vmid}/status/reboot`);
+      return { acted: true, guest: match.name, vmid, node: foundNode, mode: 'reboot' };
     } else {
-      await px.post(`/nodes/${px.node}/lxc/${vmid}/status/start`);
-      return { acted: true, guest: match.name, vmid, mode: 'start' };
+      await px.post(`/nodes/${foundNode}/lxc/${vmid}/status/start`);
+      return { acted: true, guest: match.name, vmid, node: foundNode, mode: 'start' };
     }
   } catch (e) {
     // Fallback: reboot puede fallar en algunas plantillas → stop + start
     try {
-      await px.post(`/nodes/${px.node}/lxc/${vmid}/status/stop`);
+      await px.post(`/nodes/${foundNode}/lxc/${vmid}/status/stop`);
       await new Promise(r => setTimeout(r, 4000));
-      await px.post(`/nodes/${px.node}/lxc/${vmid}/status/start`);
-      return { acted: true, guest: match.name, vmid, mode: 'stop_start' };
+      await px.post(`/nodes/${foundNode}/lxc/${vmid}/status/start`);
+      return { acted: true, guest: match.name, vmid, node: foundNode, mode: 'stop_start' };
     } catch (e2) {
-      return { acted: false, reason: `reinicio_fallido: ${e2.message}`, guest: match.name, vmid };
+      return { acted: false, reason: `reinicio_fallido: ${e2.message}`, guest: match.name, vmid, node: foundNode };
     }
   }
 }
@@ -197,7 +210,7 @@ async function netGuardLoop() {
       return;
     }
 
-    console.log(`[netguard] ✅ Reiniciado contenedor DNS "${result.guest}" (vmid ${result.vmid}, modo ${result.mode}). Verificando recuperación en ${RECHECK_DELAY_MS / 1000}s...`);
+    console.log(`[netguard] ✅ Reiniciado contenedor DNS "${result.guest}" (vmid ${result.vmid} en nodo ${result.node}, modo ${result.mode}). Verificando recuperación en ${RECHECK_DELAY_MS / 1000}s...`);
 
     // 5) Esperar y verificar recuperación
     await new Promise(r => setTimeout(r, RECHECK_DELAY_MS));
@@ -214,7 +227,7 @@ async function netGuardLoop() {
         priority: 'high',
         title: `Auto-reparé la red: DNS caído → reinicié Pi-hole → resuelto`,
         detail: `Detecté que el DNS de la red no resolvía (toda la casa sin internet por nombre). ` +
-                `Reinicié el contenedor "${result.guest}" en Proxmox (${result.mode}) y la resolución volvió a las ${when}. ` +
+                `Reinicié el contenedor "${result.guest}" (vmid ${result.vmid}) en el nodo ${result.node} de Proxmox (${result.mode}) y la resolución volvió a las ${when}. ` +
                 `Sin intervención tuya.`
       });
       await notify(`🛡️ Jarvis: detecté el DNS de la red caído y reinicié el Pi-hole ("${result.guest}") en Proxmox. ✅ Internet restaurado a las ${when}.`);
