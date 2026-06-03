@@ -1,11 +1,39 @@
 'use strict';
 const path = require('path');
 const fetch = require('node-fetch');
-const { callOpenAI } = require('../utils/llm');
+const { callLLM } = require('../utils/llm');
 const { loadJSON, saveJSON } = require('../utils/persistence');
 const { haGet, haPost } = require('../utils/ha-api');
 const C = require('../utils/constants');
 const state = require('../utils/state');
+
+const PROACTIVE_STATE_FILE = path.join(C.DATA_DIR, 'proactive_state.json');
+
+// ── Toolset del modo autónomo ─────────────────────────────────────────────────
+// Bajo riesgo (Jarvis las ejecuta solo): lectura, diagnóstico, recargas, backups.
+// Riesgo alto (NUNCA en autónomo, debe PROPONER con proactive_thought): instalar
+// HACS, borrar, escribir ficheros críticos, exec, push, update_self, usuarios.
+const ALWAYS_TOOLS = [
+  'get_entities', 'get_entity_state', 'search_entities', 'get_history',
+  'ha_knowledge', 'get_memory', 'template_render',
+  'call_service', 'reload_config', 'save_memory', 'learn', 'proactive_thought',
+];
+const FOCUS_TOOLS = {
+  system_health: ['get_system_logs', 'get_error_log', 'get_repairs', 'get_notifications', 'ha_supervisor', 'scan_installation', 'check_config', 'score_installation'],
+  fallen_devices: ['get_system_logs', 'get_error_log', 'scan_installation', 'get_repairs', 'ha_supervisor', 'check_config', 'network'],
+  dashboard: ['get_dashboards', 'get_dashboard_config', 'review_dashboard', 'get_installed_frontend', 'update_dashboard', 'search_hacs_resources'],
+  security_maintenance: ['get_repairs', 'get_notifications', 'get_system_logs', 'ha_supervisor', 'scan_installation'],
+  optimization: ['get_system_logs', 'scan_installation', 'check_config', 'get_repairs', 'score_installation', 'get_automations', 'simulate_automation', 'create_automation'],
+};
+const FOCUS_ORDER = ['system_health', 'fallen_devices', 'dashboard', 'security_maintenance', 'optimization'];
+
+const FOCUS_BRIEF = {
+  system_health: `FOCO: SALUD DEL SISTEMA. Revisa errores en logs (get_error_log/get_system_logs), reparaciones pendientes (get_repairs), notificaciones persistentes (get_notifications), estado del supervisor y add-ons (ha_supervisor), y puntúa la instalación (score_installation). Arregla lo que puedas (recargar integraciones, limpiar notificaciones obsoletas). Para lo que no puedas, propón la solución EXACTA.`,
+  fallen_devices: `FOCO: DISPOSITIVOS CAÍDOS (RAÍZ, no parches). Hay muchas entidades 'unavailable'. NO te limites a recargar a ciegas. Investiga la CAUSA: agrupa por integración/dispositivo, mira config_entries y logs para ver si la integración está caída, el dispositivo físico offline, o la entidad es huérfana (entidad de una integración borrada). Recarga SOLO integraciones que el log confirme caídas. Para dispositivos físicos offline o entidades huérfanas, propón la acción concreta (revisar hardware X / borrar entidad huérfana Y).`,
+  dashboard: `FOCO: DASHBOARD. Lee la config (get_dashboards/get_dashboard_config), evalúala (review_dashboard) y detecta frontend instalado (get_installed_frontend). Si está desorganizado o vacío, MEJÓRALO de verdad con update_dashboard (hace backup automático): vistas por habitación, cards útiles para los sensores/dispositivos reales que existen. Si falta una card de HACS que aportaría mucho, PROPÓN instalarla (no la instales tú).`,
+  security_maintenance: `FOCO: SEGURIDAD Y MANTENIMIENTO. Revisa: backups (¿hay recientes?), updates pendientes (get_repairs/entidades update.*), salud de cámaras/cerraduras/alarmas, integraciones rotas, y configuraciones expuestas. Avisa de riesgos reales con prioridad alta. Arregla lo seguro; propón lo demás con pasos concretos.`,
+  optimization: `FOCO: OPTIMIZACIÓN Y FLUIDEZ. Busca por qué el sistema puede ir lento: integraciones que sondean en exceso, automatizaciones que fallan o se disparan demasiado (get_automations + logs), tamaño del recorder/DB, entidades muertas. Propón o aplica mejoras de rendimiento concretas. Si detectas una automatización claramente útil y sensata para el hogar real, créala con YAML completo y válido.`,
+};
 
 function pushToAll(event) {
   const line = `data: ${JSON.stringify(event)}\n\n`;
@@ -14,219 +42,188 @@ function pushToAll(event) {
   }
 }
 
+function pickFocus() {
+  const st = loadJSON(PROACTIVE_STATE_FILE, { focusIndex: 0, runs: 0 });
+  const focus = FOCUS_ORDER[st.focusIndex % FOCUS_ORDER.length];
+  st.focusIndex = (st.focusIndex + 1) % FOCUS_ORDER.length;
+  st.runs = (st.runs || 0) + 1;
+  st.lastRun = new Date().toISOString();
+  st.lastFocus = focus;
+  saveJSON(PROACTIVE_STATE_FILE, st);
+  return focus;
+}
+
+function scopedTools(focus) {
+  const names = new Set([...ALWAYS_TOOLS, ...(FOCUS_TOOLS[focus] || [])]);
+  return state.openAITools.filter(t => names.has(t.function.name));
+}
+
+// Auto-fix previo: si hay caída masiva simultánea, recargar integraciones reloadables.
+async function autoFixMassCrash(unavailable) {
+  const log = [];
+  try {
+    const configEntries = await haGet('/config/config_entries').catch(() => []);
+    const reloadDomains = ['alexa_media_player', 'pvpc_energyhourly', 'tp_link', 'rest', 'reolink', 'alfa_romeo', 'awattar', 'mqtt'];
+    const zigbeeDown = unavailable.filter(e =>
+      e.entity_id.startsWith('light.') || e.entity_id.startsWith('sensor.') ||
+      e.entity_id.startsWith('binary_sensor.') || e.entity_id.startsWith('switch.'));
+    if (zigbeeDown.length > 3) {
+      try {
+        await fetch('http://supervisor/addons/45df7312_zigbee2mqtt/restart', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${C.HA_TOKEN}`, 'Content-Type': 'application/json' }
+        });
+        log.push(`Zigbee2MQTT reiniciado (${zigbeeDown.length} entidades Zigbee caídas)`);
+        await new Promise(r => setTimeout(r, 8000));
+      } catch (e) { log.push(`Zigbee2MQTT restart falló: ${e.message}`); }
+    }
+    for (const domain of reloadDomains) {
+      for (const entry of configEntries.filter(e => e.domain === domain)) {
+        try {
+          await haPost('/services/homeassistant/reload_config_entry', { entry_id: entry.entry_id });
+          log.push(`Recargada integración ${entry.title || domain}`);
+        } catch { /* ignora individuales */ }
+      }
+    }
+    if (log.length) await new Promise(r => setTimeout(r, 4000));
+  } catch (e) { log.push(`auto-fix error: ${e.message}`); }
+  return log;
+}
+
+async function gatherSeed(focus) {
+  const states = await haGet('/states');
+  const unavailable = states.filter(e =>
+    e.state === 'unavailable' &&
+    !e.entity_id.startsWith('automation.') &&
+    !e.entity_id.startsWith('update.'));
+
+  const now = new Date();
+  const hora = now.getHours();
+  let momento = 'madrugada';
+  if (hora >= 7 && hora < 12) momento = 'mañana';
+  else if (hora >= 12 && hora < 15) momento = 'mediodía';
+  else if (hora >= 15 && hora < 20) momento = 'tarde';
+  else if (hora >= 20) momento = 'noche';
+
+  // Agrupar caídos por integración (heurística sobre el entity_id/atributos)
+  const groups = {};
+  for (const e of unavailable) {
+    let g = 'otros';
+    const id = e.entity_id;
+    if (id.includes('shuffle') || id.includes('repeat') || id.startsWith('media_player.echo')) g = 'alexa';
+    else if (id.startsWith('sensor.omv_') || id.startsWith('binary_sensor.omv_')) g = 'omv_nas';
+    else if (id.includes('esp_') || id.includes('esphome')) g = 'esphome';
+    else if (id.includes('pvpc') || id.includes('esios')) g = 'energia';
+    else if (id.includes('reolink') || id.includes('camera')) g = 'camaras';
+    else if (id.startsWith('light.') || id.startsWith('binary_sensor.') || id.startsWith('switch.') || id.startsWith('sensor.')) g = 'zigbee_o_sensores';
+    (groups[g] = groups[g] || []).push(e.attributes?.friendly_name || id);
+  }
+
+  // ¿Caída masiva simultánea?
+  let massCrash = '';
+  if (unavailable.length > 5) {
+    const ts = unavailable.map(e => new Date(e.last_changed).getTime());
+    if (Math.max(...ts) - Math.min(...ts) < 3 * 60_000) {
+      massCrash = `CAÍDA MASIVA: ${unavailable.length} entidades cayeron en <3min (~${new Date(Math.min(...ts)).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}). Probable reinicio de HA o corte de red.`;
+    }
+  }
+
+  let seed = `Momento: ${momento} (${now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}). Total entidades: ${states.length}.
+Entidades NO disponibles: ${unavailable.length}` +
+    (unavailable.length ? `\n  Por grupo: ${Object.entries(groups).map(([g, l]) => `${g}(${l.length})`).join(', ')}` : '') +
+    (massCrash ? `\n${massCrash}` : '');
+
+  if (state.userMemory?.length) {
+    seed += `\n\nMEMORIA DEL USUARIO (preferencias reales):\n${state.userMemory.slice(-8).map(m => `- (${m.category}) ${m.note}`).join('\n')}`;
+  }
+
+  return { seed, unavailable };
+}
+
 async function proactiveThinkingLoop() {
   try {
-    if (!C.OPENAI_API_KEY) return;
-    console.log('[proactive] Jarvis pensando...');
+    if (!C.ANTHROPIC_API_KEY && !C.OPENAI_API_KEY) return;
 
-    // Recopilar TODO el contexto
-    const states = await haGet('/states');
+    const focus = pickFocus();
+    console.log(`[proactive] Ciclo autónomo — foco: ${focus}`);
 
-    // Estado general
-    const unavailable = states.filter(e =>
-      e.state === 'unavailable' &&
-      !e.entity_id.startsWith('automation.') &&
-      !e.entity_id.startsWith('update.')
-    );
-    const lightsOn = states.filter(e => e.entity_id.startsWith('light.') && e.state === 'on');
-    const switchesOn = states.filter(e => e.entity_id.startsWith('switch.') && e.state === 'on');
-    const climates = states.filter(e => e.entity_id.startsWith('climate.'));
-    const automations = states.filter(e => e.entity_id.startsWith('automation.'));
-    const automationsOff = automations.filter(e => e.state === 'off');
+    const { seed, unavailable } = await gatherSeed(focus);
 
-    // Agrupar unavailable por integración (para diagnóstico inteligente)
-    const unavailableGroups = {};
-    for (const e of unavailable) {
-      let group = 'otros';
-      if (e.entity_id.includes('shuffle') || e.entity_id.includes('repeat') || e.entity_id.startsWith('media_player.echo')) group = 'alexa';
-      else if (e.entity_id.startsWith('sensor.omv_') || e.entity_id.startsWith('binary_sensor.omv_')) group = 'omv_nas';
-      else if (e.entity_id.includes('esp_') || e.entity_id.includes('esphome')) group = 'esphome';
-      else if (e.entity_id.includes('pvpc') || e.entity_id.includes('esios') || e.entity_id.includes('energy_cost')) group = 'energia';
-      else if (e.entity_id.includes('archer') || e.entity_id.includes('router')) group = 'router';
-      else if (e.entity_id.includes('giulietta') || e.entity_id.includes('_car_')) group = 'coche';
-      else if (e.attributes?.via_device || e.attributes?.manufacturer === 'IKEA' || e.attributes?.manufacturer === 'Philips' || String(e.attributes?.via_device || '').length > 0) group = 'zigbee';
-      else if (e.entity_id.startsWith('light.') || e.entity_id.startsWith('sensor.') || e.entity_id.startsWith('binary_sensor.') || e.entity_id.startsWith('switch.')) group = 'zigbee';
-      if (!unavailableGroups[group]) unavailableGroups[group] = [];
-      unavailableGroups[group].push(e.attributes?.friendly_name || e.entity_id);
-    }
-    const zigbeeUnavailable = unavailableGroups['zigbee'] || [];
+    // Pensamientos ya registrados (para reforzar el NO-repetir)
+    const existing = loadJSON(path.join(C.DATA_DIR, 'pending_thoughts.json'), [])
+      .filter(t => t.status === 'pending');
+    const recentTitles = existing.slice(-15).map(t => `- ${t.title}`).join('\n');
 
-    // Detectar patrón de caída masiva (mismo timestamp ±2min)
-    let massCrashInfo = '';
-    if (unavailable.length > 5) {
-      const timestamps = unavailable.map(e => new Date(e.last_changed).getTime());
-      const minT = Math.min(...timestamps);
-      const maxT = Math.max(...timestamps);
-      if (maxT - minT < 3 * 60_000) {
-        const crashTime = new Date(minT).toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'});
-        massCrashInfo = `ALERTA: ${unavailable.length} dispositivos cayeron todos a las ${crashTime} (en menos de 3 min). Esto indica reinicio de HA o caída de red a esa hora.`;
-      }
+    // Auto-fix de caída masiva antes de pensar (solo en focos relevantes)
+    let autoFixLog = [];
+    if ((focus === 'fallen_devices' || focus === 'system_health') && unavailable.length > 5) {
+      autoFixLog = await autoFixMassCrash(unavailable);
+      if (autoFixLog.length) console.log(`[proactive] auto-fix: ${autoFixLog.join(' | ')}`);
     }
 
-    // Hora y contexto temporal
-    const now = new Date();
-    const hora = now.getHours();
-    let momento = 'madrugada';
-    if (hora >= 7 && hora < 12) momento = 'mañana';
-    else if (hora >= 12 && hora < 15) momento = 'mediodía';
-    else if (hora >= 15 && hora < 20) momento = 'tarde';
-    else if (hora >= 20 && hora < 24) momento = 'noche';
+    const model = C.ANTHROPIC_API_KEY ? C.CLAUDE_MODEL : C.BG_MODEL;
 
-    // Leer errores recientes
-    let recentErrors = '';
-    try {
-      const logRes = await fetch('http://supervisor/core/logs', {
-        headers: { Authorization: `Bearer ${C.HA_TOKEN}` }
-      });
-      if (logRes.ok) {
-        const logText = await logRes.text();
-        const errorLines = logText.split('\n').filter(l => l.includes('ERROR')).slice(-5);
-        if (errorLines.length > 0) recentErrors = errorLines.join('\n');
-      }
-    } catch {}
+    const system = `Eres Jarvis: un ingeniero domótico experto que vigila esta casa 24/7. No eres un chatbot — eres autónomo y RESUELVES.
 
-    // Historial de conversación reciente (para contexto)
-    const recentChat = state.conversationHistory.slice(-6).map(m =>
-      `${m.role}: ${typeof m.content === 'string' ? m.content.slice(0, 100) : '[tool]'}`
-    ).join('\n');
+REGLAS DE ORO:
+1. ACTÚA, no solo describas. Si algo de bajo riesgo está roto y puedes arreglarlo con tus tools (recargar integración, limpiar notificación, reorganizar dashboard con backup), HAZLO ahora. Luego reporta con proactive_thought lo que hiciste.
+2. Lo de ALTO riesgo (instalar HACS, borrar, tocar ficheros críticos, reiniciar el host) NO lo ejecutas: lo PROPONES con proactive_thought incluyendo los pasos exactos.
+3. Cada proactive_thought debe ser CONCRETO y ACCIONABLE. Si propones una automatización, incluye el YAML completo (trigger/condition/action) en 'detail'. Prohibido el relleno vago tipo "se sugiere optimizar el consumo".
+4. NO repitas ideas que ya existen (te paso la lista). Si tu conclusión es la misma de siempre, no la registres.
+5. Si tras investigar NO hay nada útil y nuevo que aportar en este foco, responde solo "OK" sin registrar nada. Es perfectamente válido no encontrar nada.
+6. Prioridad: arreglar roto > seguridad > optimización/fluidez > mejoras estéticas.
+7. Investiga primero con las tools de lectura, diagnostica, y SOLO entonces actúa o propone. Idioma: español. Sé directo y técnico.`;
 
-    // Pensamientos ya registrados (para no repetir)
-    const thoughtsFile = path.join(C.DATA_DIR, 'pending_thoughts.json');
-    const existingThoughts = loadJSON(thoughtsFile, []);
-    const recentTitles = existingThoughts.slice(-10).map(t => t.title).join(', ');
+    let userPrompt = `${FOCUS_BRIEF[focus]}\n\nESTADO ACTUAL:\n${seed}\n`;
+    if (autoFixLog.length) userPrompt += `\nYA EJECUTÉ AUTOMÁTICAMENTE (antes de pensar):\n${autoFixLog.map(l => `- ${l}`).join('\n')}\nMenciónalo si es relevante.\n`;
+    userPrompt += `\nIDEAS YA REGISTRADAS (NO repetir nada parecido a esto):\n${recentTitles || '(ninguna)'}\n\nInvestiga este foco con tus tools, actúa en lo seguro y reporta/propón lo demás. Si no hay nada nuevo, di "OK".`;
 
-    // Análisis del dashboard principal
-    let dashboardSummary = '';
-    try {
-      const dashRes = await haGet('/lovelace/config');
-      if (dashRes && dashRes.views) {
-        const views = dashRes.views;
-        const totalCards = views.reduce((acc, v) => acc + (v.cards ? v.cards.length : 0), 0);
-        const viewNames = views.map(v => v.title || v.path || 'sin título').join(', ');
-        dashboardSummary = `Dashboard principal: ${views.length} vistas (${viewNames}), ${totalCards} cards en total.`;
-        if (totalCards < 5) dashboardSummary += ' AVISO: muy pocas cards — dashboard probablemente vacío o sin configurar.';
-        if (views.length === 1) dashboardSummary += ' Solo hay 1 vista — no está organizado por habitaciones.';
-      }
-    } catch { dashboardSummary = 'No se pudo leer el dashboard.'; }
+    const tools = scopedTools(focus);
+    let messages = [{ role: 'user', content: userPrompt }];
+    const MAX_ITER = 6;
+    let actions = 0;
 
-    // Construir prompt de análisis COMPLETO
-    const analysisPrompt = `Eres Jarvis en modo pensamiento autónomo. Es ${momento} (${now.toLocaleTimeString('es-ES', {hour:'2-digit',minute:'2-digit'})}).
-
-ESTADO ACTUAL DEL SISTEMA:
-- Luces encendidas: ${lightsOn.length} (${lightsOn.slice(0, 5).map(e => e.attributes?.friendly_name || e.entity_id).join(', ')})
-- Switches activos: ${switchesOn.length}
-- Dispositivos no disponibles: ${unavailable.length}${unavailable.length > 0 ? '\n  Por integración: ' + Object.entries(unavailableGroups).map(([g,items]) => `${g}(${items.length})`).join(', ') : ''}
-${massCrashInfo ? `- ${massCrashInfo}` : ''}
-- Clima: ${climates.map(c => (c.attributes?.friendly_name || c.entity_id) + '=' + c.state + ' ' + (c.attributes?.current_temperature || '') + '°C').join(', ') || 'sin climatización'}
-- Automatizaciones desactivadas: ${automationsOff.length}${automationsOff.length > 0 ? ' (' + automationsOff.slice(0, 3).map(e => e.attributes?.friendly_name || e.entity_id).join(', ') + ')' : ''}
-- Total entidades: ${states.length}
-${recentErrors ? `- ERRORES recientes en logs:\n${recentErrors}` : '- Sin errores recientes'}
-
-MEMORIA DEL USUARIO:
-${state.userMemory.slice(-10).map(m => `- (${m.category}) ${m.note}`).join('\n') || '(vacía)'}
-
-ÚLTIMO HISTORIAL DE CHAT:
-${recentChat || '(sin conversación reciente)'}
-
-ESTADO DEL DASHBOARD:
-${dashboardSummary}
-
-PENSAMIENTOS YA REGISTRADOS (NO repetir estos):
-${recentTitles || '(ninguno)'}
-
-TU MISIÓN: Piensa como un ingeniero domótico experto que vigila la casa 24/7.
-ANALIZA TAMBIÉN: ¿El dashboard tiene sentido? ¿Está organizado? ¿Faltan vistas importantes? ¿Hay cards útiles que no tiene?
-Pregúntate:
-1. ¿Hay algo que no esté bien? (dispositivos caídos, luces encendidas sin sentido, errores)
-2. ¿Se podría crear una automatización útil basada en lo que veo?
-3. ¿Hay alguna optimización de energía? (luces/switches encendidos de madrugada, clima innecesario)
-4. ¿El usuario pidió algo en el chat que puedo mejorar proactivamente?
-5. ¿Hay un patrón que debería recordar o aprender?
-6. ¿Debería sugerir instalar alguna herramienta/integración que falta?
-7. ¿Hay algo que yo pueda hacer para que la casa funcione mejor?
-
-REGLAS CRÍTICAS:
-- Cada pensamiento que registres DEBE incluir en el campo "detail" la solución EXACTA y concreta.
-  NO solo describas el problema — dí QUÉ HAY QUE HACER y cómo.
-  Ejemplo MALO: "Hay 3 luces encendidas en la madrugada"
-  Ejemplo BUENO: "Hay 3 luces encendidas en la madrugada (salón, cocina, baño). Puedo apagarlas ahora con call_service light.turn_off o crear una automatización que las apague a las 2:00."
-- Si es algo que puedes ejecutar → incluye auto_execute_if_approved con descripción de la acción
-- Si implica crear una automatización → describe el trigger, condition y action exactos en el detail
-- Si detectas un dispositivo caído y PUEDES arreglarlo → usa call_service para arreglarlo AHORA
-- Si no puedes arreglarlo tú (hardware físico) → proactive_thought con detalle de qué hace falta
-- Si lo arreglaste → proactive_thought con el resultado ("He recargado X, Y dispositivos recuperados")
-- ZIGBEE caídos: usa call_service hassio/addon_restart con addon=45df7312_zigbee2mqtt para reiniciar Z2M
-- MQTT caído: recarga la integración mqtt con reload_config_entry
-- Alexa caída: recarga alexa_media_player con reload_config_entry
-
-RESPONDE ejecutando acciones (call_service para recargas) y luego proactive_thought con el resumen.
-Si no hay nada útil que hacer, responde solo "OK".
-NO repitas pensamientos que ya existen. Actúa primero, reporta después.
-Prioridad: arreglar cosas rotas > optimizar > sugerir mejoras.`;
-
-    // ── Auto-fix previo al LLM: si hay caída masiva, recargar integraciones conocidas ──
-    let autoFixLog = '';
-    const hayCaidaMasiva = unavailable.length > 5;
-    if (hayCaidaMasiva) {
-      console.log('[proactive] Caída masiva detectada — intentando auto-fix de integraciones...');
+    for (let iter = 0; iter < MAX_ITER; iter++) {
+      let result;
       try {
-        const configEntries = await haGet('/config/config_entries').catch(() => []);
-        const autoReloadDomains = ['alexa_media_player', 'pvpc_energyhourly', 'tp_link', 'rest', 'reolink', 'alfa_romeo', 'awattar', 'mqtt'];
-        const fixResults = [];
-
-        // Auto-fix Zigbee2MQTT: si hay muchos dispositivos Zigbee caídos, reiniciar el add-on
-        if (zigbeeUnavailable.length > 3) {
-          try {
-            console.log(`[auto-fix] ${zigbeeUnavailable.length} dispositivos Zigbee caídos — reiniciando Zigbee2MQTT...`);
-            await fetch('http://supervisor/addons/45df7312_zigbee2mqtt/restart', {
-              method: 'POST',
-              headers: { Authorization: `Bearer ${C.HA_TOKEN}`, 'Content-Type': 'application/json' }
-            });
-            fixResults.push(`✓ Zigbee2MQTT reiniciado (${zigbeeUnavailable.length} dispositivos afectados)`);
-            await new Promise(r => setTimeout(r, 8000)); // Esperar que Z2M arranque
-          } catch (err) {
-            fixResults.push(`✗ Zigbee2MQTT restart: ${err.message}`);
-          }
-        }
-
-        for (const domain of autoReloadDomains) {
-          const entries = configEntries.filter(e => e.domain === domain);
-          for (const entry of entries) {
-            try {
-              await haPost(`/services/homeassistant/reload_config_entry`, { entry_id: entry.entry_id });
-              fixResults.push(`✓ ${entry.title || domain}`);
-              console.log(`[auto-fix] Recargada integración: ${entry.title || domain} (${entry.entry_id})`);
-            } catch (err) {
-              fixResults.push(`✗ ${entry.title || domain}: ${err.message}`);
-            }
-          }
-        }
-
-        if (fixResults.length > 0) {
-          autoFixLog = `\n\nAUTO-FIX EJECUTADO (antes de este análisis):\n${fixResults.join('\n')}\nInforma al usuario de estas acciones en tu proactive_thought.`;
-          await new Promise(r => setTimeout(r, 5000));
-        }
+        result = await callLLM(model, system, messages, tools, 1500);
       } catch (err) {
-        console.log(`[auto-fix] Error: ${err.message}`);
+        console.log(`[proactive] Error API iter=${iter}: ${err.message}`);
+        break;
       }
+
+      if (result.toolCalls.length === 0) break; // terminó (texto/"OK")
+
+      messages.push(result.message);
+      const results = [];
+      for (const tc of result.toolCalls) {
+        try {
+          const r = await Promise.race([
+            state.executeTool(tc.name, tc.input),
+            new Promise((_, rej) => setTimeout(() => rej(new Error(`timeout 45s`)), 45000)),
+          ]);
+          results.push(r);
+          actions++;
+        } catch (e) {
+          results.push({ error: e.message });
+        }
+      }
+      for (let i = 0; i < result.toolCalls.length; i++) {
+        const raw = JSON.stringify(results[i]);
+        messages.push({
+          role: 'tool',
+          tool_call_id: result.toolCalls[i].id,
+          content: raw.length > 2000 ? raw.slice(0, 2000) + '…[truncado]' : raw,
+        });
+      }
+
+      state.apiUsage.calls++;
+      state.apiUsage.inputTokens += result.usage.prompt_tokens || 0;
+      state.apiUsage.outputTokens += result.usage.completion_tokens || 0;
     }
 
-    const bgToolNames = ['proactive_thought', 'learn', 'save_memory', 'call_service', 'get_entity_state'];
-    const bgTools = state.openAITools.filter(t => bgToolNames.includes(t.function.name));
-
-    let proResult;
-    try {
-      proResult = await callOpenAI(C.BG_MODEL, 'Eres Jarvis en modo autónomo. ACTÚAS primero (call_service para arreglar cosas), luego reportas con proactive_thought. Si no hay nada útil, di solo "OK". Español. Sé directo.', [{ role: 'user', content: analysisPrompt + autoFixLog }], bgTools, 1024);
-    } catch (err) {
-      console.log(`[proactive] Error API: ${err.message}`);
-      return;
-    }
-
-    for (const tc of proResult.toolCalls) {
-      await state.executeTool(tc.name, tc.input);
-    }
-
-    console.log(`[proactive] Ciclo completo. ${proResult.toolCalls.length} acciones tomadas.`);
+    console.log(`[proactive] Foco ${focus} completado. ${actions} acciones de tool.`);
+    pushToAll({ type: 'proactive_cycle', focus, actions, ts: new Date().toISOString() });
   } catch (err) {
     console.log(`[proactive] Error: ${err.message}`);
   }

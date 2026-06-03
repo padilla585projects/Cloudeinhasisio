@@ -3,6 +3,37 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.0 (2026-06-03) — CEREBRO AUTÓNOMO: auditor multi-dominio (adiós al spam de luces)
+────────────────────────────────────────────────────────────────────────────────
+
+PROBLEMA QUE RESUELVE:
+  El modo proactivo solo miraba luces/switches encendidos y, con un modelo flojo
+  (gpt-4o-mini), generaba la MISMA sugerencia vaga de "automatizar luces" cada 6h
+  durante días. Ni usaba las tools potentes ni mejoraba el dashboard ni investigaba
+  los dispositivos caídos. Parecía un chatbot de medio pelo.
+
+proactive.js — REESCRITO como auditor multi-dominio rotativo:
+  - Rota el foco cada ciclo (cada 30 min): salud del sistema → dispositivos caídos
+    (causa raíz) → dashboard → seguridad/mantenimiento → optimización/fluidez.
+  - Cerebro: usa Claude Sonnet (claude-sonnet-4-5) si hay clave de Anthropic;
+    fallback a OpenAI. Criterio de ingeniero, no de chatbot.
+  - Bucle agéntico (hasta 6 iter): investiga con tools de lectura → diagnostica →
+    actúa o propone. Ya no es una sola llamada a ciegas.
+  - Toolset amplio pero SEGURO por foco: lectura/diagnóstico (get_repairs,
+    get_system_logs, scan_installation, review_dashboard, score_installation…),
+    y acción de bajo riesgo (call_service, reload_config, update_dashboard con
+    backup, create_automation). NUNCA ejecuta lo arriesgado (install HACS, borrar,
+    write_file, exec, update_self): eso lo PROPONE con pasos concretos.
+  - Foco "dispositivos caídos" investiga la CAUSA (integración caída vs hardware
+    offline vs entidad huérfana) en vez de recargar a ciegas.
+  - Estado de rotación persistido en /data/proactive_state.json.
+
+executor.js — proactive_thought más exigente:
+  - Dedup real: descarta ideas casi-duplicadas de las pendientes (similitud Jaccard
+    de tokens del título, ignorando palabras genéricas). Mata el spam en origen.
+  - Fix de doble-encoding UTF-8 (mojibake "CaÃ­dos" → "Caídos") en title/detail.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.32.0 (2026-05-17) — HARDENING: Seguridad, robustez y timeouts
 ────────────────────────────────────────────────────────────────────────────────
 

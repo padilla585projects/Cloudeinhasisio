@@ -1533,11 +1533,42 @@ Prohibida la copia, redistribucion y uso comercial.`);
           const thoughtsFile = path.join(C.DATA_DIR, 'pending_thoughts.json');
           let thoughts = loadJSON(thoughtsFile, []);
 
+          // Fix doble-encoding UTF-8 (mojibake tipo "CaÃ­dos" → "Caídos")
+          const fixEnc = (s) => {
+            if (typeof s !== 'string' || !/[ÃÂ][\x80-\xBF]/.test(s)) return s;
+            try { return Buffer.from(s, 'latin1').toString('utf8'); } catch { return s; }
+          };
+          const title = fixEnc(input.title || '');
+          const detail = fixEnc(input.detail || '');
+
+          // Dedup real: descartar casi-duplicados de los pendientes (Jaccard de tokens del título)
+          const norm = (s) => (s || '').toLowerCase()
+            .normalize('NFD').replace(/[̀-ͯ]/g, '')      // sin acentos
+            .replace(/[^a-z0-9\s]/g, ' ')
+            .split(/\s+/)
+            .filter(w => w.length > 3 && !['para','como','segun','sobre','desde','hasta','este','esta','esto','luces','automatizacion','automatizar','control','sistema'].includes(w));
+          const newTokens = new Set(norm(title));
+          if (newTokens.size > 0) {
+            const isDup = thoughts.some(t => {
+              if (t.status !== 'pending') return false;
+              const ex = new Set(norm(t.title));
+              if (ex.size === 0) return false;
+              let inter = 0;
+              for (const w of newTokens) if (ex.has(w)) inter++;
+              const union = new Set([...newTokens, ...ex]).size;
+              return union > 0 && (inter / union) >= 0.55;
+            });
+            if (isDup) {
+              console.log(`[proactive] Descartado duplicado: ${title}`);
+              return { success: true, skipped: true, message: 'Idea muy similar a una ya pendiente — descartada para no repetir.' };
+            }
+          }
+
           const thought = {
             id: Date.now(),
             type: input.type,
-            title: input.title,
-            detail: input.detail,
+            title,
+            detail,
             priority: input.priority,
             status: 'pending',
             created: new Date().toISOString(),
@@ -1553,7 +1584,7 @@ Prohibida la copia, redistribucion y uso comercial.`);
           const shouldNotify = input.notify_telegram || input.priority === 'high' || input.priority === 'critical';
           if (shouldNotify) {
             const emoji = { low: '💡', medium: '🔔', high: '⚠️', critical: '🚨' };
-            const msg = `${emoji[input.priority] || '💭'} *JARVIS — ${input.type.toUpperCase()}*\n\n*${input.title}*\n${input.detail}\n\n_Prioridad: ${input.priority}_\n_Responde "sí" o "no" para aprobar/rechazar._`;
+            const msg = `${emoji[input.priority] || '💭'} *JARVIS — ${(input.type || 'idea').toUpperCase()}*\n\n*${title}*\n${detail}\n\n_Prioridad: ${input.priority}_\n_Responde "sí" o "no" para aprobar/rechazar._`;
 
             // Intentar enviar por Telegram
             try {
@@ -1572,7 +1603,7 @@ Prohibida la copia, redistribucion y uso comercial.`);
           }
 
           saveJSON(thoughtsFile, thoughts);
-          console.log(`[proactive] ${input.priority}: ${input.title}`);
+          console.log(`[proactive] ${input.priority}: ${title}`);
 
           return {
             success: true,
