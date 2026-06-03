@@ -3,6 +3,24 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.1 (2026-06-03) — PERMISOS SUPERVISOR: Jarvis ya puede ejecutar de verdad
+────────────────────────────────────────────────────────────────────────────────
+
+PROBLEMA QUE RESUELVE:
+  El log del Supervisor mostraba a Jarvis chocando cada 2 minutos contra el muro de
+  permisos: "missing API permission" / "Invalid token" al intentar /addons/.../update,
+  /addons/.../restart, /store/repositories y /core/logs. Sus acciones autónomas de
+  bajo riesgo (reiniciar add-ons caídos, auto-actualizarse, leer logs del core)
+  fallaban en SILENCIO. Parte de la sensación de "no hace nada" venía de aquí.
+
+config.yaml:
+  · hassio_api: true     — acceso a la API del Supervisor
+  · hassio_role: manager — permite gestionar add-ons (restart/update/info), store y logs
+
+  Ahora las tools ha_supervisor, update_self y el reinicio de integraciones caídas
+  funcionan en vez de devolver 403. homeassistant_api: true se mantiene.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.0 (2026-06-03) — CEREBRO AUTÓNOMO: auditor multi-dominio (adiós al spam de luces)
 ────────────────────────────────────────────────────────────────────────────────
 
