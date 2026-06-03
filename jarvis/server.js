@@ -24,6 +24,7 @@ const { captureStateSnapshot, analyzePatterns } = require('./background/patterns
 const { knowledgeExpansionLoop, distillLearnings } = require('./background/knowledge');
 const { checkSelfUpdate, checkSystemUpdates } = require('./background/updates');
 const { checkEmergencies, bootRecoverScripts, bootSelfCheck, bootLearnHA, bootLearnOwnProject } = require('./background/selfcheck');
+const { netGuardLoop } = require('./background/netguard');
 
 // agent_network es OPCIONAL — si el archivo falta (deployment incompleto, build cache, etc.)
 // NO debe tirar abajo todo el add-on. Stub silencioso como fallback.
@@ -1214,6 +1215,11 @@ app.listen(PORT, '0.0.0.0', () => {
   setTimeout(bootLearnOwnProject, 20_000);
 
   setInterval(() => { checkEmergencies(); nexusWatchers(); }, 30_000);
+
+  // ── NETGUARD — watchdog de red/DNS (código puro, sin IA): detecta DNS caído y
+  //    reinicia el Pi-hole en Proxmox por IP. Cada 2 min; primer chequeo a los 3 min.
+  setInterval(netGuardLoop, 2 * 60_000);
+  setTimeout(netGuardLoop, 3 * 60_000);
 
   // ── GetawayAgentes — red de agentes (opt-in via AGENT_NET_ENABLED=true) ──
   setTimeout(() => agentNetwork.start().catch(e => console.log('[agent-net] start error:', e.message)), 8_000);

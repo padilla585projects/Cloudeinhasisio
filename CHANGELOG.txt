@@ -3,6 +3,32 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.2 (2026-06-03) — NETGUARD: auto-reparación de red/DNS (reinicia el Pi-hole solo)
+────────────────────────────────────────────────────────────────────────────────
+
+PROBLEMA QUE RESUELVE:
+  El Pi-hole (en Proxmox) se colgó: respondía al ping pero su resolutor DNS no
+  resolvía nada. Resultado: TODA la red sin internet por nombre, HA con "no host
+  internet connection" y bloqueo de actualizaciones. Y lo peor: el propio cerebro
+  de Jarvis se queda ciego en ese momento (no resuelve api.openai.com /
+  api.telegram.org), así que un loop normal con IA NO puede ni detectarlo ni avisar.
+
+background/netguard.js — NUEVO watchdog de CÓDIGO PURO (sin IA, sin nube):
+  · Cada 2 min sondea resolución DNS real (github/cloudflare/openai). Si NINGUNO
+    resuelve (con doble confirmación espaciada) → DNS caído.
+  · Distingue "solo DNS" de "corte total" probando conectividad por IP (1.1.1.1).
+  · Si Proxmox está configurado: localiza el contenedor de DNS por nombre
+    (pihole/pi-hole/adguard/unbound/dns) y lo REINICIA por IP — la API de Proxmox
+    va por IP:8006, funciona justo cuando el DNS está muerto. Fallback stop+start.
+  · Guardarraíles: cooldown 10 min entre acciones, tope 6/día, y verificación de
+    recuperación a los 90s.
+  · Tras recuperar la red: avisa por Telegram + registra proactive_thought
+    ("detecté DNS caído → reinicié Pi-hole → resuelto a las HH:MM"). Si no se
+    recupera o no puede actuar → pensamiento 'critical' para revisión humana.
+
+  Cableado en server.js: setInterval 2 min, primer chequeo a los 3 min del arranque.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.1 (2026-06-03) — PERMISOS SUPERVISOR: Jarvis ya puede ejecutar de verdad
 ────────────────────────────────────────────────────────────────────────────────
 
