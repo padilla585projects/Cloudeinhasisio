@@ -40,6 +40,16 @@ if bashio::config.has_value 'github_token'; then
   export GITHUB_TOKEN="$(bashio::config 'github_token')"
 fi
 
+export TELEGRAM_BOT_TOKEN=""
+if bashio::config.has_value 'telegram_bot_token'; then
+  export TELEGRAM_BOT_TOKEN="$(bashio::config 'telegram_bot_token')"
+fi
+
+export TELEGRAM_ALLOWED_IDS=""
+if bashio::config.has_value 'telegram_allowed_ids'; then
+  export TELEGRAM_ALLOWED_IDS="$(bashio::config 'telegram_allowed_ids')"
+fi
+
 
 # ── GetawayAgentes (red de agentes IA, opt-in) ───────────────────────────────
 export AGENT_NET_ENABLED="true"
@@ -55,7 +65,7 @@ if bashio::config.has_value 'agent_net_invite'; then
   export AGENT_NET_INVITE="$(bashio::config 'agent_net_invite')"
 fi
 
-bashio::log.info "Iniciando Jarvis AI Agent v3.33.4..."
+bashio::log.info "Iniciando Jarvis AI Agent v3.33.5..."
 bashio::log.info "Modelos cloud: gpt-4o-mini (bg) + gpt-4.1-mini (principal) + claude-sonnet-4-5 (dev)"
 bashio::log.info "☁️ Núcleos activos:"
 bashio::log.info "  · OpenAI: gpt-4.1-mini (principal) + gpt-4o-mini (rápido)"
@@ -77,6 +87,11 @@ if [ "${AGENT_NET_ENABLED}" = "true" ]; then
   bashio::log.info "🤝 GetawayAgentes: HABILITADA (${AGENT_NET_URL})"
 else
   bashio::log.info "GetawayAgentes: deshabilitada (poner agent_net_enabled: true para activar)"
+fi
+if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
+  bashio::log.info "📱 Bot Telegram: ACTIVO (acceso remoto habilitado)"
+else
+  bashio::log.info "Bot Telegram: desactivado (configurar telegram_bot_token para acceso remoto)"
 fi
 
 # Garantiza que todas las deps están instaladas (por si el layer npm está cacheado)

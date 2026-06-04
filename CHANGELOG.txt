@@ -3,6 +3,47 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.5 (2026-06-04) — Bot de Telegram standalone: Jarvis accesible desde cualquier lugar
+────────────────────────────────────────────────────────────────────────────────
+
+PROBLEMA QUE RESUELVE:
+  Cuando el usuario está fuera de casa, no hay forma de hablar con Jarvis salvo
+  que tenga VPN o acceso al panel de HA. El bot de Telegram permite acceso remoto
+  completo al bucle agéntico sin depender de la red local.
+
+NUEVO: background/telegram_bot.js — Bot Telegram standalone
+  · Long-polling directo contra la Bot API de Telegram (no usa HA notify).
+  · Redirige mensajes al loop agéntico via HTTP interno (localhost:3000/api/chat),
+    consume el stream SSE y devuelve la respuesta final al chat de Telegram.
+  · Historial compacto por conversación (últimos 6 intercambios) para mantener
+    contexto sin explotar el contexto del LLM.
+  · Mensajes largos (>4000 chars) se parten automáticamente.
+  · Comandos directos sin pasar por el LLM: /start, /ayuda.
+  · Comandos enriquecidos que sí pasan por el LLM con texto expandido:
+    /estado, /luces, /temperatura, /scan.
+  · Tipado ("escribiendo...") mientras Jarvis procesa.
+
+Seguridad y activación:
+  · Opt-in: solo activa si telegram_bot_token está configurado en el add-on.
+  · telegram_allowed_ids: lista de chat_ids autorizados (coma-separados).
+    Si vacío, aprende y acepta el primer chat_id que escriba (auto-learning).
+  · Rechaza mensajes de IDs no autorizados con aviso.
+
+Nuevas opciones de configuración del add-on:
+  · telegram_bot_token (str?) — Token del bot de Telegram (@BotFather)
+  · telegram_allowed_ids (str?) — IDs autorizadas, p.ej. "123456,789012"
+
+utils/constants.js — TELEGRAM_BOT_TOKEN, TELEGRAM_ALLOWED_IDS
+run.sh — export + log de activación del bot
+server.js — startTelegramBot() al arranque (envuelto en catch)
+
+CÓMO ACTIVAR:
+  1. Crear un bot en @BotFather → copiar el token
+  2. En las opciones del add-on: telegram_bot_token = "1234567890:AAxx..."
+  3. Reiniciar el add-on
+  4. Escribir al bot → Jarvis responde con acceso completo a la instalación
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.4 (2026-06-04) — INFRAGUARD: watchdog de servicios HA (add-ons + integraciones)
 ────────────────────────────────────────────────────────────────────────────────
 

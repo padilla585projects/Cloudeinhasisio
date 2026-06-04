@@ -21,6 +21,8 @@ const PROXMOX_NODE      = process.env.PROXMOX_NODE  || 'pve';
 const GITHUB_TOKEN      = process.env.GITHUB_TOKEN  || '';
 const GITHUB_REPO       = 'padilla585projects/Cloudeinhasisio';
 const GITHUB_BRANCH     = 'main';
+const TELEGRAM_BOT_TOKEN   = process.env.TELEGRAM_BOT_TOKEN   || '';
+const TELEGRAM_ALLOWED_IDS = process.env.TELEGRAM_ALLOWED_IDS || '';
 
 // ── Rutas del filesystem de HA ────────────────────────────────────────────────
 const DATA_DIR   = '/data';
@@ -50,6 +52,7 @@ module.exports = {
   HA_TOKEN, HA_URL, LANGUAGE,
   PROXMOX_URL, PROXMOX_TOKEN, PROXMOX_NODE,
   GITHUB_TOKEN, GITHUB_REPO, GITHUB_BRANCH,
+  TELEGRAM_BOT_TOKEN, TELEGRAM_ALLOWED_IDS,
   DATA_DIR, HA_CONFIG, HA_ADDONS, HA_SHARE, HA_MEDIA,
   MEMORY_FILE, HISTORY_FILE, LEARNINGS_FILE,
   HOUSE_CONTEXT_FILE, INSTALLATION_MAP_FILE,

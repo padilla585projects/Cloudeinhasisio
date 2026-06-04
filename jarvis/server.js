@@ -26,6 +26,7 @@ const { checkSelfUpdate, checkSystemUpdates } = require('./background/updates');
 const { checkEmergencies, bootRecoverScripts, bootSelfCheck, bootLearnHA, bootLearnOwnProject } = require('./background/selfcheck');
 const { netGuardLoop } = require('./background/netguard');
 const { infraGuardLoop } = require('./background/infraguard');
+const { startTelegramBot } = require('./background/telegram_bot');
 
 // agent_network es OPCIONAL — si el archivo falta (deployment incompleto, build cache, etc.)
 // NO debe tirar abajo todo el add-on. Stub silencioso como fallback.
@@ -1226,6 +1227,9 @@ app.listen(PORT, '0.0.0.0', () => {
   //    Cada 5 min; primer chequeo a los 5 min (cuando HA esté estable).
   setInterval(infraGuardLoop, 5 * 60_000);
   setTimeout(infraGuardLoop, 5 * 60_000);
+
+  // ── Bot de Telegram standalone (opt-in via telegram_bot_token en config) ──
+  startTelegramBot().catch(e => console.log('[tg-bot] start error:', e.message));
 
   // ── GetawayAgentes — red de agentes (opt-in via AGENT_NET_ENABLED=true) ──
   setTimeout(() => agentNetwork.start().catch(e => console.log('[agent-net] start error:', e.message)), 8_000);

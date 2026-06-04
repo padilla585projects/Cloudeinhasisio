@@ -1,6 +1,6 @@
 name: "Jarvis AI Agent"
 description: "Jarvis — Asistente IA para Home Assistant. Control por voz y texto."
-version: "3.33.4"
+version: "3.33.5"
 slug: "jarvis_ai_agent"
 init: false
 arch:
@@ -40,6 +40,8 @@ options:
   agent_net_enabled: true
   agent_net_url: "https://getaway-gateway.alejandra-app.workers.dev"
   agent_net_invite: "getaway2026"
+  telegram_bot_token: ""
+  telegram_allowed_ids: ""
 schema:
   openai_api_key: str
   serper_api_key: str?
@@ -53,3 +55,5 @@ schema:
   agent_net_enabled: bool?
   agent_net_url: str?
   agent_net_invite: str?
+  telegram_bot_token: str?
+  telegram_allowed_ids: str?
