@@ -48,4 +48,16 @@ async function supervisorGet(endpoint) {
   return res.json();
 }
 
-module.exports = { haGet, haPost, supervisorGet };
+async function supervisorPost(endpoint, body = {}) {
+  const res = await haFetch(`http://supervisor${endpoint}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${HA_TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error(`Supervisor POST ${endpoint} → ${res.status}`);
+  // Algunas respuestas del Supervisor no tienen cuerpo JSON
+  const text = await res.text();
+  try { return JSON.parse(text); } catch { return { ok: true }; }
+}
+
+module.exports = { haGet, haPost, supervisorGet, supervisorPost };

@@ -3,6 +3,44 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.4 (2026-06-04) — INFRAGUARD: watchdog de servicios HA (add-ons + integraciones)
+────────────────────────────────────────────────────────────────────────────────
+
+PROBLEMA QUE RESUELVE:
+  NETGUARD repara la red (DNS caído). Pero si un add-on como Zigbee2MQTT crashea,
+  o la integración del puente Zigbee pierde conexión, Jarvis debería detectarlo
+  y reiniciarlo solo — sin que Adrián tenga que mirar los logs.
+
+NUEVO: background/infraguard.js — Watchdog de servicios HA
+  Complementa a NETGUARD en la capa de servicios de HA:
+
+  · Crash detection vía Supervisor API (GET /hassio/addons):
+    - Detecta add-ons en estado "error" (crash real, no parada voluntaria).
+    - Doble confirmación: tiene que aparecer en error 2 ciclos seguidos antes
+      de actuar (evita falsas alarmas en reinicios normales de HA).
+    - Reinicia via POST /hassio/addons/{slug}/restart.
+    - Lista NEVER_RESTART para proteger infraestructura crítica del sistema
+      (Supervisor, audio, DNS HA, SSH, el propio Jarvis).
+    - Guardarraíles: cooldown 20 min + tope 3 reinicios/día por add-on.
+    - Si alcanza el tope → aviso crítico (revisión manual necesaria).
+
+  · Entity checks (integraciones con health sensor):
+    - Zigbee2MQTT bridge: binary_sensor.zigbee2mqtt_bridge_connection_state
+      Si lleva 2 ciclos en off/unavailable/unknown → reinicia el add-on Z2M.
+    - deCONZ/Phoscon: binary_sensor.deconz_connectivity (optional, skip si no existe).
+    - Extensible: añadir más checks al array ENTITY_CHECKS sin tocar el engine.
+
+  · Notificaciones: Telegram + pending_thoughts en cada acción o tope alcanzado.
+  · Loop cada 5 minutos; primer check a los 5 min (cuando HA ya está estable).
+
+utils/ha-api.js — Añadida función supervisorPost(endpoint, body)
+  Necesaria para el reinicio de add-ons. Maneja respuestas sin cuerpo JSON.
+  Exportada junto a haGet, haPost, supervisorGet.
+
+server.js
+  · require('./background/infraguard') + wiring del loop (cada 5 min).
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.3 (2026-06-03) — NETGUARD clúster-aware: busca el Pi-hole en TODOS los nodos
 ────────────────────────────────────────────────────────────────────────────────
 
