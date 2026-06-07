@@ -1253,6 +1253,80 @@ app.post('/api/pending_thoughts/:id', (req, res) => {
   res.json({ success: true, thought: thoughts[idx] });
 });
 
+// ── Deploy-update: fuerza refresco del repo del Supervisor + update del addon ──
+// Llamable desde la LAN sin UI: curl -X POST http://192.168.10.36:3000/api/deploy-update
+// Úsalo tras cada git push para instalar la nueva versión sin tocar el navegador.
+app.post('/api/deploy-update', async (req, res) => {
+  const REPO_URL = 'https://github.com/padilla585projects/Cloudeinhasisio';
+  const ADDON_SLUG = 'jarvis_ai_agent';
+  const TOKEN = C.HA_TOKEN;
+  const log = [];
+
+  const svGet = async (ep) => {
+    const r = await fetch(`http://supervisor${ep}`, { headers: { Authorization: `Bearer ${TOKEN}` } });
+    const t = await r.text();
+    try { return JSON.parse(t); } catch { return { raw: t }; }
+  };
+  const svPost = async (ep, body = {}) => {
+    const r = await fetch(`http://supervisor${ep}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const t = await r.text();
+    try { return JSON.parse(t); } catch { return { raw: t, ok: r.ok }; }
+  };
+  const svDel = async (ep) => {
+    const r = await fetch(`http://supervisor${ep}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${TOKEN}` }
+    });
+    return r.ok;
+  };
+
+  try {
+    // 1. Encontrar slug del repo
+    const reposData = await svGet('/store/repositories');
+    const allRepos = ((reposData.data || reposData).repositories || []);
+    const found = allRepos.find(rp => (rp.source || rp.url || '').includes('padilla585projects'));
+    log.push(`repos: ${allRepos.length} encontrados`);
+
+    // 2. Borrar repo (vacía la caché)
+    if (found) {
+      const deleted = await svDel(`/store/repositories/${found.slug}`);
+      log.push(`repo_deleted: slug=${found.slug} ok=${deleted}`);
+      await new Promise(r => setTimeout(r, 2000));
+    } else {
+      log.push('repo_not_found: intentando añadir directamente');
+    }
+
+    // 3. Re-añadir repo (Supervisor descarga índice fresco de GitHub)
+    const addR = await svPost('/store/repositories', { repository: REPO_URL });
+    log.push(`repo_added: result=${addR.result || 'ok'}`);
+
+    // 4. Esperar a que el Supervisor indexe la nueva versión
+    await new Promise(r => setTimeout(r, 7000));
+
+    // 5. Lanzar update del addon
+    const updateR = await svPost(`/addons/${ADDON_SLUG}/update`);
+    const success = updateR.result === 'ok';
+    log.push(`update_addon: result=${updateR.result || JSON.stringify(updateR).slice(0, 60)}`);
+
+    console.log(`[deploy-update] Ciclo completo: ${log.join(' | ')}`);
+    res.json({
+      success,
+      addon: ADDON_SLUG,
+      steps: log,
+      note: success
+        ? 'Actualización en curso. Jarvis se reiniciará en unos segundos.'
+        : 'Repo refrescado. Si el addon no se actualizó (quizás ya está en la versión más reciente), espera 10s y vuelve a intentar.'
+    });
+  } catch (err) {
+    console.error('[deploy-update] Error:', err.message);
+    res.status(500).json({ success: false, error: err.message, steps: log });
+  }
+});
+
 // ── Arrancar ─────────────────────────────────────────────────────────────────
 const PORT = 3000;
 app.listen(PORT, '0.0.0.0', () => {

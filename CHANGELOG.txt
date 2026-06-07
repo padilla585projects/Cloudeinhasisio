@@ -3,6 +3,23 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.13 (2026-06-07) — Endpoint HTTP /api/deploy-update: un curl y Jarvis se actualiza
+────────────────────────────────────────────────────────────────────────────────
+
+Nuevo endpoint en server.js: POST /api/deploy-update (accesible desde la LAN, sin UI)
+  · Borra el repo del Supervisor (vacía caché), lo re-añade (GitHub fresco), espera 7s,
+    lanza update del addon jarvis_ai_agent. Todo en una llamada HTTP.
+  · Workflow definitivo tras un git push:
+      curl -s -X POST http://192.168.10.36:3000/api/deploy-update
+  · No requiere abrir el navegador, no requiere chat con Jarvis, no requiere UI de HA.
+
+bootstrap_update.js (en raíz del repo, NO se despliega en el add-on)
+  · Script one-shot para pasar de la versión vieja a esta sin UI.
+  · Si el endpoint ya existe → lo llama directamente.
+  · Si no → envía la instrucción al chat de Jarvis para que use exec_command.
+  · Uso: node bootstrap_update.js
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.12 (2026-06-07) — Auto-deploy: Jarvis se actualiza solo sin intervención manual
 ────────────────────────────────────────────────────────────────────────────────
 
