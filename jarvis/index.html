@@ -603,6 +603,39 @@
     padding: 10px; margin: 8px 0; background: rgba(0,0,0,0.25);
     overflow-x: auto; max-width: 100%;
   }
+  /* ── Status card (panel visual /estado) ────────────────── */
+  .status-card {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 14px; padding: 14px 16px; margin: 4px 0;
+    max-width: 520px;
+  }
+  .status-card-header {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+    color: var(--accent); text-transform: uppercase; margin-bottom: 12px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .status-card-ts { font-size: 10px; color: var(--text3); font-weight: 400; letter-spacing: 0; text-transform: none; }
+  .status-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+  .status-tile {
+    background: var(--bg3); border-radius: 10px; padding: 10px 10px 8px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .status-tile-icon { font-size: 18px; line-height: 1; }
+  .status-tile-val { font-size: 15px; font-weight: 700; color: var(--text1); line-height: 1; }
+  .status-tile-lbl { font-size: 10px; color: var(--text3); }
+  .status-tile.warn  { border: 1px solid rgba(255,167,38,0.4); }
+  .status-tile.alert { border: 1px solid rgba(244,67,54,0.5); }
+  .status-tile.ok    { border: 1px solid rgba(76,175,80,0.35); }
+  .status-thoughts { border-top: 1px solid var(--border); padding-top: 8px; margin-top: 2px; }
+  .status-thought-item {
+    font-size: 12px; color: var(--text2); padding: 3px 0;
+    display: flex; align-items: flex-start; gap: 6px; line-height: 1.4;
+  }
+  .status-thought-dot { width: 6px; height: 6px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
+  .dot-high     { background: #ff9800; }
+  .dot-critical { background: #f44336; }
+  .dot-medium   { background: #4db6ac; }
+  .dot-low      { background: var(--text3); }
   .html-render-block img { max-width: 100%; border-radius: 8px; display: block; }
   .html-render-block svg { max-width: 100%; height: auto; display: block; }
 
@@ -1030,6 +1063,102 @@
     container.appendChild(div);
     scrollToBottom();
     return bubble;
+  }
+
+  // ── Panel visual de estado (/estado) ────────────────────────────────────────
+  async function injectStatusCard() {
+    try {
+      const r = await fetch('api/status');
+      if (!r.ok) return;
+      const d = await r.json();
+      renderStatusCard(d);
+    } catch {}
+  }
+
+  function renderStatusCard(d) {
+    hideWelcome();
+    const container = document.getElementById('messages');
+    const wrap = document.createElement('div');
+    wrap.className = 'message ai';
+    const label = document.createElement('div');
+    label.className = 'message-label';
+    label.textContent = 'JARVIS';
+
+    const ts = new Date(d.ts || Date.now()).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    const lightsOn   = d.lights?.on ?? 0;
+    const lightsAll  = d.lights?.total ?? 0;
+    const persons    = (d.persons || []).filter(p => p.state === 'home').map(p => p.name).join(', ') || 'Nadie';
+    const unavail    = d.unavailable ?? 0;
+    const emergencies = d.active_emergencies ?? 0;
+    const thoughts   = (d.pending_thoughts || []).slice(0, 3);
+
+    // Temperatura: media de los sensores relevantes (excluir placas/discos)
+    const tempSensors = (d.temperature || []).filter(t => {
+      const n = (t.name || '').toLowerCase();
+      return !n.includes('disk') && !n.includes('cpu') && !n.includes('shelly') && !n.includes('omv');
+    });
+    const avgTemp = tempSensors.length > 0
+      ? (tempSensors.reduce((s, t) => s + parseFloat(t.value || 0), 0) / tempSensors.length).toFixed(1)
+      : null;
+    const tempLabel = avgTemp ? `${avgTemp}°C` : '—';
+
+    const unavailClass = unavail > 20 ? 'warn' : unavail > 0 ? '' : 'ok';
+    const emergClass   = emergencies > 0 ? 'alert' : 'ok';
+    const lightsClass  = lightsOn > 0 ? 'ok' : '';
+
+    const card = document.createElement('div');
+    card.className = 'status-card';
+    card.innerHTML = `
+      <div class="status-card-header">
+        🏠 Estado de la casa
+        <span class="status-card-ts">${ts}</span>
+      </div>
+      <div class="status-tiles">
+        <div class="status-tile ${lightsClass}">
+          <div class="status-tile-icon">💡</div>
+          <div class="status-tile-val">${lightsOn}/${lightsAll}</div>
+          <div class="status-tile-lbl">Luces encendidas</div>
+        </div>
+        <div class="status-tile">
+          <div class="status-tile-icon">🌡️</div>
+          <div class="status-tile-val">${tempLabel}</div>
+          <div class="status-tile-lbl">Temperatura media</div>
+        </div>
+        <div class="status-tile ${persons !== 'Nadie' ? 'ok' : ''}">
+          <div class="status-tile-icon">👤</div>
+          <div class="status-tile-val" style="font-size:12px;padding-top:2px">${persons}</div>
+          <div class="status-tile-lbl">En casa</div>
+        </div>
+        <div class="status-tile ${unavailClass}">
+          <div class="status-tile-icon">⚠️</div>
+          <div class="status-tile-val">${unavail}</div>
+          <div class="status-tile-lbl">No disponibles</div>
+        </div>
+        <div class="status-tile ${emergClass}">
+          <div class="status-tile-icon">🚨</div>
+          <div class="status-tile-val">${emergencies}</div>
+          <div class="status-tile-lbl">Emergencias</div>
+        </div>
+        <div class="status-tile">
+          <div class="status-tile-icon">🧠</div>
+          <div class="status-tile-val">${d.pending_thoughts?.length ?? 0}</div>
+          <div class="status-tile-lbl">Pensamientos</div>
+        </div>
+      </div>
+      ${thoughts.length > 0 ? `
+      <div class="status-thoughts">
+        ${thoughts.map(t => `
+          <div class="status-thought-item">
+            <span class="status-thought-dot dot-${t.priority || 'medium'}"></span>
+            <span>${t.title || ''}</span>
+          </div>`).join('')}
+      </div>` : ''}
+    `;
+
+    wrap.appendChild(label);
+    wrap.appendChild(card);
+    container.appendChild(wrap);
+    scrollToBottom();
   }
 
   function addToolBlock(toolName, status = 'running') {
@@ -1942,6 +2071,12 @@
 
     addMessage('user', displayText || '📎 Archivos adjuntos');
     conversationHistory.push({ role: 'user', content: text || '(archivo adjunto)' });
+
+    // Inyectar panel visual inmediato para /estado (sin esperar al LLM)
+    const estadoExpand = SLASH_EXPAND['/estado'] || '';
+    if (text && (text.trim() === '/estado' || text.startsWith(estadoExpand.slice(0, 40)))) {
+      injectStatusCard();
+    }
 
     // Pasar archivos a la cola junto con el texto
     const filesSnapshot = [...pendingFiles];

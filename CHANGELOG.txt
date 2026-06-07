@@ -3,6 +3,26 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.7 (2026-06-07) — Panel visual instantáneo en /estado
+────────────────────────────────────────────────────────────────────────────────
+
+Al escribir /estado, el frontend ahora inyecta un panel visual con datos reales
+ANTES de que el LLM responda (instantáneo, sin esperar al modelo).
+
+index.html — Panel visual de estado (status card)
+  · 6 tiles en cuadrícula: Luces (encendidas/total), Temperatura media (filtra
+    sensores de hardware como discos/CPUs), Presencia (personas en casa),
+    No disponibles (con color naranja si >20), Emergencias (rojo si >0),
+    Pensamientos pendientes (count).
+  · Hasta 3 pensamientos de alta prioridad listados debajo de los tiles con
+    puntos de color según prioridad (critical=rojo, high=naranja, medium=teal).
+  · CSS integrado: .status-card, .status-tiles, .status-tile con variantes
+    .ok/.warn/.alert para colorear según estado.
+  · sendMessage() detecta cuando el usuario envía /estado (o su expansión) y
+    llama a injectStatusCard() → fetch('api/status') antes de ir al LLM.
+  · La respuesta del LLM sigue llegando después con el análisis narrativo.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.6 (2026-06-07) — Rutinas por voz natural: "cuando llegue a casa, enciende el salón"
 ────────────────────────────────────────────────────────────────────────────────
 
