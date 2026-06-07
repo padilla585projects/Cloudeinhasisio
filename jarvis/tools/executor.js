@@ -1541,27 +1541,50 @@ Prohibida la copia, redistribucion y uso comercial.`);
           const title = fixEnc(input.title || '');
           const detail = fixEnc(input.detail || '');
 
-          // Dedup real: descartar casi-duplicados de los pendientes (Jaccard de tokens del título)
+          // ── Dedup mejorado: Jaccard por tokens + dedup por área/tema ────────────
+          // Palabras funcionales a ignorar (NO incluir luces/automatizacion — son discriminadoras)
+          const STOPWORDS = new Set(['para','como','segun','sobre','desde','hasta','este','esta',
+            'esto','control','mediante','usando','cuando','donde','todos','todas','cada',
+            'tener','hacer','crear','nuevo','nueva','entre','dentro','fuera']);
           const norm = (s) => (s || '').toLowerCase()
-            .normalize('NFD').replace(/[̀-ͯ]/g, '')      // sin acentos
+            .normalize('NFD').replace(/[̀-ͯ]/g, '')
             .replace(/[^a-z0-9\s]/g, ' ')
             .split(/\s+/)
-            .filter(w => w.length > 3 && !['para','como','segun','sobre','desde','hasta','este','esta','esto','luces','automatizacion','automatizar','control','sistema'].includes(w));
+            .filter(w => w.length > 3 && !STOPWORDS.has(w));
+
+          // Palabras de área/zona de la casa — si coincide la zona Y hay pensamiento similar → dedup
+          const AREA_WORDS = ['garaje','salon','dormitorio','cocina','bano','terraza','entrada',
+            'pasillo','jardin','habitacion','comedor','biblioteca','oficina','trastero'];
+          const getArea = (s) => AREA_WORDS.find(a => (s||'').toLowerCase()
+            .normalize('NFD').replace(/[̀-ͯ]/g,'').includes(a)) || null;
+
           const newTokens = new Set(norm(title));
-          if (newTokens.size > 0) {
-            const isDup = thoughts.some(t => {
-              if (t.status !== 'pending') return false;
-              const ex = new Set(norm(t.title));
-              if (ex.size === 0) return false;
+          const newArea   = getArea(title);
+
+          const pending = thoughts.filter(t => t.status === 'pending');
+          const isDup = pending.some(t => {
+            const exTokens = new Set(norm(t.title));
+            // Jaccard: umbral 0.4 (antes 0.55 era demasiado estricto)
+            if (newTokens.size > 0 && exTokens.size > 0) {
               let inter = 0;
-              for (const w of newTokens) if (ex.has(w)) inter++;
-              const union = new Set([...newTokens, ...ex]).size;
-              return union > 0 && (inter / union) >= 0.55;
-            });
-            if (isDup) {
-              console.log(`[proactive] Descartado duplicado: ${title}`);
-              return { success: true, skipped: true, message: 'Idea muy similar a una ya pendiente — descartada para no repetir.' };
+              for (const w of newTokens) if (exTokens.has(w)) inter++;
+              const union = new Set([...newTokens, ...exTokens]).size;
+              if (union > 0 && (inter / union) >= 0.4) return true;
             }
+            // Si la zona es la misma Y el tipo es el mismo → es duplicado de área
+            if (newArea && getArea(t.title) === newArea &&
+                (input.type || '') === (t.type || '')) return true;
+            // Si el título normalizado es subcadena del existente o viceversa → duplicado
+            const nNew = norm(title).join(' ');
+            const nEx  = norm(t.title).join(' ');
+            if (nNew.length > 5 && nEx.length > 5 &&
+                (nEx.includes(nNew) || nNew.includes(nEx))) return true;
+            return false;
+          });
+
+          if (isDup) {
+            console.log(`[proactive] Descartado duplicado (área/Jaccard): ${title}`);
+            return { success: true, skipped: true, message: 'Idea muy similar a una ya pendiente — descartada para no repetir.' };
           }
 
           const thought = {
@@ -1576,8 +1599,19 @@ Prohibida la copia, redistribucion y uso comercial.`);
           };
           thoughts.push(thought);
 
-          // Limitar a 50 pensamientos pendientes
-          if (thoughts.length > 50) thoughts = thoughts.slice(-50);
+          // Limitar a 20 pensamientos pendientes (antes 50 — demasiados)
+          // Rotación inteligente: eliminar los más viejos de menor prioridad
+          const priorityRank = { critical: 4, high: 3, medium: 2, low: 1 };
+          const MAX_THOUGHTS = 20;
+          if (thoughts.length > MAX_THOUGHTS) {
+            const pending2 = thoughts
+              .filter(t => t.status === 'pending')
+              .sort((a, b) => (priorityRank[a.priority]||0) - (priorityRank[b.priority]||0)
+                           || new Date(a.created) - new Date(b.created));
+            // Eliminar el de menor prioridad más antiguo
+            const toRemove = pending2[0];
+            if (toRemove) thoughts = thoughts.filter(t => t.id !== toRemove.id);
+          }
           saveJSON(thoughtsFile, thoughts);
 
           // Notificar por Telegram si es high/critical o si se pide explícitamente

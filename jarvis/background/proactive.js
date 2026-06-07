@@ -149,10 +149,10 @@ async function proactiveThinkingLoop() {
 
     const { seed, unavailable } = await gatherSeed(focus);
 
-    // Pensamientos ya registrados (para reforzar el NO-repetir)
+    // Pensamientos ya registrados (para reforzar el NO-repetir — todos, no solo los últimos)
     const existing = loadJSON(path.join(C.DATA_DIR, 'pending_thoughts.json'), [])
       .filter(t => t.status === 'pending');
-    const recentTitles = existing.slice(-15).map(t => `- ${t.title}`).join('\n');
+    const recentTitles = existing.map(t => `- ${t.title}`).join('\n');
 
     // Auto-fix de caída masiva antes de pensar (solo en focos relevantes)
     let autoFixLog = [];

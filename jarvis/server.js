@@ -1383,6 +1383,56 @@ app.listen(PORT, '0.0.0.0', () => {
   // ── Bot de Telegram standalone (opt-in via telegram_bot_token en config) ──
   startTelegramBot().catch(e => console.log('[tg-bot] start error:', e.message));
 
+  // ── Limpieza de pensamientos proactivos duplicados al arrancar (una vez) ──
+  setTimeout(() => {
+    try {
+      const thoughtsFile = require('path').join(C.DATA_DIR, 'pending_thoughts.json');
+      const thoughts = loadJSON(thoughtsFile, []);
+      const pending = thoughts.filter(t => t.status === 'pending');
+      if (pending.length <= 5) return; // nada que limpiar
+
+      // Mismo dedup que en proactive_thought: Jaccard 0.4 + área + substring
+      const STOPWORDS = new Set(['para','como','segun','sobre','desde','hasta','este','esta',
+        'esto','control','mediante','usando','cuando','donde','todos','todas','cada',
+        'tener','hacer','crear','nuevo','nueva','entre','dentro','fuera']);
+      const AREA_WORDS = ['garaje','salon','dormitorio','cocina','bano','terraza','entrada',
+        'pasillo','jardin','habitacion','comedor','biblioteca','oficina','trastero'];
+      const norm = (s) => (s||'').toLowerCase()
+        .normalize('NFD').replace(/[̀-ͯ]/g,'')
+        .replace(/[^a-z0-9\s]/g,' ').split(/\s+/)
+        .filter(w => w.length > 3 && !STOPWORDS.has(w));
+      const getArea = (s) => AREA_WORDS.find(a =>
+        (s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').includes(a)) || null;
+
+      const kept = [];
+      for (const t of pending) {
+        const tToks = new Set(norm(t.title));
+        const tArea = getArea(t.title);
+        const isDup = kept.some(k => {
+          const kToks = new Set(norm(k.title));
+          if (tToks.size > 0 && kToks.size > 0) {
+            let inter = 0; for (const w of tToks) if (kToks.has(w)) inter++;
+            const union = tToks.size + kToks.size - inter;
+            if (union > 0 && inter / union >= 0.4) return true;
+          }
+          if (tArea && getArea(k.title) === tArea && (t.type||'') === (k.type||'')) return true;
+          const nT = norm(t.title).join(' '), nK = norm(k.title).join(' ');
+          if (nT && nK && (nK.includes(nT) || nT.includes(nK))) return true;
+          return false;
+        });
+        if (!isDup) kept.push(t);
+      }
+
+      const removed = pending.length - kept.length;
+      if (removed > 0) {
+        // Sustituir los pendientes deduplicados + conservar los no-pending
+        const nonPending = thoughts.filter(t => t.status !== 'pending');
+        saveJSON(thoughtsFile, [...nonPending, ...kept]);
+        console.log(`[boot-dedup] ${removed} pensamientos duplicados eliminados (${kept.length} conservados)`);
+      }
+    } catch(e) { console.log('[boot-dedup] error:', e.message); }
+  }, 3000);
+
   // ── GetawayAgentes — red de agentes (opt-in via AGENT_NET_ENABLED=true) ──
   setTimeout(() => agentNetwork.start().catch(e => console.log('[agent-net] start error:', e.message)), 8_000);
 

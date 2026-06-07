@@ -3,6 +3,32 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.9 (2026-06-07) — Dedup inteligente de pensamientos proactivos
+────────────────────────────────────────────────────────────────────────────────
+
+Soluciona la acumulación de ~50 pensamientos duplicados (todos variantes de
+"automatizar luces/garaje") que saturaban la cola de pending_thoughts.
+
+tools/executor.js — case 'proactive_thought': dedup reescrito
+  · STOPWORDS corregidas: eliminadas 'luces','automatizacion','automatizar'
+    (eran las palabras discriminadoras clave que se borraban antes del Jaccard).
+    Lista nueva: solo partículas funcionales que no aportan significado temático.
+  · Jaccard umbral: 0.55 → 0.4 (detecta duplicados con más solapamiento parcial).
+  · Dedup por área: AREA_WORDS[] + getArea() — si el título menciona la misma
+    zona (garaje, salon, dormitorio…) y el tipo coincide → descartado.
+  · Substring check: si la forma normalizada de un título contiene o está
+    contenida en otro existente → también descartado.
+  · MAX_THOUGHTS: 50 → 20. Rotación inteligente: al superar el límite se elimina
+    el pendiente más antiguo de menor prioridad (no un FIFO ciego).
+
+background/proactive.js — contexto de dedup ampliado
+  · Antes: solo los últimos 15 pensamientos pendientes se pasaban al LLM como
+    "IDEAS YA REGISTRADAS". Con ≥50 thoughts, el LLM no veía los más viejos
+    y regeneraba los mismos.
+  · Ahora: se pasan TODOS los pendientes, sin límite de slice. El LLM siempre
+    tiene el cuadro completo y no puede repetir lo que ya existe.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.8 (2026-06-07) — Chat flotante: Jarvis en todos los paneles de HA
 ────────────────────────────────────────────────────────────────────────────────
 
