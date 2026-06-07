@@ -40,6 +40,8 @@ async function nexusRoute(message) {
     return { expert: 'dev', source: 'regex', confidence: 0.9 };
   if (/automatizaci[oó]n|dashboard|lovelace|card|panel|vista|mushroom|button.card/.test(text))
     return { expert: 'automatizacion', source: 'regex', confidence: 0.85 };
+  if (/cuando llegue|cuando salga|cuando me vaya|cuando est[eé] en casa|si no hay nadie|al anochecer|al amanecer|cuando se (abra|cierre|encienda|apague|active)|cuando la temperatura|programa(r)? que|cada ma[ñn]ana|cada noche|cada (lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)|crea(r)? (una )?rutina|nueva rutina/.test(text))
+    return { expert: 'automatizacion', source: 'regex', confidence: 0.9 };
   if (/diagn[oó]stica|por qu[eé] falla|no funciona|caid[ao]|desconectad|log|error|unavailable/.test(text))
     return { expert: 'diagnostico', source: 'regex', confidence: 0.85 };
   if (/alexa|echo|m[uú]sica|reproduc|altavoz|tts|volumen|pon .*(canci|m[uú]sic|radio|spotify)|announce/.test(text))

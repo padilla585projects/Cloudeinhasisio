@@ -40,7 +40,7 @@ const EXPERTS = {
 
   automatizacion: {
     model: MODEL, maxTokens: 8192, maxIter: 15,
-    modules: ['base', 'philosophy', 'automation', 'ha_internals', 'ha_config_engineering', 'ha_control', 'optimization', 'filesystem', 'inamovible'],
+    modules: ['base', 'philosophy', 'natural_automation', 'automation', 'ha_internals', 'ha_config_engineering', 'ha_control', 'optimization', 'filesystem', 'inamovible'],
     label: 'Automatización',
     tools: ['get_automations', 'create_automation', 'edit_automation', 'delete_automation',
             'simulate_automation', 'reload_config', 'check_config',

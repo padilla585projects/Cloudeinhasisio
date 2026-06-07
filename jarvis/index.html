@@ -812,6 +812,7 @@
 
   // ── Comandos rápidos (/slash) ───────────────────────────────────────────────
   const SLASH_COMMANDS = [
+    { cmd: '/cuando',      icon: '⚡', desc: 'Crear automatización en lenguaje natural' },
     { cmd: '/estado',      icon: '🏠', desc: 'Resumen del estado actual de la casa' },
     { cmd: '/scan',        icon: '🔍', desc: 'Escanear instalación completa de HA' },
     { cmd: '/score',       icon: '📊', desc: 'Puntuación de la instalación (0-100)' },
@@ -823,6 +824,7 @@
   ];
 
   const SLASH_EXPAND = {
+    '/cuando':      null,   // comportamiento especial: rellena el input, no envía
     '/estado':      '¿Cuál es el estado actual de la casa? Resumen rápido de luces, clima, presencia y alertas.',
     '/scan':        'Escanea la instalación completa de Home Assistant y dame un resumen.',
     '/score':       'Puntúa mi instalación de Home Assistant con score_installation y dame recomendaciones.',
@@ -861,8 +863,27 @@
 
   function selectSlash(cmd) {
     const input = document.getElementById('input');
-    input.value = SLASH_EXPAND[cmd] || cmd;
     document.getElementById('slash-menu').style.display = 'none';
+    // /cuando: rellena con plantilla y pone el cursor al final para que el usuario complete
+    if (cmd === '/cuando') {
+      const tpl = 'Cuando ';
+      input.value = tpl;
+      input.focus();
+      input.setSelectionRange(tpl.length, tpl.length);
+      autoResize(input);
+      // Mostrar hint sutil debajo del input
+      let hint = document.getElementById('cuando-hint');
+      if (!hint) {
+        hint = document.createElement('div');
+        hint.id = 'cuando-hint';
+        hint.style.cssText = 'font-size:11px;color:var(--text3);padding:2px 8px;opacity:0.8;';
+        input.parentElement.appendChild(hint);
+      }
+      hint.textContent = 'Ej: "Cuando llegue a casa, enciende el salón" — o "Al anochecer, baja las persianas"';
+      input.addEventListener('blur', () => { if (hint) hint.textContent = ''; }, { once: true });
+      return;
+    }
+    input.value = SLASH_EXPAND[cmd] || cmd;
     input.focus();
     autoResize(input);
   }

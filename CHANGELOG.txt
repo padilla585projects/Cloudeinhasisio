@@ -3,6 +3,45 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.6 (2026-06-07) — Rutinas por voz natural: "cuando llegue a casa, enciende el salón"
+────────────────────────────────────────────────────────────────────────────────
+
+PROBLEMA QUE RESUELVE:
+  Crear automatizaciones requería saber YAML o usar flujos de preguntas y
+  respuestas que interrumpían el ritmo. Con esta versión basta decir la
+  intención en español y Jarvis crea la automatización directamente.
+
+nexus/modules.js — Nuevo módulo 'natural_automation'
+  Motor de traducción lenguaje natural → YAML de HA:
+  · Tabla completa de triggers en español: presencia (llegar/salir),
+    horario (a las X, cada día, los lunes), sol (anochecer/amanecer),
+    sensores (temperatura, puertas, switches).
+  · Tabla de acciones: luces, persianas, climatización, Telegram, TTS.
+  · Regla de oro: ACTÚA PRIMERO, CONFIRMA DESPUÉS.
+    Jarvis usa search_entities() para inferir los entity_ids, crea la
+    automatización y confirma en 2 líneas — sin preguntar nada previo
+    salvo ambigüedad real (3+ entidades igualmente válidas).
+  · Flujo de 1 paso: parsear → search_entities → validate_yaml →
+    create_automation → respuesta en 2 líneas.
+
+nexus/experts.js — Experto 'automatizacion'
+  · Añadido módulo 'natural_automation' al principio de la lista
+    de módulos del experto (alta prioridad en el prompt).
+
+nexus/router.js — Nuevas keywords de detección (Capa 1 regex)
+  · Detecta frases de rutina natural: "cuando llegue", "cuando salga",
+    "cuando me vaya", "al anochecer", "al amanecer", "cuando se abra/
+    cierre/encienda/apague", "cuando la temperatura", "programa que",
+    "cada mañana", "cada noche", días de la semana, "nueva rutina".
+  · Rutas directamente al experto automatizacion con confidence 0.9.
+
+index.html — Slash command /cuando
+  · Nuevo comando en el menú (⚡ primero de la lista).
+  · Comportamiento especial: NO envía, rellena el input con "Cuando "
+    y pone el cursor al final para que el usuario complete la frase.
+  · Muestra un hint de ejemplo: "Cuando llegue a casa, enciende el salón".
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.5 (2026-06-04) — Bot de Telegram standalone: Jarvis accesible desde cualquier lugar
 ────────────────────────────────────────────────────────────────────────────────
 
