@@ -413,11 +413,13 @@ app.post('/api/chat', async (req, res) => {
         sendEvent({ type: 'tool_start', tool: tc.name, input: tc.input });
       }
 
-      // Detectar chattering (mismas tools repetidas sin progreso)
-      const currentToolSig = result.toolCalls.map(tc => tc.name).sort().join(',');
+      // Detectar chattering real: misma tool + mismos inputs (no solo nombre de tool)
+      // Un read_file('/a.yaml') seguido de read_file('/b.yaml') NO es chattering
+      const currentToolSig = result.toolCalls
+        .map(tc => tc.name + ':' + JSON.stringify(tc.input)).sort().join('|');
       if (currentToolSig === lastToolSignature && iterations > 2) {
-        console.log(`[jarvis] Chattering detectado (${currentToolSig}) en iter=${iterations}. Deteniendo.`);
-        sendEvent({ type: 'text', text: '\n\n⚠️ Detecté que estaba repitiendo las mismas acciones. Parando para evitar un bucle.' });
+        console.log(`[jarvis] Chattering detectado (misma tool+input x2) en iter=${iterations}. Deteniendo.`);
+        sendEvent({ type: 'text', text: '\n\n⚠️ Detecté que estaba repitiendo exactamente la misma acción. Parando para evitar un bucle.' });
         break;
       }
       lastToolSignature = currentToolSig;

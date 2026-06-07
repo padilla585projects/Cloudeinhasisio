@@ -24,7 +24,13 @@ function saveJSON(filepath, data) {
 function validateYamlSyntax(content) {
   if (yaml) {
     try {
-      yaml.load(content);
+      // HA usa tags custom que js-yaml rechaza por defecto.
+      // Los sustituimos temporalmente para validar solo la estructura YAML.
+      const sanitized = content
+        .replace(/!secret\s+\S+/g, '"__secret__"')
+        .replace(/!include(?:_dir_merge_named|_dir_merge_list|_dir_named|_dir_list|_dir)?\s+\S+/g, '{}')
+        .replace(/!env_var\s+\S+(?:\s+\S+)?/g, '"__env__"');
+      yaml.load(sanitized);
     } catch (e) {
       return `Error YAML en línea ${e.mark?.line + 1 || '?'}: ${e.reason || e.message}`;
     }

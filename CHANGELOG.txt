@@ -3,6 +3,32 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.10 (2026-06-07) — Tres bugs críticos de robustez
+────────────────────────────────────────────────────────────────────────────────
+
+Bug 1 — Loop detector demasiado agresivo (server.js)
+  · Antes: la firma de chattering era solo los nombres de las tools (ej: "read_file").
+    Jarvis se detenía al llamar read_file('/a.yaml') + read_file('/b.yaml') porque
+    la firma era idéntica aunque los inputs fueran distintos.
+  · Ahora: la firma incluye nombre + JSON.stringify(input). Solo detiene si la
+    combinación exacta tool+argumentos se repite — un bucle real, no trabajo normal.
+
+Bug 2 — Sin fallback cuando Anthropic no tiene créditos (utils/llm.js)
+  · Antes: si ANTHROPIC_API_KEY está configurada pero sin saldo, callLLM lanzaba
+    el error de Anthropic y toda la petición fallaba. El experto 'dev' (Claude) era
+    inutilizable aunque OpenAI estuviera disponible.
+  · Ahora: callLLM detecta errores de crédito/quota/rate-limit de Anthropic y hace
+    fallback automático a gpt-4.1-mini. El usuario no nota ningún corte.
+
+Bug 3 — write_file/append_file/patch_file rechazan YAML válido de HA (utils/persistence.js)
+  · Antes: validateYamlSyntax usaba yaml.load() estricto que rechazaba los tags
+    custom de HA: !secret, !include_dir_merge_named, !include_dir_list, !env_var.
+    Editar configuration.yaml era imposible desde Jarvis.
+  · Ahora: sanitiza temporalmente esos tags antes de validar (sustituye !secret por
+    un string dummy, !include_dir_* por {}, !env_var por string). La validación
+    sigue siendo útil para pillar errores de indentación y sintaxis YAML real.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.9 (2026-06-07) — Dedup inteligente de pensamientos proactivos
 ────────────────────────────────────────────────────────────────────────────────
 

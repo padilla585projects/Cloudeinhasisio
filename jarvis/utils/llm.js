@@ -359,10 +359,33 @@ async function callDeepSeek(model, system, messages, aiTools, maxTokens) {
 // ── Wrapper unificado ─────────────────────────────────────────────────────────
 
 async function callLLM(model, system, messages, tools, maxTokens) {
-  if (model && model.startsWith('claude-'))    return callAnthropic(model, system, messages, tools, maxTokens);
+  if (model && model.startsWith('claude-')) {
+    if (!ANTHROPIC_API_KEY) {
+      console.log('[llm] Anthropic no configurado → fallback gpt-4.1-mini');
+      return callOpenAI(OPENAI_MODEL_FALLBACK, system, messages, tools, maxTokens);
+    }
+    try {
+      return await callAnthropic(model, system, messages, tools, maxTokens);
+    } catch (e) {
+      // Sin créditos, rate-limit o clave inválida → fallback a OpenAI
+      const isCreditsErr = e.message && (
+        e.message.includes('credit') || e.message.includes('balance') ||
+        e.message.includes('quota') || e.message.includes('rate_limit') ||
+        e.message.includes('invalid_api_key') || e.message.includes('401')
+      );
+      if (isCreditsErr) {
+        console.log(`[llm] Anthropic no disponible (${e.message.slice(0,80)}) → fallback gpt-4.1-mini`);
+        return callOpenAI(OPENAI_MODEL_FALLBACK, system, messages, tools, maxTokens);
+      }
+      throw e;
+    }
+  }
   if (model && model.startsWith('deepseek-'))  return callDeepSeek(model, system, messages, tools, maxTokens);
   return callOpenAI(model, system, messages, tools, maxTokens);
 }
+
+// Modelo de fallback cuando Anthropic no está disponible
+const OPENAI_MODEL_FALLBACK = require('./constants').MODEL;
 
 // ── Whisper STT ───────────────────────────────────────────────────────────────
 
