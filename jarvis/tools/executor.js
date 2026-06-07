@@ -2210,9 +2210,11 @@ Prohibida la copia, redistribucion y uso comercial.`);
           }
 
           // ── Gestión de repositorios de add-ons ──────────────────────────────
+          // NOTA: la API del Supervisor devuelve data como array directo:
+          //   {"result":"ok","data":[{slug,name,source,url,...},...]}
           case 'list_repos': {
             const r = await svGet('/store/repositories');
-            const repos = (r.data || r).repositories || [];
+            const repos = Array.isArray(r.data) ? r.data : ((r.data || r).repositories || []);
             return { repositories: repos.map(rp => ({ slug: rp.slug, name: rp.name, url: rp.source || rp.url })), total: repos.length };
           }
 
@@ -2226,7 +2228,7 @@ Prohibida la copia, redistribucion y uso comercial.`);
             let repoSlug = slugOverride;
             if (!repoSlug) {
               const reposData = await svGet('/store/repositories').catch(() => ({}));
-              const allRepos = (reposData.data || reposData).repositories || [];
+              const allRepos = Array.isArray(reposData.data) ? reposData.data : ((reposData.data || reposData).repositories || []);
               const found = allRepos.find(rp => (rp.source || rp.url || '').includes('padilla585projects'));
               if (!found) {
                 // Si no está en la lista, solo intentamos añadirlo
@@ -2276,7 +2278,7 @@ Prohibida la copia, redistribucion y uso comercial.`);
 
             // Paso 1: Obtener repos y borrar
             const reposData = await svGet('/store/repositories').catch(() => ({}));
-            const allRepos = (reposData.data || reposData).repositories || [];
+            const allRepos = Array.isArray(reposData.data) ? reposData.data : ((reposData.data || reposData).repositories || []);
             const found = allRepos.find(rp => (rp.source || rp.url || '').includes('padilla585projects'));
 
             if (found) {

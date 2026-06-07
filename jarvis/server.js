@@ -1286,8 +1286,9 @@ app.post('/api/deploy-update', async (req, res) => {
 
   try {
     // 1. Encontrar slug del repo
+    // Supervisor devuelve: {"result":"ok","data":[{slug,name,source,url},…]}
     const reposData = await svGet('/store/repositories');
-    const allRepos = ((reposData.data || reposData).repositories || []);
+    const allRepos = Array.isArray(reposData.data) ? reposData.data : ((reposData.data || reposData).repositories || []);
     const found = allRepos.find(rp => (rp.source || rp.url || '').includes('padilla585projects'));
     log.push(`repos: ${allRepos.length} encontrados`);
 

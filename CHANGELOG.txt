@@ -3,6 +3,17 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.15 (2026-06-07) — Fix parsing de repos del Supervisor en deploy-update
+────────────────────────────────────────────────────────────────────────────────
+
+La API del Supervisor devuelve data como array directo:
+  {"result":"ok","data":[{slug,name,source,url},…]}  ← NO {"data":{"repositories":[…]}}
+
+Fix en executor.js (list_repos, refresh_repo, deploy_update) y en server.js
+(/api/deploy-update endpoint): usar Array.isArray(r.data)?r.data:… para parsear
+correctamente. Ahora el ciclo borrar+añadir repo funciona y se detecta la nueva versión.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.14 (2026-06-07) — Dockerfile: npm install cacheado, updates 10s en vez de 3min
 ────────────────────────────────────────────────────────────────────────────────
 
