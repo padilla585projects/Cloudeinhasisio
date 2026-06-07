@@ -101,17 +101,22 @@ async function main() {
   console.log('  Jarvis Bootstrap Update');
   console.log('═══════════════════════════════════════════════════════\n');
 
-  // 1. Intentar /api/deploy-update (si ya está instalada la versión con el endpoint)
+  // 1. Intentar /api/deploy-update (si está instalada la versión con el endpoint Y funciona)
   console.log('[1] Probando /api/deploy-update en Jarvis...');
   const deployResult = await jarvisPost('/api/deploy-update');
-  if (deployResult && deployResult.status < 400) {
-    console.log('✅ Endpoint disponible. Respuesta:');
+  if (deployResult && deployResult.status < 400 && deployResult.body?.success) {
+    console.log('✅ Deploy completado. Respuesta:');
     console.log(JSON.stringify(deployResult.body, null, 2));
     console.log('\n📌 Workflow para futuros updates:');
     console.log('   curl -s -X POST http://192.168.10.36:3000/api/deploy-update');
     return;
   }
-  console.log('   No disponible (versión vieja). Usando HA service API...\n');
+  if (deployResult && deployResult.status < 400 && !deployResult.body?.success) {
+    console.log('   Endpoint existe pero falló (probablemente versión antigua con bug de parsing).');
+    console.log('   Usando HA service API como fallback...\n');
+  } else {
+    console.log('   No disponible. Usando HA service API...\n');
+  }
 
   // 2. Ver estado actual del update entity
   console.log('[2] Consultando estado del update entity en HA...');
