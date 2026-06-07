@@ -574,7 +574,7 @@ const tools = [
   },
   {
     name: 'ha_supervisor',
-    description: 'Control total del sistema Home Assistant: ver y aplicar actualizaciones (core, OS, supervisor, add-ons, HACS), gestionar add-ons (instalar, desinstalar, iniciar, parar, reiniciar), recargar integraciones. USA ESTA TOOL para cualquier gestión del sistema.',
+    description: 'Control total del sistema Home Assistant: ver y aplicar actualizaciones (core, OS, supervisor, add-ons, HACS), gestionar add-ons (instalar, desinstalar, iniciar, parar, reiniciar), recargar integraciones, gestionar repos del store, crear backups. USA ESTA TOOL para cualquier gestión del sistema.',
     input_schema: {
       type: 'object',
       properties: {
@@ -601,12 +601,20 @@ const tools = [
             'restart_core',        // Reiniciar HA Core (pide confirmación)
             'get_config_entries',  // Listar todas las integraciones configuradas
             'get_hacs_updates',    // Ver actualizaciones pendientes de HACS
-            'update_hacs_repo'     // Actualizar un repositorio/componente de HACS
+            'update_hacs_repo',    // Actualizar un repositorio/componente de HACS
+            'list_repos',          // Listar repos de add-ons configurados en el Supervisor
+            'refresh_repo',        // Borrar y re-añadir un repo para forzar detección de nueva versión (fix caché del Supervisor)
+            'deploy_update',       // Ciclo completo: refresh_repo + update_addon en una sola llamada. Usar tras github_push.
+            'list_backups',        // Listar backups del sistema
+            'create_backup'        // Crear un backup completo del sistema
           ]
         },
         addon_slug: { type: 'string', description: 'Slug del add-on (ej: "mosquitto_broker", "zigbee2mqtt", "jarvis_ai_agent")' },
         integration_domain: { type: 'string', description: 'Dominio de la integración (ej: "alexa_media_player", "pvpc_energyhourly", "esphome")' },
         repository_url: { type: 'string', description: 'URL del repositorio del add-on para instalar' },
+        repo_url: { type: 'string', description: 'URL del repo a refrescar (refresh_repo/deploy_update). Default: repo de Jarvis.' },
+        repo_slug: { type: 'string', description: 'Slug interno del repo en el Supervisor (opcional, para acelerar refresh_repo)' },
+        name: { type: 'string', description: 'Nombre para el backup (create_backup)' },
         confirm: { type: 'boolean', description: 'Confirmar acción potencialmente disruptiva (restart_core, update_core, update_os)' }
       },
       required: ['action']

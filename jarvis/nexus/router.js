@@ -54,6 +54,8 @@ async function nexusRoute(message) {
     return { expert: 'red', source: 'regex', confidence: 0.85 };
   if (/recuerda|aprende|memoria|olvida|qu[eé] sabes|qu[eé] has aprendido|knowledge|patr[oó]n|rutina detectada|mejora tu/.test(text))
     return { expert: 'aprendizaje', source: 'regex', confidence: 0.85 };
+  if (/actualiz(a|ate|ate jarvis|a jarvis)|nueva versi[oó]n|instala.*actuali|deploy.*update|refresh.*repo/.test(text))
+    return { expert: 'diagnostico', source: 'regex', confidence: 0.9 };
   if (/backup|copia de seguridad|snapshot|actualiza.*add.?on|actualiza.*addon/.test(text))
     return { expert: 'diagnostico', source: 'regex', confidence: 0.85 };
   if (/zigbee|z2m|zigbee2mqtt|coordinador|pareado|pairing/.test(text))

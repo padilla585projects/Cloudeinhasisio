@@ -2209,6 +2209,107 @@ Prohibida la copia, redistribucion y uso comercial.`);
             return { success: true, updated: input.addon_slug };
           }
 
+          // ── Gestión de repositorios de add-ons ──────────────────────────────
+          case 'list_repos': {
+            const r = await svGet('/store/repositories');
+            const repos = (r.data || r).repositories || [];
+            return { repositories: repos.map(rp => ({ slug: rp.slug, name: rp.name, url: rp.source || rp.url })), total: repos.length };
+          }
+
+          case 'refresh_repo': {
+            // Ciclo completo: encuentra el repo, lo borra y vuelve a añadirlo.
+            // Esto fuerza al Supervisor a descargar la versión más reciente del GitHub.
+            const repoUrl = input.repo_url || 'https://github.com/padilla585projects/Cloudeinhasisio';
+            const slugOverride = input.repo_slug; // si se conoce el slug, se puede saltar el listado
+
+            // 1. Obtener slug del repo
+            let repoSlug = slugOverride;
+            if (!repoSlug) {
+              const reposData = await svGet('/store/repositories').catch(() => ({}));
+              const allRepos = (reposData.data || reposData).repositories || [];
+              const found = allRepos.find(rp => (rp.source || rp.url || '').includes('padilla585projects'));
+              if (!found) {
+                // Si no está en la lista, solo intentamos añadirlo
+                console.log('[supervisor] Repo no encontrado — añadiendo directamente');
+                const addR = await svPost('/store/repositories', { repository: repoUrl });
+                await new Promise(r => setTimeout(r, 4000));
+                return { action: 'added', url: repoUrl, response: addR };
+              }
+              repoSlug = found.slug;
+              console.log(`[supervisor] Repo encontrado: slug=${repoSlug}`);
+            }
+
+            // 2. Borrar el repo
+            const delR = await fetch(`http://supervisor/store/repositories/${repoSlug}`, {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${C.HA_TOKEN}`, 'Content-Type': 'application/json' }
+            });
+            const delText = await delR.text();
+            console.log(`[supervisor] Repo borrado (${repoSlug}): ${delText}`);
+
+            // 3. Esperar un momento
+            await new Promise(r => setTimeout(r, 2000));
+
+            // 4. Volver a añadir
+            const addR = await svPost('/store/repositories', { repository: repoUrl });
+            console.log(`[supervisor] Repo re-añadido: ${repoUrl}`);
+
+            // 5. Esperar a que el Supervisor cargue el índice
+            await new Promise(r => setTimeout(r, 5000));
+
+            return {
+              success: true,
+              steps: ['repo_deleted', 'repo_readded'],
+              repo_url: repoUrl,
+              repo_slug: repoSlug,
+              note: 'El Supervisor ya tiene la versión más reciente del repo. Llama ahora a ha_supervisor action=update_addon addon_slug=jarvis_ai_agent para instalar.'
+            };
+          }
+
+          case 'deploy_update': {
+            // Ciclo completo: refresh_repo + update_addon en una sola llamada.
+            // Usa después de un github_push para que la actualización se instale sola.
+            const deployRepoUrl = input.repo_url || 'https://github.com/padilla585projects/Cloudeinhasisio';
+            const addonSlug = input.addon_slug || 'jarvis_ai_agent';
+
+            console.log('[supervisor] deploy_update: iniciando ciclo refresh+update...');
+
+            // Paso 1: Obtener repos y borrar
+            const reposData = await svGet('/store/repositories').catch(() => ({}));
+            const allRepos = (reposData.data || reposData).repositories || [];
+            const found = allRepos.find(rp => (rp.source || rp.url || '').includes('padilla585projects'));
+
+            if (found) {
+              await fetch(`http://supervisor/store/repositories/${found.slug}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${C.HA_TOKEN}`, 'Content-Type': 'application/json' }
+              }).catch(() => {});
+              console.log(`[supervisor] Repo borrado: ${found.slug}`);
+              await new Promise(r => setTimeout(r, 2000));
+            }
+
+            // Paso 2: Re-añadir repo
+            await svPost('/store/repositories', { repository: deployRepoUrl }).catch(() => {});
+            console.log('[supervisor] Repo re-añadido');
+
+            // Paso 3: Esperar que el Supervisor indexe
+            await new Promise(r => setTimeout(r, 6000));
+
+            // Paso 4: Instalar actualización
+            console.log(`[supervisor] Instalando actualización de ${addonSlug}...`);
+            const updateR = await svPost(`/addons/${addonSlug}/update`).catch(e => ({ error: e.message }));
+
+            return {
+              success: updateR.result === 'ok' || !updateR.error,
+              steps_completed: ['repo_deleted', 'repo_readded', 'update_triggered'],
+              addon: addonSlug,
+              update_response: updateR,
+              note: updateR.result === 'ok'
+                ? '¡Actualización en curso! Jarvis se reiniciará en unos segundos.'
+                : 'Repo actualizado. Si el update no arrancó, espera 10s y prueba update_addon.'
+            };
+          }
+
           case 'list_backups': {
             const r = await svGet('/backups');
             const backups = (r.data || r).backups || [];

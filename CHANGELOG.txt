@@ -3,6 +3,25 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.12 (2026-06-07) — Auto-deploy: Jarvis se actualiza solo sin intervención manual
+────────────────────────────────────────────────────────────────────────────────
+
+Problema resuelto: el Supervisor cachea el repo de GitHub durante horas → el usuario
+tenía que borrar y re-añadir el repo a mano en Add-on Store tras cada versión nueva.
+
+Nuevas acciones en ha_supervisor (executor.js):
+  · list_repos      — lista los repos configurados en el Supervisor con su slug interno.
+  · refresh_repo    — borra el repo del Supervisor y lo vuelve a añadir. Fuerza que el
+                      Supervisor descargue el índice actualizado de GitHub. Parámetros:
+                      repo_url (default: repo Jarvis), repo_slug (opcional, acelera).
+  · deploy_update   — ciclo completo en una sola llamada: refresh_repo + update_addon.
+                      Después de un github_push, basta con decir "actualízate" y Jarvis
+                      hace todo: detecta la nueva versión y lanza la instalación.
+
+Actualizado definitions.js: schema de ha_supervisor documenta las 4 nuevas acciones.
+Router: "actualízate", "nueva versión", "actualiza jarvis" → experto diagnostico.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.11 (2026-06-07) — Auditoría de gestión HA: tools, expertos y router
 ────────────────────────────────────────────────────────────────────────────────
 
