@@ -46,15 +46,21 @@ async function nexusRoute(message) {
     return { expert: 'diagnostico', source: 'regex', confidence: 0.85 };
   if (/alexa|echo|m[uú]sica|reproduc|altavoz|tts|volumen|pon .*(canci|m[uú]sic|radio|spotify)|announce/.test(text))
     return { expert: 'multimedia', source: 'regex', confidence: 0.85 };
-  if (/pvpc|tarifa|consumo|factura|solar|kwh|precio.*luz|energ[ií]a|potencia|vatios|watts/.test(text))
+  if (/pvpc|tarifa|consumo|factura|solar|kwh|precio.*luz|cu[aá]nto.*cuesta.*luz|cu[aá]nto.*gast|precio.*electricidad|energ[ií]a|potencia|vatios|watts/.test(text))
     return { expert: 'energia', source: 'regex', confidence: 0.85 };
-  if (/c[aá]mara|frigate|reolink|alarma|intrusi|movimiento|presencia|seguridad/.test(text))
+  if (/c[aá]mara|frigate|reolink|alarma|intrusi|movimiento|presencia|seguridad|hay alguien|est[aá]s? en casa|qui[eé]n est[aá]/.test(text))
     return { expert: 'seguridad', source: 'regex', confidence: 0.85 };
   if (/proxmox|nas|omv|docker|wireguard|nextcloud|vpn|zerotier|red|router|archer|tp.link|contenedor/.test(text))
     return { expert: 'red', source: 'regex', confidence: 0.85 };
   if (/recuerda|aprende|memoria|olvida|qu[eé] sabes|qu[eé] has aprendido|knowledge|patr[oó]n|rutina detectada|mejora tu/.test(text))
     return { expert: 'aprendizaje', source: 'regex', confidence: 0.85 };
-  if (/lee|escribe|lista|archivo|fichero|directorio|config|yaml|json/.test(text) && text.length < 100)
+  if (/backup|copia de seguridad|snapshot|actualiza.*add.?on|actualiza.*addon/.test(text))
+    return { expert: 'diagnostico', source: 'regex', confidence: 0.85 };
+  if (/zigbee|z2m|zigbee2mqtt|coordinador|pareado|pairing/.test(text))
+    return { expert: 'diagnostico', source: 'regex', confidence: 0.85 };
+  if (/est[aá] (en casa|fuera|llegad[oa]|salid[oa])|persona.*detectad|presencia.*hogar/.test(text))
+    return { expert: 'seguridad', source: 'regex', confidence: 0.8 };
+  if (/lee|escribe|lista|archivo|fichero|directorio|config|yaml|json/.test(text) && text.length < 150)
     return { expert: 'archivo', source: 'regex', confidence: 0.8 };
   if (/\brazona\b|an[aá]lisis profundo|piensa.*fondo|explica.*detalle.*por qu[eé]|r1\b|deepseek.?r1|cadena de pensamiento/.test(text))
     return { expert: 'razonamiento', source: 'regex', confidence: 0.9 };

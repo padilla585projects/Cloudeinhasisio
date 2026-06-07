@@ -54,14 +54,27 @@ const tools = [
   },
   {
     name: 'get_history',
-    description: 'Historial de estados de una entidad (últimas N horas)',
+    description: 'Historial de estados de una entidad (últimas N horas). Usa max_records para limitar el resultado.',
     input_schema: {
       type: 'object',
       properties: {
         entity_id: { type: 'string' },
-        hours: { type: 'number', description: 'Horas hacia atrás (max 48)' }
+        hours: { type: 'number', description: 'Horas hacia atrás (max 48, default 6)' },
+        max_records: { type: 'number', description: 'Máximo de registros a devolver (default 200)' }
       },
       required: ['entity_id']
+    }
+  },
+  {
+    name: 'get_logbook',
+    description: 'Lee el logbook de HA: eventos de entidades (encendido, apagado, disparado, etc.) más legibles que get_history. Útil para diagnóstico y auditoría de automatizaciones.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        hours: { type: 'number', description: 'Horas hacia atrás (max 72, default 24)' },
+        entity_id: { type: 'string', description: 'Filtrar por entidad (opcional)' },
+        domain: { type: 'string', description: 'Filtrar por dominio, ej: automation, light (opcional)' }
+      }
     }
   },
 

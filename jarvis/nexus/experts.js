@@ -21,7 +21,8 @@ const EXPERTS = {
     modules: ['base', 'philosophy', 'ha_control', 'ha_internals', 'ha_config_engineering', 'autonomy', 'optimization', 'filesystem', 'inamovible'],
     label: 'Control HA',
     tools: ['get_entities', 'search_entities', 'get_entity_state', 'call_service',
-            'get_history', 'get_automations', 'create_automation', 'reload_config',
+            'get_history', 'get_logbook', 'get_automations', 'create_automation',
+            'edit_automation', 'delete_automation', 'reload_config',
             'read_file', 'write_file', 'patch_file', 'validate_yaml', 'list_directory',
             'save_memory', 'get_memory', 'learn', 'web_search', 'ha_knowledge',
             'scan_installation', 'check_config', 'speak', 'telegram_send', 'rollback',
@@ -32,7 +33,7 @@ const EXPERTS = {
     model: MODEL, maxTokens: 8192, maxIter: 20,
     modules: ['base', 'perseverance', 'ha_control', 'ha_internals', 'ha_config_engineering', 'diagnostico', 'optimization', 'filesystem', 'inamovible'],
     label: 'Diagnóstico',
-    tools: ['get_entities', 'search_entities', 'get_entity_state', 'get_history',
+    tools: ['get_entities', 'search_entities', 'get_entity_state', 'get_history', 'get_logbook',
             'get_system_logs', 'get_error_log', 'check_config', 'web_search', 'web_search_native', 'fetch_url',
             'read_file', 'learn', 'ha_supervisor', 'network', 'get_notifications',
             'get_repairs', 'scan_installation', 'ha_knowledge', 'rollback', 'validate_yaml']
@@ -56,7 +57,7 @@ const EXPERTS = {
     modules: ['base', 'ha_config_engineering', 'filesystem', 'autonomy', 'optimization', 'inamovible'],
     label: 'Archivos',
     tools: ['read_file', 'write_file', 'append_file', 'list_directory', 'patch_file',
-            'rollback', 'validate_yaml', 'fetch_url', 'web_search']
+            'rollback', 'validate_yaml', 'check_config', 'reload_config', 'fetch_url', 'web_search']
   },
 
   emergencia: {
@@ -94,8 +95,9 @@ const EXPERTS = {
     model: MODEL, maxTokens: 6144, maxIter: 15,
     modules: ['base', 'autonomy', 'energia', 'ha_control', 'optimization', 'filesystem', 'inamovible'],
     label: 'Energía',
-    tools: ['get_entities', 'get_entity_state', 'get_history', 'call_service',
-            'analyze_patterns', 'save_memory', 'learn', 'web_search', 'ha_knowledge',
+    tools: ['get_entities', 'get_entity_state', 'get_history', 'get_logbook', 'call_service',
+            'template_render', 'create_automation', 'analyze_patterns',
+            'save_memory', 'learn', 'web_search', 'ha_knowledge',
             'knowledge_db', 'read_file']
   },
 
@@ -103,7 +105,7 @@ const EXPERTS = {
     model: MODEL, maxTokens: 6144, maxIter: 15,
     modules: ['base', 'autonomy', 'seguridad_casa', 'ha_control', 'diagnostico', 'optimization', 'filesystem', 'inamovible'],
     label: 'Seguridad',
-    tools: ['get_entities', 'get_entity_state', 'call_service', 'get_history',
+    tools: ['get_entities', 'get_entity_state', 'call_service', 'get_history', 'get_logbook',
             'telegram_send', 'telegram_send_image', 'telegram_get_updates',
             'get_automations', 'create_automation', 'reload_config', 'get_system_logs',
             'learn', 'network', 'save_memory']

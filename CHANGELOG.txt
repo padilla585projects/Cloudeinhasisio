@@ -3,6 +3,41 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.11 (2026-06-07) — Auditoría de gestión HA: tools, expertos y router
+────────────────────────────────────────────────────────────────────────────────
+
+Nueva tool: get_logbook (tools/definitions.js + executor.js)
+  · Llama a /api/logbook de HA — eventos de entidades en lenguaje legible
+    (encendido/apagado/disparado, mensajes de automatizaciones).
+  · Parámetros: hours (max 72), entity_id (filtro opcional), domain (filtro opcional).
+  · Disponible en expertos: ha_control, diagnostico, energia, seguridad, analisis.
+
+Backups desde Jarvis (tools/executor.js — ha_supervisor)
+  · Acción list_backups: lista todos los backups del Supervisor con fecha y tamaño.
+  · Acción create_backup: crea un backup completo con nombre configurable.
+
+get_history ahora documenta max_records (tools/definitions.js)
+  · El schema expone el parámetro max_records que ya tenía el executor.
+
+Correcciones en nexus/experts.js
+  · ha_control: añadidos edit_automation, delete_automation, get_logbook.
+  · diagnostico: añadido get_logbook.
+  · archivo: añadidos check_config, reload_config (puede editar config y verificarla).
+  · energia: añadidos template_render, create_automation, get_logbook.
+  · seguridad: añadido get_logbook.
+
+Mejoras en nexus/router.js
+  · Energía: cubre "cuánto cuesta la luz", "cuánto gastas", "precio electricidad".
+  · Presencia: "hay alguien", "está en casa", "quién está" → seguridad.
+  · Mantenimiento: "backup", "copia de seguridad", "actualiza addon" → diagnostico.
+  · Zigbee: "zigbee", "z2m", "zigbee2mqtt", "pairing" → diagnostico.
+  · archivo: limit elevado de 100 a 150 chars (mensajes largos ya no caen a ha_control).
+
+background/proactive.js — más capacidad en rondas autónomas
+  · MAX_ITER: 6 → 10 (más iteraciones por foco = diagnósticos más completos).
+  · get_logbook añadido a ALWAYS_TOOLS y a FOCUS_TOOLS.security_maintenance.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.10 (2026-06-07) — Tres bugs críticos de robustez
 ────────────────────────────────────────────────────────────────────────────────
 

@@ -14,7 +14,7 @@ const PROACTIVE_STATE_FILE = path.join(C.DATA_DIR, 'proactive_state.json');
 // Riesgo alto (NUNCA en autónomo, debe PROPONER con proactive_thought): instalar
 // HACS, borrar, escribir ficheros críticos, exec, push, update_self, usuarios.
 const ALWAYS_TOOLS = [
-  'get_entities', 'get_entity_state', 'search_entities', 'get_history',
+  'get_entities', 'get_entity_state', 'search_entities', 'get_history', 'get_logbook',
   'ha_knowledge', 'get_memory', 'template_render',
   'call_service', 'reload_config', 'save_memory', 'learn', 'proactive_thought',
 ];
@@ -22,7 +22,7 @@ const FOCUS_TOOLS = {
   system_health: ['get_system_logs', 'get_error_log', 'get_repairs', 'get_notifications', 'ha_supervisor', 'scan_installation', 'check_config', 'score_installation'],
   fallen_devices: ['get_system_logs', 'get_error_log', 'scan_installation', 'get_repairs', 'ha_supervisor', 'check_config', 'network'],
   dashboard: ['get_dashboards', 'get_dashboard_config', 'review_dashboard', 'get_installed_frontend', 'update_dashboard', 'search_hacs_resources'],
-  security_maintenance: ['get_repairs', 'get_notifications', 'get_system_logs', 'ha_supervisor', 'scan_installation'],
+  security_maintenance: ['get_repairs', 'get_notifications', 'get_system_logs', 'ha_supervisor', 'scan_installation', 'get_logbook'],
   optimization: ['get_system_logs', 'scan_installation', 'check_config', 'get_repairs', 'score_installation', 'get_automations', 'simulate_automation', 'create_automation'],
 };
 const FOCUS_ORDER = ['system_health', 'fallen_devices', 'dashboard', 'security_maintenance', 'optimization'];
@@ -180,7 +180,7 @@ REGLAS DE ORO:
 
     const tools = scopedTools(focus);
     let messages = [{ role: 'user', content: userPrompt }];
-    const MAX_ITER = 6;
+    const MAX_ITER = 10;
     let actions = 0;
 
     for (let iter = 0; iter < MAX_ITER; iter++) {

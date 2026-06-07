@@ -93,9 +93,26 @@ async function executeTool(name, input) {
 
       case 'get_history': {
         const hours = Math.min(input.hours || 6, 48);
+        const maxRec = input.max_records || 200; // antes hardcodeado a 30 — ahora configurable
         const since = new Date(Date.now() - hours * 3600 * 1000).toISOString();
-        const history = await haGet(`/history/period/${since}?filter_entity_id=${input.entity_id}`);
-        return (history[0] || []).slice(-30).map(h => ({ state: h.state, time: h.last_changed }));
+        const history = await haGet(`/history/period/${since}?filter_entity_id=${input.entity_id}&minimal_response=true`);
+        const records = (history[0] || []).slice(-maxRec);
+        return records.map(h => ({ state: h.state, time: h.last_changed }));
+      }
+
+      case 'get_logbook': {
+        const lbHours = Math.min(input.hours || 24, 72);
+        const lbSince = new Date(Date.now() - lbHours * 3600 * 1000).toISOString();
+        let lbUrl = `/logbook/${lbSince}?`;
+        if (input.entity_id) lbUrl += `entity=${encodeURIComponent(input.entity_id)}&`;
+        const entries = await haGet(lbUrl.replace(/\?$|&$/, ''));
+        let filtered = Array.isArray(entries) ? entries : [];
+        if (input.domain && !input.entity_id) {
+          filtered = filtered.filter(e => e.entity_id && e.entity_id.startsWith(input.domain + '.'));
+        }
+        return filtered.slice(-300).map(e => ({
+          time: e.when, entity: e.entity_id, name: e.name, message: e.message, domain: e.domain
+        }));
       }
 
       // ─── Automatizaciones ───
@@ -2190,6 +2207,26 @@ Prohibida la copia, redistribucion y uso comercial.`);
             if (!input.addon_slug) return { error: 'addon_slug (entity_id del update) requerido' };
             await haPost('/services/update/install', { entity_id: input.addon_slug });
             return { success: true, updated: input.addon_slug };
+          }
+
+          case 'list_backups': {
+            const r = await svGet('/backups');
+            const backups = (r.data || r).backups || [];
+            return {
+              backups: backups.map(b => ({
+                slug: b.slug, name: b.name, date: b.date,
+                size_mb: b.size ? (b.size / 1024 / 1024).toFixed(1) : null,
+                type: b.type, protected: b.protected
+              })).sort((a, b) => new Date(b.date) - new Date(a.date)),
+              total: backups.length
+            };
+          }
+
+          case 'create_backup': {
+            const backupName = input.name || `Jarvis_backup_${new Date().toISOString().slice(0, 10)}`;
+            console.log(`[supervisor] Creando backup: ${backupName}`);
+            const r = await svPost('/backups/new/full', { name: backupName });
+            return { success: r.result === 'ok', slug: (r.data || r).slug, name: backupName, response: r };
           }
 
           default:
