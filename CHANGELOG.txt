@@ -3,6 +3,21 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.14 (2026-06-07) — Dockerfile: npm install cacheado, updates 10s en vez de 3min
+────────────────────────────────────────────────────────────────────────────────
+
+Problema: ARG VERSION antes de npm install en el Dockerfile forzaba un npm install
+completo en cada versión → ~3 minutos de build en ARM (Pi/HA appliance).
+Fix: ARG VERSION movido DESPUÉS de npm install. Docker cachea el layer de deps y
+solo lo invalida cuando package.json cambia. El código (server.js, etc.) se copia
+igualmente en cada versión (capa separada, rápida). Resultado: updates ~10-20s.
+
+bootstrap_update.js mejorado:
+  · Prueba primero /api/deploy-update (si ya tiene la versión nueva)
+  · Fallback a HA service update.install (funciona con el token de larga duración)
+  · Monitoreo del progreso y aviso cuando Jarvis vuelve a estar activo
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.13 (2026-06-07) — Endpoint HTTP /api/deploy-update: un curl y Jarvis se actualiza
 ────────────────────────────────────────────────────────────────────────────────
 

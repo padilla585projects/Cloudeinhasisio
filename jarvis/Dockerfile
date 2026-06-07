@@ -5,10 +5,14 @@ RUN apk add --no-cache nodejs npm iproute2 iputils
 
 WORKDIR /app
 
+# npm install se cachea: solo se relanza cuando package.json cambia (no en cada versión)
 COPY package.json ./
-# ARG VERSION fuerza rebuild del layer npm en cada versión nueva (rompe cache de Docker)
-ARG VERSION=3.33.13
-RUN echo "Instalando deps para Jarvis v${VERSION}..." && npm install --production
+RUN npm install --production
+
+# ARG VERSION DESPUÉS del npm install: invalida el cache de código en cada versión
+# pero NO el layer de npm → mucho más rápido en updates (~10s vs ~3min)
+ARG VERSION=3.33.14
+RUN echo "Jarvis v${VERSION} — deps cacheadas, código copiado"
 
 # Código principal
 COPY server.js ./
