@@ -3,6 +3,46 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.8 (2026-06-07) — Chat flotante: Jarvis en todos los paneles de HA
+────────────────────────────────────────────────────────────────────────────────
+
+Botón flotante (🤖) fijo en cualquier panel de HA que abre un drawer lateral
+con el chat de Jarvis sin salir de la pantalla actual.
+
+index.html — Modo embed
+  · Detecta automáticamente si está cargado en un iframe (window.self !== top)
+    o con ?embed=1 en la URL → activa clase .embed-mode en body.
+  · Modo embed: oculta el panel lateral de estado, el modo voz y la cabeza 3D.
+    UI compacta y limpia optimizada para 420px de ancho.
+
+server.js — Dos nuevos endpoints
+  · GET /widget.js — sirve el widget JS directamente (útil para pruebas).
+  · POST /api/widget-install — instala el widget automáticamente:
+      1. Crea /config/www/ si no existe.
+      2. Escribe /config/www/jarvis-widget.js.
+      3. Parchea configuration.yaml añadiendo extra_module_url: /local/jarvis-widget.js
+         bajo el bloque frontend: (detecta si ya existe el bloque o no).
+
+Widget JS (jarvis-widget.js)
+  · Botón flotante 🤖 bottom-right, con gradiente violeta/azul de Jarvis.
+  · Click abre un drawer (420px) desde el lado derecho con animación suave.
+  · Fondo semitransparente detrás del drawer (cerrable con click).
+  · iframe interno carga Jarvis en modo embed: http://[hostname]:3000/?embed=1
+    (carga lazy: solo cuando se abre por primera vez).
+  · Cierre: click en ✕, click en overlay o tecla Escape.
+  · Anti-duplicado: no se instala dos veces si el script se ejecuta más de una vez.
+
+index.html — Slash command /flotante (💬)
+  · Aparece en el menú de comandos.
+  · Expande a texto que indica a Jarvis que instale el widget usando los endpoints.
+
+CÓMO ACTIVAR (una vez, tras actualizar):
+  1. Escribe /flotante en el chat de Jarvis → él instala el widget automáticamente.
+  2. Reiniciar HA (o ejecutar: configuration check + restart frontend) para que
+     HA cargue el nuevo extra_module_url.
+  3. El botón 🤖 aparece en todos los paneles de HA.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.7 (2026-06-07) — Panel visual instantáneo en /estado
 ────────────────────────────────────────────────────────────────────────────────
 

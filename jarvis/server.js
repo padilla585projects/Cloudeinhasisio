@@ -876,6 +876,158 @@ animate();
 </html>`);
 });
 
+// ── Chat flotante — widget JS para HA ──────────────────────────────────────
+// Sirve el widget JS. También puede escribirse en /config/www/ con /api/widget-install.
+const WIDGET_JS = `
+/* Jarvis Floating Chat Widget — auto-generado por Jarvis v${state.JARVIS_VERSION} */
+(function() {
+  if (document.getElementById('jarvis-float-root')) return; // ya instalado
+
+  const PORT = 3000;
+  const BASE = window.location.protocol + '//' + window.location.hostname + ':' + PORT;
+
+  // ── Estilos ──
+  const style = document.createElement('style');
+  style.textContent = \`
+    #jarvis-float-btn {
+      position: fixed; bottom: 22px; right: 22px; z-index: 9000;
+      width: 52px; height: 52px; border-radius: 50%;
+      background: linear-gradient(135deg,#6c8ef7,#a78bfa);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; box-shadow: 0 4px 20px rgba(108,142,247,0.5);
+      font-size: 22px; transition: transform .2s,box-shadow .2s;
+      border: none; outline: none; user-select: none;
+    }
+    #jarvis-float-btn:hover { transform: scale(1.08); box-shadow: 0 6px 28px rgba(108,142,247,0.7); }
+    #jarvis-float-btn.open { transform: scale(0.92); }
+    #jarvis-float-drawer {
+      position: fixed; top: 0; right: 0; bottom: 0; z-index: 8999;
+      width: 420px; max-width: 95vw;
+      background: #0f1117;
+      box-shadow: -4px 0 40px rgba(0,0,0,0.6);
+      transform: translateX(102%);
+      transition: transform .3s cubic-bezier(.4,0,.2,1);
+      display: flex; flex-direction: column;
+      border-left: 1px solid rgba(108,142,247,0.2);
+    }
+    #jarvis-float-drawer.open { transform: translateX(0); }
+    #jarvis-float-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px; background: #161b27;
+      border-bottom: 1px solid rgba(108,142,247,0.15);
+      flex-shrink: 0;
+    }
+    #jarvis-float-header span { color:#6c8ef7; font-size:13px; font-weight:600; font-family:system-ui; }
+    #jarvis-float-close {
+      background: none; border: none; color: #8892aa;
+      cursor: pointer; font-size: 18px; line-height: 1; padding: 2px 6px;
+      border-radius: 6px; transition: color .15s, background .15s;
+    }
+    #jarvis-float-close:hover { color: #fff; background: rgba(255,255,255,0.08); }
+    #jarvis-float-frame {
+      flex: 1; border: none; width: 100%; height: 100%; display: block;
+    }
+    #jarvis-float-overlay {
+      display: none; position: fixed; inset: 0; z-index: 8998;
+      background: rgba(0,0,0,0.35); transition: opacity .3s;
+    }
+    #jarvis-float-overlay.open { display: block; }
+  \`;
+  document.head.appendChild(style);
+
+  // ── DOM ──
+  const root = document.createElement('div');
+  root.id = 'jarvis-float-root';
+
+  const overlay = document.createElement('div');
+  overlay.id = 'jarvis-float-overlay';
+
+  const btn = document.createElement('button');
+  btn.id = 'jarvis-float-btn';
+  btn.title = 'Abrir Jarvis';
+  btn.innerHTML = '🤖';
+
+  const drawer = document.createElement('div');
+  drawer.id = 'jarvis-float-drawer';
+  drawer.innerHTML = \`
+    <div id="jarvis-float-header">
+      <span>⚡ Jarvis</span>
+      <button id="jarvis-float-close" title="Cerrar">✕</button>
+    </div>
+    <iframe id="jarvis-float-frame" src="about:blank" allow="microphone"></iframe>
+  \`;
+
+  root.appendChild(overlay);
+  root.appendChild(btn);
+  root.appendChild(drawer);
+  document.body.appendChild(root);
+
+  // ── Lógica ──
+  let open = false;
+  let loaded = false;
+
+  function toggle() {
+    open = !open;
+    drawer.classList.toggle('open', open);
+    overlay.classList.toggle('open', open);
+    btn.classList.toggle('open', open);
+    btn.innerHTML = open ? '✕' : '🤖';
+    if (open && !loaded) {
+      document.getElementById('jarvis-float-frame').src = BASE + '/?embed=1';
+      loaded = true;
+    }
+  }
+
+  btn.addEventListener('click', toggle);
+  overlay.addEventListener('click', toggle);
+  document.getElementById('jarvis-float-close').addEventListener('click', toggle);
+
+  // Cerrar con Escape
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && open) toggle(); });
+})();
+`;
+
+app.get('/widget.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.send(WIDGET_JS);
+});
+
+app.post('/api/widget-install', async (req, res) => {
+  try {
+    const wwwDir = path.join(C.HA_CONFIG, 'www');
+    if (!fs.existsSync(wwwDir)) fs.mkdirSync(wwwDir, { recursive: true });
+
+    // Escribir el widget JS
+    const widgetPath = path.join(wwwDir, 'jarvis-widget.js');
+    fs.writeFileSync(widgetPath, WIDGET_JS, 'utf8');
+
+    // Parchear configuration.yaml para añadir extra_module_url
+    const configPath = path.join(C.HA_CONFIG, 'configuration.yaml');
+    let cfg = fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf8') : '';
+    const widgetUrl = '/local/jarvis-widget.js';
+
+    if (!cfg.includes('jarvis-widget')) {
+      if (cfg.includes('extra_module_url:')) {
+        // Ya existe extra_module_url — añadir el widget a la lista
+        cfg = cfg.replace(/extra_module_url:\s*\n((\s+-[^\n]+\n)*)/,
+          (m) => m + `  - ${widgetUrl}\n`);
+      } else if (cfg.includes('frontend:')) {
+        // Ya existe bloque frontend — añadir extra_module_url
+        cfg = cfg.replace(/frontend:\s*\n/, `frontend:\n  extra_module_url:\n    - ${widgetUrl}\n`);
+      } else {
+        // No existe frontend — añadir al final
+        cfg += `\nfrontend:\n  extra_module_url:\n    - ${widgetUrl}\n`;
+      }
+      fs.writeFileSync(configPath, cfg, 'utf8');
+    }
+
+    res.json({ ok: true, widgetPath, widgetUrl });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // Health
 app.get('/api/health', (req, res) => {
   const cost = calcCost(state.apiUsage);

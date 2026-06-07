@@ -460,6 +460,20 @@
     min-width: 0;
   }
 
+  /* ── Modo embed (iframe flotante) ── */
+  body.embed-mode header { padding: 6px 10px; min-height: 36px; }
+  body.embed-mode header .logo-text { display: none; }
+  body.embed-mode header .header-actions { gap: 4px; }
+  body.embed-mode #status-panel { display: none !important; }
+  body.embed-mode #voice-mode-overlay { display: none !important; }
+  body.embed-mode .welcome-logo { font-size: 28px; }
+  body.embed-mode .welcome h2 { font-size: 16px; }
+  body.embed-mode .welcome p { font-size: 12px; }
+  body.embed-mode .welcome .suggestions { flex-direction: column; }
+  body.embed-mode .suggestion { font-size: 12px; padding: 7px 10px; }
+  body.embed-mode #messages { font-size: 13px; }
+  body.embed-mode .bubble { padding: 10px 12px; }
+
   /* ── Panel lateral de estado ── */
   #status-panel {
     width: 240px;
@@ -845,6 +859,7 @@
 
   // ── Comandos rápidos (/slash) ───────────────────────────────────────────────
   const SLASH_COMMANDS = [
+    { cmd: '/flotante',    icon: '💬', desc: 'Instalar el chat flotante en todos los paneles de HA' },
     { cmd: '/cuando',      icon: '⚡', desc: 'Crear automatización en lenguaje natural' },
     { cmd: '/estado',      icon: '🏠', desc: 'Resumen del estado actual de la casa' },
     { cmd: '/scan',        icon: '🔍', desc: 'Escanear instalación completa de HA' },
@@ -857,6 +872,7 @@
   ];
 
   const SLASH_EXPAND = {
+    '/flotante':    'Instala el chat flotante de Jarvis en Home Assistant. Escribe el widget JS en /config/www/jarvis-widget.js y añade extra_module_url en configuration.yaml para que aparezca un botón flotante en todos los paneles de HA.',
     '/cuando':      null,   // comportamiento especial: rellena el input, no envía
     '/estado':      '¿Cuál es el estado actual de la casa? Resumen rápido de luces, clima, presencia y alertas.',
     '/scan':        'Escanea la instalación completa de Home Assistant y dame un resumen.',
@@ -2607,6 +2623,17 @@
       m.classList.toggle('search-hidden', !text.includes(q));
     });
   }
+
+  // ── Modo embed: cuando Jarvis se carga en un iframe ─────────────────────────
+  (function detectEmbedMode() {
+    const isEmbed = window.self !== window.top ||
+                    new URLSearchParams(window.location.search).has('embed');
+    if (isEmbed) {
+      document.body.classList.add('embed-mode');
+      // En modo embed no iniciamos Three.js (ahorra recursos)
+      window.__skipThreeJS = true;
+    }
+  })();
 
   async function init() {
     await loadHistory();
