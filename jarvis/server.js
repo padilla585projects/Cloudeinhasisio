@@ -1313,7 +1313,14 @@ app.post('/api/deploy-update', async (req, res) => {
       await sleep(7000);
     }
 
-    // ── Paso 2: Llamar update.install via HA REST (funciona con SUPERVISOR_TOKEN) ──
+    // ── Paso 2: Forzar re-check del store (GET /store/addons actualiza la caché del Supervisor) ──
+    // El Supervisor usa la GitHub Contents API (tiene caché propia 5-30 min). Hacer GET del
+    // store de addons fuerza al Supervisor a re-chequear versiones disponibles en ese momento.
+    await svGet('/store/addons');
+    log.push('store_refreshed');
+    await sleep(2000);  // dar tiempo al Supervisor a actualizar la entidad de update
+
+    // ── Paso 3: Llamar update.install via HA REST (funciona con SUPERVISOR_TOKEN) ──
     // C.HA_URL = "http://supervisor/core"
     const installResp = await fetch(`${C.HA_URL}/api/services/update/install`, {
       method: 'POST',
@@ -1323,7 +1330,7 @@ app.post('/api/deploy-update', async (req, res) => {
     const installText = await installResp.text().catch(() => '');
     log.push(`update_install: status=${installResp.status}`);
 
-    // ── Paso 3: Fallback — intentar también via Supervisor addon update ──
+    // ── Paso 4: Fallback — intentar también via Supervisor addon update ──
     if (!installResp.ok) {
       const updateR = await svPost(`/addons/${ADDON_SLUG}/update`);
       log.push(`addon_update_fallback: result=${updateR.result || JSON.stringify(updateR).slice(0, 60)}`);
@@ -1337,7 +1344,7 @@ app.post('/api/deploy-update', async (req, res) => {
       steps: log,
       note: success
         ? 'Actualización en curso. Jarvis se reiniciará en ~30s.'
-        : `Repo refrescado. Versión nueva detectada automáticamente (auto_update: true). HTTP ${installResp.status}: ${installText.slice(0, 100)}`
+        : `Store refrescado pero update.install devolvió HTTP ${installResp.status}. Si GitHub Contents API aún tiene caché, espera 5 min y reintenta. Respuesta: ${installText.slice(0, 100)}`
     });
   } catch (err) {
     console.error('[deploy-update] Error:', err.message);

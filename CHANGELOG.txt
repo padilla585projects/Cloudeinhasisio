@@ -3,6 +3,25 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.18 (2026-06-08) — /api/deploy-update: store_refresh fuerza re-check del Supervisor
+────────────────────────────────────────────────────────────────────────────────
+
+Hallazgo: GET /store/addons fuerza al Supervisor a re-chequear las versiones disponibles
+en GitHub, invalidando su caché interna. El Supervisor usa la GitHub Contents API (caché
+TTL variable 5-30 min), pero al hacer GET del listado de addons actualiza todos sus datos.
+
+Fix en server.js /api/deploy-update — nuevo Paso 2 antes del update.install:
+  await svGet('/store/addons')  ← invalida caché del Supervisor
+  await sleep(2000)             ← dar tiempo a actualizar la entidad de update
+Luego update.install se llama con la versión ya detectada → funciona en el primer intento.
+
+Ciclo completo del endpoint:
+  1. Intento repo cache-bust (DELETE+re-add, best-effort)
+  2. GET /store/addons (fuerza re-check de versiones)
+  3. POST update.install via HA REST (camino fiable con SUPERVISOR_TOKEN)
+  4. Fallback: POST /addons/{slug}/update via Supervisor
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.17 (2026-06-08) — Fix /api/deploy-update: DELETE verbose + update.install directo
 ────────────────────────────────────────────────────────────────────────────────
 
