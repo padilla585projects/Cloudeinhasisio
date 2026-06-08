@@ -1257,10 +1257,12 @@ app.post('/api/pending_thoughts/:id', (req, res) => {
 // Llamable desde la LAN sin UI: curl -X POST http://192.168.10.36:3000/api/deploy-update
 // Úsalo tras cada git push para instalar la nueva versión sin tocar el navegador.
 app.post('/api/deploy-update', async (req, res) => {
-  const REPO_URL = 'https://github.com/padilla585projects/Cloudeinhasisio';
-  const ADDON_SLUG = 'jarvis_ai_agent';
+  const REPO_URL      = 'https://github.com/padilla585projects/Cloudeinhasisio';
+  const ADDON_SLUG    = 'jarvis_ai_agent';
+  const UPDATE_ENTITY = 'update.jarvis_ai_agent_actualizar';
   const TOKEN = C.HA_TOKEN;
   const log = [];
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
 
   const svGet = async (ep) => {
     const r = await fetch(`http://supervisor${ep}`, { headers: { Authorization: `Bearer ${TOKEN}` } });
@@ -1276,51 +1278,66 @@ app.post('/api/deploy-update', async (req, res) => {
     const t = await r.text();
     try { return JSON.parse(t); } catch { return { raw: t, ok: r.ok }; }
   };
+  // svDel devuelve objeto {ok, status, body} para diagnóstico
   const svDel = async (ep) => {
     const r = await fetch(`http://supervisor${ep}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${TOKEN}` }
+      method: 'DELETE', headers: { Authorization: `Bearer ${TOKEN}` }
     });
-    return r.ok;
+    const t = await r.text().catch(() => '');
+    return { ok: r.ok, status: r.status, body: t.slice(0, 120) };
   };
 
   try {
-    // 1. Encontrar slug del repo
-    // Supervisor devuelve: {"result":"ok","data":[{slug,name,source,url},…]}
+    // ── Paso 1: Intentar repo cache-bust (best-effort, no bloquea si falla) ──
     const reposData = await svGet('/store/repositories');
     const allRepos = Array.isArray(reposData.data) ? reposData.data : ((reposData.data || reposData).repositories || []);
     const found = allRepos.find(rp => (rp.source || rp.url || '').includes('padilla585projects'));
     log.push(`repos: ${allRepos.length} encontrados`);
 
-    // 2. Borrar repo (vacía la caché)
     if (found) {
-      const deleted = await svDel(`/store/repositories/${found.slug}`);
-      log.push(`repo_deleted: slug=${found.slug} ok=${deleted}`);
-      await new Promise(r => setTimeout(r, 2000));
+      const delR = await svDel(`/store/repositories/${found.slug}`);
+      log.push(`repo_deleted: slug=${found.slug} status=${delR.status} ok=${delR.ok}`);
+      if (delR.ok) {
+        await sleep(2000);
+        const addR = await svPost('/store/repositories', { repository: REPO_URL });
+        log.push(`repo_added: result=${addR.result || addR.raw?.slice(0, 50) || 'ok'}`);
+        await sleep(5000);   // esperar a que el Supervisor clone el repo fresco
+      } else {
+        // DELETE fallido (403/405/etc.) — saltamos re-add y vamos directo a update.install
+        log.push(`repo_delete_failed (${delR.status}): usando update.install directo`);
+      }
     } else {
-      log.push('repo_not_found: intentando añadir directamente');
+      // Repo no estaba — añadirlo (primer uso)
+      const addR = await svPost('/store/repositories', { repository: REPO_URL });
+      log.push(`repo_added_fresh: result=${addR.result || 'ok'}`);
+      await sleep(7000);
     }
 
-    // 3. Re-añadir repo (Supervisor descarga índice fresco de GitHub)
-    const addR = await svPost('/store/repositories', { repository: REPO_URL });
-    log.push(`repo_added: result=${addR.result || 'ok'}`);
+    // ── Paso 2: Llamar update.install via HA REST (funciona con SUPERVISOR_TOKEN) ──
+    // C.HA_URL = "http://supervisor/core"
+    const installResp = await fetch(`${C.HA_URL}/api/services/update/install`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entity_id: UPDATE_ENTITY })
+    });
+    const installText = await installResp.text().catch(() => '');
+    log.push(`update_install: status=${installResp.status}`);
 
-    // 4. Esperar a que el Supervisor indexe la nueva versión
-    await new Promise(r => setTimeout(r, 7000));
+    // ── Paso 3: Fallback — intentar también via Supervisor addon update ──
+    if (!installResp.ok) {
+      const updateR = await svPost(`/addons/${ADDON_SLUG}/update`);
+      log.push(`addon_update_fallback: result=${updateR.result || JSON.stringify(updateR).slice(0, 60)}`);
+    }
 
-    // 5. Lanzar update del addon
-    const updateR = await svPost(`/addons/${ADDON_SLUG}/update`);
-    const success = updateR.result === 'ok';
-    log.push(`update_addon: result=${updateR.result || JSON.stringify(updateR).slice(0, 60)}`);
-
-    console.log(`[deploy-update] Ciclo completo: ${log.join(' | ')}`);
+    const success = installResp.ok;
+    console.log(`[deploy-update] ${log.join(' | ')}`);
     res.json({
       success,
       addon: ADDON_SLUG,
       steps: log,
       note: success
-        ? 'Actualización en curso. Jarvis se reiniciará en unos segundos.'
-        : 'Repo refrescado. Si el addon no se actualizó (quizás ya está en la versión más reciente), espera 10s y vuelve a intentar.'
+        ? 'Actualización en curso. Jarvis se reiniciará en ~30s.'
+        : `Repo refrescado. Versión nueva detectada automáticamente (auto_update: true). HTTP ${installResp.status}: ${installText.slice(0, 100)}`
     });
   } catch (err) {
     console.error('[deploy-update] Error:', err.message);

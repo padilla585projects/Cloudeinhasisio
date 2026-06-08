@@ -3,6 +3,24 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.17 (2026-06-08) — Fix /api/deploy-update: DELETE verbose + update.install directo
+────────────────────────────────────────────────────────────────────────────────
+
+Problema encontrado en v3.33.16: DELETE /store/repositories/{slug} devolvía non-2xx
+(el Supervisor rechazaba la eliminación del repo propio). Esto bloqueaba el re-add y
+el update_addon, haciendo que el ciclo fallara siempre.
+
+Fix en server.js /api/deploy-update:
+1. svDel ahora devuelve {ok, status, body} para diagnóstico en lugar de solo boolean.
+2. Si DELETE falla: se salta el re-add (no tendría sentido) y se va directo a update.install.
+3. Llamada directa a POST http://supervisor/core/api/services/update/install con
+   SUPERVISOR_TOKEN — este path es el más fiable y no depende del ciclo del repo.
+4. Fallback: si update.install falla, también intenta POST /addons/{slug}/update.
+
+El resultado es que el endpoint es resiliente: si el repo dance funciona, perfecto;
+si no, usa update.install que funciona siempre con el SUPERVISOR_TOKEN.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.16 (2026-06-08) — Test end-to-end de /api/deploy-update
 ────────────────────────────────────────────────────────────────────────────────
 
