@@ -3,6 +3,14 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.16 (2026-06-08) — Test end-to-end de /api/deploy-update
+────────────────────────────────────────────────────────────────────────────────
+
+Versión de verificación: primer push usando exclusivamente POST /api/deploy-update
+sin intervención manual en la UI de HA. Si el ciclo completo (borrar repo → añadir
+repo → update_addon) funciona, queda confirmado el workflow de auto-deploy definitivo.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.15 (2026-06-07) — Fix parsing de repos del Supervisor en deploy-update
 ────────────────────────────────────────────────────────────────────────────────
 
