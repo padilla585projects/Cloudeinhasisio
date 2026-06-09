@@ -802,14 +802,14 @@ const tools = [
   // ─── Generación de imágenes ───
   {
     name: 'generate_image',
-    description: 'Genera una imagen con DALL-E 3 (OpenAI). Úsalo para renders de habitaciones, conceptos de diseño, planos artísticos, visualizaciones de cambios o cualquier imagen que ayude a Adrián a ver cómo quedaría algo. Devuelve una URL — inclúyela en tu respuesta como ![descripción](url) para que se muestre en el chat.',
+    description: 'Genera una imagen con DALL-E 3 (OpenAI). Úsalo para renders de habitaciones, conceptos de diseño, planos artísticos, visualizaciones de cambios o cualquier imagen que ayude a Adrián a ver cómo quedaría algo. Guarda en /share/jarvis/images/ y /local/jarvis/ para Lovelace. Devuelve lovelace_url — inclúyela en tu respuesta como ![descripción](url) para que se muestre en el chat.',
     input_schema: {
       type: 'object',
       properties: {
         prompt: { type: 'string', description: 'Descripción detallada. Para interiores: estilo, colores, muebles, iluminación, perspectiva.' },
+        filename: { type: 'string', description: 'Nombre del archivo sin extensión (ej: "plano_planta0"). Si no se especifica, se genera automáticamente.' },
         size: { type: 'string', enum: ['1024x1024', '1792x1024', '1024x1792'], description: '1792x1024 para planos/panorámicas. 1024x1792 para verticales. Default: 1024x1024' },
-        quality: { type: 'string', enum: ['standard', 'hd'], description: 'hd: más detallado y lento. Default: standard' },
-        style: { type: 'string', enum: ['vivid', 'natural'], description: 'natural: más realista. vivid: más dramático. Default: natural' }
+        quality: { type: 'string', enum: ['standard', 'hd'], description: 'hd: más detallado y lento. Default: standard' }
       },
       required: ['prompt']
     }

@@ -3209,7 +3209,11 @@ ${dots}`;
       }
 
       case 'generate_image': {
-        const { prompt, size = '1024x1024', quality = 'standard', style = 'vivid' } = input;
+        const { prompt, size = '1024x1024', quality = 'standard' } = input;
+        // filename: usa el proporcionado o genera uno por timestamp
+        const imgFilename = input.filename
+          ? input.filename.replace(/[^a-zA-Z0-9_-]/g, '_') + '.png'
+          : `jarvis_${Date.now()}.png`;
 
         if (!C.OPENAI_API_KEY) {
           return { error: 'OPENAI_API_KEY no configurada en el add-on' };
@@ -3223,7 +3227,7 @@ ${dots}`;
           const imagesDir = path.join(C.HA_SHARE, 'jarvis', 'images');
           if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true });
 
-          // Llamar a DALL-E 3
+          // Llamar a DALL-E 3 (sin 'style' — parámetro eliminado por OpenAI)
           const res = await fetch('https://api.openai.com/v1/images/generations', {
             method: 'POST',
             headers: {
@@ -3235,8 +3239,7 @@ ${dots}`;
               prompt,
               n: 1,
               size,
-              quality,
-              style
+              quality
             })
           });
 
@@ -3252,18 +3255,23 @@ ${dots}`;
           // Descargar la imagen
           const imgRes = await fetch(imageUrl);
           const buffer = await imgRes.buffer();
-          const filename = `jarvis_${Date.now()}.png`;
-          const filepath = path.join(imagesDir, filename);
+          const filepath = path.join(imagesDir, imgFilename);
           fs.writeFileSync(filepath, buffer);
+
+          // Copiar a /config/www/jarvis/ para acceso desde Lovelace (/local/jarvis/)
+          const wwwDir = '/config/www/jarvis';
+          if (!fs.existsSync(wwwDir)) fs.mkdirSync(wwwDir, { recursive: true });
+          fs.copyFileSync(filepath, path.join(wwwDir, imgFilename));
 
           return {
             success: true,
-            image_url: `/share/jarvis/images/${filename}`,
-            filename,
-            prompt: prompt,
+            file: filepath,
+            lovelace_url: `/local/jarvis/${imgFilename}`,
+            share_url: `/share/jarvis/images/${imgFilename}`,
+            prompt,
             revised_prompt,
             size,
-            message: `Imagen generada y guardada en /share/jarvis/images/. Puedes verla en: /share/jarvis/images/${filename}`
+            message: `Imagen guardada en /share/jarvis/images/${imgFilename} y accesible en /local/jarvis/${imgFilename}`
           };
 
         } catch (err) {

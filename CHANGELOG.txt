@@ -3,6 +3,18 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.24 (2026-06-09) — Fix generate_image: sin 'style', filename funcional + copia /local/jarvis/
+────────────────────────────────────────────────────────────────────────────────
+
+generate_image (DALL-E 3):
+- Eliminado parámetro 'style' (OpenAI lo eliminó de la API — causaba error 400)
+- Añadido parámetro 'filename' opcional: guarda con nombre específico en vez de timestamp
+- Copia automática a /config/www/jarvis/ igual que generate_image_gemini (acceso /local/jarvis/)
+- Devuelve lovelace_url y share_url en vez de image_url antiguo
+- definitions.js: eliminado 'style' del esquema, añadido 'filename'
+- Impacto tokens: sin cambio ✅
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.23 (2026-06-09) — Migración Imagen 4: auto-fallback de modelos Gemini
 ────────────────────────────────────────────────────────────────────────────────
 
