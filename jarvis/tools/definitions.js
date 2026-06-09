@@ -1067,6 +1067,36 @@ const tools = [
     }
   },
 
+  // ─── Generación de imágenes Gemini ───
+  {
+    name: 'generate_image_gemini',
+    description: 'Genera imágenes con Google Gemini Imagen 3 (alta calidad). Ideal para planos de casas, renders de habitaciones, visualizaciones de domótica, diagramas arquitectónicos. Requiere GEMINI_API_KEY configurada. Guarda el resultado en /share/jarvis/images/ y devuelve la URL local.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        prompt: {
+          type: 'string',
+          description: 'Descripción detallada de la imagen a generar. Para planos: incluir distribución, estilo (arquitectónico, acuarela, minimalista...), colores, qué elementos mostrar.'
+        },
+        filename: {
+          type: 'string',
+          description: 'Nombre del archivo sin extensión (ej: "plano_casa"). Se guarda como .png en /share/jarvis/images/'
+        },
+        aspect_ratio: {
+          type: 'string',
+          enum: ['1:1', '9:16', '16:9', '4:3', '3:4'],
+          description: 'Proporción de la imagen. Default: 1:1. Para planos verticales usa 3:4 o 9:16.'
+        },
+        model: {
+          type: 'string',
+          enum: ['imagen-3', 'gemini-flash'],
+          description: 'imagen-3: máxima calidad (Imagen 3). gemini-flash: más rápido (Gemini 2.0 Flash). Default: imagen-3'
+        }
+      },
+      required: ['prompt', 'filename']
+    }
+  },
+
   // ─── Panel visual ───
   {
     name: 'show_house_status',

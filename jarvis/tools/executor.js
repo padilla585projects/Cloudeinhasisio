@@ -4031,6 +4031,77 @@ ${dots}`;
         };
       }
 
+      case 'generate_image_gemini': {
+        if (!C.GEMINI_API_KEY) return { error: 'GEMINI_API_KEY no configurada. Añádela en la configuración del add-on.' };
+
+        const prompt    = input.prompt || '';
+        const filename  = (input.filename || 'gemini_image').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const ratio     = input.aspect_ratio || '1:1';
+        const useFlash  = input.model === 'gemini-flash';
+
+        const imagesDir = '/share/jarvis/images';
+        if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true });
+
+        let imageBase64, mimeType;
+
+        if (useFlash) {
+          // Gemini 2.0 Flash con salida de imagen
+          const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${C.GEMINI_API_KEY}`;
+          const body = {
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { responseModalities: ['TEXT', 'IMAGE'] }
+          };
+          const r = await fetch(geminiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+          if (!r.ok) {
+            const err = await r.text();
+            return { error: `Gemini Flash error ${r.status}: ${err.slice(0, 300)}` };
+          }
+          const data = await r.json();
+          const parts = data.candidates?.[0]?.content?.parts || [];
+          const imgPart = parts.find(p => p.inlineData?.mimeType?.startsWith('image/'));
+          if (!imgPart) return { error: 'Gemini Flash no devolvió imagen', raw: JSON.stringify(data).slice(0, 300) };
+          imageBase64 = imgPart.inlineData.data;
+          mimeType = imgPart.inlineData.mimeType;
+        } else {
+          // Imagen 3 — máxima calidad
+          const imagenUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-004:predict?key=${C.GEMINI_API_KEY}`;
+          const body = {
+            instances: [{ prompt }],
+            parameters: { sampleCount: 1, aspectRatio: ratio, safetyFilterLevel: 'BLOCK_SOME', personGeneration: 'DONT_ALLOW' }
+          };
+          const r = await fetch(imagenUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+          if (!r.ok) {
+            const err = await r.text();
+            return { error: `Imagen 3 error ${r.status}: ${err.slice(0, 300)}` };
+          }
+          const data = await r.json();
+          const pred = data.predictions?.[0];
+          if (!pred?.bytesBase64Encoded) return { error: 'Imagen 3 no devolvió imagen', raw: JSON.stringify(data).slice(0, 300) };
+          imageBase64 = pred.bytesBase64Encoded;
+          mimeType = pred.mimeType || 'image/png';
+        }
+
+        // Guardar imagen
+        const ext = mimeType.includes('jpeg') ? 'jpg' : 'png';
+        const outPath = path.join(imagesDir, `${filename}.${ext}`);
+        fs.writeFileSync(outPath, Buffer.from(imageBase64, 'base64'));
+
+        // También copiar a /config/www/jarvis/ para acceso desde Lovelace
+        const wwwDir = '/config/www/jarvis';
+        if (!fs.existsSync(wwwDir)) fs.mkdirSync(wwwDir, { recursive: true });
+        const wwwPath = path.join(wwwDir, `${filename}.${ext}`);
+        fs.copyFileSync(outPath, wwwPath);
+
+        return {
+          success: true,
+          file: outPath,
+          lovelace_url: `/local/jarvis/${filename}.${ext}`,
+          share_url: `/share/jarvis/images/${filename}.${ext}`,
+          model_used: useFlash ? 'gemini-2.0-flash' : 'imagen-3.0',
+          size_kb: Math.round(Buffer.from(imageBase64, 'base64').length / 1024)
+        };
+      }
+
       case 'show_house_status': {
         const sts = await haGet('/states');
 

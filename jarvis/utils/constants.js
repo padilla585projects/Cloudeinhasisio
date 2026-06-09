@@ -4,6 +4,7 @@ const path = require('path');
 // ── Variables de entorno ──────────────────────────────────────────────────────
 const ANTHROPIC_API_KEY  = process.env.ANTHROPIC_API_KEY  || '';
 const OPENAI_API_KEY     = process.env.OPENAI_API_KEY     || '';
+const GEMINI_API_KEY     = process.env.GEMINI_API_KEY     || '';
 const SERPER_API_KEY     = process.env.SERPER_API_KEY     || '';
 const DEEPSEEK_API_KEY   = process.env.DEEPSEEK_API_KEY   || '';
 const DEEPSEEK_URL       = 'https://api.deepseek.com/v1';
@@ -46,7 +47,7 @@ const SCHEDULED_TASKS_FILE   = path.join(DATA_DIR, 'scheduled_tasks.json');
 const PENDING_TASK_FILE      = path.join(DATA_DIR, 'pending_task.json');
 
 module.exports = {
-  ANTHROPIC_API_KEY, OPENAI_API_KEY, SERPER_API_KEY,
+  ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, SERPER_API_KEY,
   MODEL, BG_MODEL, CLAUDE_MODEL,
   DEEPSEEK_API_KEY, DEEPSEEK_URL, DEEPSEEK_MODEL, DEEPSEEK_R1_MODEL,
   HA_TOKEN, HA_URL, LANGUAGE,

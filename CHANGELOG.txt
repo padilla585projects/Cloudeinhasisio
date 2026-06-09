@@ -3,6 +3,21 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.22 (2026-06-09) — Gemini Imagen 3: generación de imágenes AI para planos y más
+────────────────────────────────────────────────────────────────────────────────
+
+Nueva tool: generate_image_gemini
+- Modelos: Imagen 3 (máxima calidad, default) y Gemini 2.0 Flash (rápido)
+- Parámetros: prompt, filename, aspect_ratio (1:1/9:16/16:9/4:3/3:4), model
+- Guarda en /share/jarvis/images/ Y copia a /config/www/jarvis/ (acceso /local/jarvis/)
+- Ideal para: planos arquitectónicos, renders de habitaciones, visualizaciones HA
+- config.yaml: nuevo campo opcional gemini_api_key (str?)
+- run.sh: exporta GEMINI_API_KEY, log si está activa
+- constants.js: GEMINI_API_KEY exportado
+- experts: añadida a ha_control y dev (junto a generate_image existente)
+- Impacto tokens: $0 idle, ~$0.04/imagen bajo demanda ✅
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.21 (2026-06-09) — Panel visual de estado de la casa en el chat
 ────────────────────────────────────────────────────────────────────────────────
 

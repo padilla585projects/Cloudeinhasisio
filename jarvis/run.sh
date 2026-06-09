@@ -50,6 +50,11 @@ if bashio::config.has_value 'telegram_allowed_ids'; then
   export TELEGRAM_ALLOWED_IDS="$(bashio::config 'telegram_allowed_ids')"
 fi
 
+export GEMINI_API_KEY=""
+if bashio::config.has_value 'gemini_api_key'; then
+  export GEMINI_API_KEY="$(bashio::config 'gemini_api_key')"
+fi
+
 
 # ── GetawayAgentes (red de agentes IA, opt-in) ───────────────────────────────
 export AGENT_NET_ENABLED="true"
@@ -65,7 +70,7 @@ if bashio::config.has_value 'agent_net_invite'; then
   export AGENT_NET_INVITE="$(bashio::config 'agent_net_invite')"
 fi
 
-bashio::log.info "Iniciando Jarvis AI Agent v3.33.21..."
+bashio::log.info "Iniciando Jarvis AI Agent v3.33.22..."
 bashio::log.info "Modelos cloud: gpt-4o-mini (bg) + gpt-4.1-mini (principal) + claude-sonnet-4-5 (dev)"
 bashio::log.info "☁️ Núcleos activos:"
 bashio::log.info "  · OpenAI: gpt-4.1-mini (principal) + gpt-4o-mini (rápido)"
@@ -74,6 +79,9 @@ if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
 fi
 if [ -n "${DEEPSEEK_API_KEY:-}" ]; then
   bashio::log.info "  · DeepSeek: deepseek-chat (análisis) + deepseek-reasoner R1 (razonamiento)"
+fi
+if [ -n "${GEMINI_API_KEY:-}" ]; then
+  bashio::log.info "  · Google: Gemini Imagen 3 (generación de imágenes)"
 fi
 if [ -n "${SERPER_API_KEY:-}" ]; then
   bashio::log.info "Busqueda: Google (Serper)"

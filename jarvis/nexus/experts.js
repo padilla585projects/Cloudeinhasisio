@@ -26,7 +26,7 @@ const EXPERTS = {
             'read_file', 'write_file', 'patch_file', 'validate_yaml', 'list_directory',
             'save_memory', 'get_memory', 'learn', 'web_search', 'ha_knowledge',
             'scan_installation', 'check_config', 'speak', 'telegram_send', 'rollback',
-            'show_house_status', 'dev_workspace']
+            'show_house_status', 'generate_image', 'generate_image_gemini', 'dev_workspace']
   },
 
   diagnostico: {
@@ -79,7 +79,7 @@ const EXPERTS = {
             'analyze_github_repos', 'web_search', 'web_search_native', 'fetch_url', 'ha_supervisor',
             'validate_yaml', 'update_ui', 'nexus_manage', 'create_custom_tool',
             'run_custom_tool', 'house_3d_map', 'learn', 'knowledge_db',
-            'dev_workspace']
+            'generate_image', 'generate_image_gemini', 'dev_workspace']
   },
 
   multimedia: {
