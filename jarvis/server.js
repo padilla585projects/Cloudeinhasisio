@@ -97,12 +97,8 @@ function pushToAll(event) {
 }
 
 function calcCost(usage) {
-  // gpt-4.1-mini: $0.40/MTok input, $1.60/MTok output
-  // gpt-4o-mini:  $0.15/MTok input, $0.60/MTok output
-  const avgIn  = (0.15 * 0.7 + 0.40 * 0.3) / 1e6;
-  const avgOut = (0.60 * 0.7 + 1.60 * 0.3) / 1e6;
-  const cost = usage.inputTokens * avgIn + usage.outputTokens * avgOut;
-  return Math.round(cost * 10000) / 10000;
+  // costUSD se acumula en llm.js con precios reales por modelo
+  return Math.round((usage.costUSD || 0) * 10000) / 10000;
 }
 
 // ── Sistema de tareas programadas ─────────────────────────────────────────────
@@ -379,10 +375,7 @@ app.post('/api/chat', async (req, res) => {
         }
       }
 
-      state.apiUsage.calls++;
-      state.apiUsage.inputTokens += result.usage.prompt_tokens || 0;
-      state.apiUsage.outputTokens += result.usage.completion_tokens || 0;
-      console.log(`[jarvis] iter=${iterations} finish=${result.finishReason} tools=${result.toolCalls.length} tokens=${result.usage.prompt_tokens}+${result.usage.completion_tokens}`);
+      console.log(`[jarvis] iter=${iterations} finish=${result.finishReason} tools=${result.toolCalls.length} tokens=${result.usage.prompt_tokens}+${result.usage.completion_tokens} cost=$${state.apiUsage.costUSD?.toFixed(4)||0}`);
 
       if (result.text) {
         finalText += result.text;
@@ -1449,8 +1442,8 @@ app.listen(PORT, '0.0.0.0', () => {
   setInterval(analyzePatterns, 6 * 3600_000);
   setTimeout(analyzePatterns, 30 * 60_000);
 
-  setInterval(proactiveThinkingLoop, 30 * 60_000);
-  setTimeout(proactiveThinkingLoop, 10 * 60_000);
+  setInterval(proactiveThinkingLoop, 2 * 3600_000);
+  setTimeout(proactiveThinkingLoop, 30 * 60_000);
 
   setInterval(knowledgeExpansionLoop, 4 * 3600_000);
   setTimeout(knowledgeExpansionLoop, 20 * 60_000);

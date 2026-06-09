@@ -3,6 +3,24 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.19 (2026-06-09) — Ahorro de tokens: proactive usa gpt-4.1-mini, ciclo 2h, tracking real
+────────────────────────────────────────────────────────────────────────────────
+
+Diagnóstico: loop proactivo consumía claude-sonnet-4-5 (×10 más caro) cada 30 min = $3-7/día.
+Badge de coste mentía: precios incorrectos + solo contaba 3 de 9 rutas + reset en cada restart.
+
+CAMBIOS:
+- proactive.js: modelo cambiado de claude-sonnet-4-5 → gpt-4.1-mini (o gpt-4o-mini en saverMode)
+- proactive.js: MAX_ITER 10 → 5
+- server.js: proactiveThinkingLoop cada 30min → cada 2h (primer arranque 10min → 30min)
+- llm.js: tracking centralizado — TODAS las llamadas LLM (incluidas background) se cuentan
+- llm.js: tabla de precios reales por modelo (Sonnet 4.5, gpt-4.1-mini, deepseek-chat, etc.)
+- server.js: calcCost usa costUSD acumulado en llm.js en lugar del promedio ficticio
+- server.js/proactive.js/patterns.js: eliminado double-counting manual de tokens
+
+Resultado: ~$0.3-0.5/día vs $3-7/día anterior. Badge muestra coste real.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.18 (2026-06-08) — /api/deploy-update: store_refresh fuerza re-check del Supervisor
 ────────────────────────────────────────────────────────────────────────────────
 

@@ -125,10 +125,6 @@ async function analyzePatterns() {
       }
     }
 
-    state.apiUsage.calls++;
-    state.apiUsage.inputTokens += patResult.usage.prompt_tokens || 0;
-    state.apiUsage.outputTokens += patResult.usage.completion_tokens || 0;
-
     console.log(`[patterns] Análisis completo. ${patResult.toolCalls.length} patrones/acciones detectados.`);
   } catch (err) {
     console.log(`[patterns] Error: ${err.message}`);

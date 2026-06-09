@@ -161,7 +161,7 @@ async function proactiveThinkingLoop() {
       if (autoFixLog.length) console.log(`[proactive] auto-fix: ${autoFixLog.join(' | ')}`);
     }
 
-    const model = C.ANTHROPIC_API_KEY ? C.CLAUDE_MODEL : C.BG_MODEL;
+    const model = state.saverMode ? C.BG_MODEL : C.MODEL;
 
     const system = `Eres Jarvis: un ingeniero domótico experto que vigila esta casa 24/7. No eres un chatbot — eres autónomo y RESUELVES.
 
@@ -180,7 +180,7 @@ REGLAS DE ORO:
 
     const tools = scopedTools(focus);
     let messages = [{ role: 'user', content: userPrompt }];
-    const MAX_ITER = 10;
+    const MAX_ITER = 5;
     let actions = 0;
 
     for (let iter = 0; iter < MAX_ITER; iter++) {
@@ -217,9 +217,7 @@ REGLAS DE ORO:
         });
       }
 
-      state.apiUsage.calls++;
-      state.apiUsage.inputTokens += result.usage.prompt_tokens || 0;
-      state.apiUsage.outputTokens += result.usage.completion_tokens || 0;
+      // tracking centralizado en llm.js
     }
 
     console.log(`[proactive] Foco ${focus} completado. ${actions} acciones de tool.`);

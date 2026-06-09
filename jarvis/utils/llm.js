@@ -3,6 +3,37 @@ const fetch = require('node-fetch');
 const { OPENAI_API_KEY, ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, DEEPSEEK_URL } = require('./constants');
 const state = require('./state');
 
+// Precios reales por modelo (USD / token)
+const MODEL_PRICES = {
+  'gpt-4.1-mini':       { in: 0.40 / 1e6, out: 1.60 / 1e6 },
+  'gpt-4o-mini':        { in: 0.15 / 1e6, out: 0.60 / 1e6 },
+  'gpt-4.1':            { in: 2.00 / 1e6, out: 8.00 / 1e6 },
+  'gpt-4o':             { in: 2.50 / 1e6, out: 10.00 / 1e6 },
+  'claude-sonnet-4-5':  { in: 3.00 / 1e6, out: 15.00 / 1e6 },
+  'claude-sonnet-4-6':  { in: 3.00 / 1e6, out: 15.00 / 1e6 },
+  'claude-opus-4-7':    { in: 15.00 / 1e6, out: 75.00 / 1e6 },
+  'deepseek-chat':      { in: 0.27 / 1e6, out: 1.10 / 1e6 },
+  'deepseek-reasoner':  { in: 0.55 / 1e6, out: 2.19 / 1e6 },
+};
+
+function trackUsage(model, usage) {
+  if (!usage) return;
+  const in_tok  = usage.prompt_tokens || usage.input_tokens || 0;
+  const out_tok = usage.completion_tokens || usage.output_tokens || 0;
+  const cache_r = usage.cache_read_input_tokens || 0;
+  const cache_c = usage.cache_creation_input_tokens || 0;
+  state.apiUsage.calls++;
+  state.apiUsage.inputTokens  += in_tok;
+  state.apiUsage.outputTokens += out_tok;
+  state.apiUsage.cacheReadTokens      += cache_r;
+  state.apiUsage.cacheCreationTokens  += cache_c;
+  // Acumular coste real por modelo
+  const prices = MODEL_PRICES[model] || MODEL_PRICES['gpt-4.1-mini'];
+  state.apiUsage.costUSD = (state.apiUsage.costUSD || 0) + in_tok * prices.in + out_tok * prices.out;
+}
+
+module.exports._trackUsage = trackUsage;
+
 // ── Conversión formato Anthropic → OpenAI ────────────────────────────────────
 
 function sanitizeMessagesForOpenAI(messages, stripImages = false) {
@@ -184,6 +215,8 @@ async function callOpenAI(model, system, messages, aiTools, maxTokens) {
   const data = await response.json();
   const choice = data.choices[0];
   const message = choice.message;
+  const usage = data.usage || {};
+  trackUsage(model, usage);
   return {
     text: message.content || '',
     toolCalls: (message.tool_calls || []).map(tc => ({
@@ -193,7 +226,7 @@ async function callOpenAI(model, system, messages, aiTools, maxTokens) {
     })),
     finishReason: choice.finish_reason,
     message,
-    usage: data.usage || {}
+    usage
   };
 }
 
@@ -275,18 +308,14 @@ async function callAnthropic(model, system, messages, aiTools, maxTokens) {
   };
   if (openAIMessage.tool_calls.length === 0) delete openAIMessage.tool_calls;
 
-  return {
-    text,
-    toolCalls,
-    finishReason,
-    message: openAIMessage,
-    usage: {
-      prompt_tokens: data.usage?.input_tokens || 0,
-      completion_tokens: data.usage?.output_tokens || 0,
-      cache_read_input_tokens: data.usage?.cache_read_input_tokens || 0,
-      cache_creation_input_tokens: data.usage?.cache_creation_input_tokens || 0
-    }
+  const usage = {
+    prompt_tokens: data.usage?.input_tokens || 0,
+    completion_tokens: data.usage?.output_tokens || 0,
+    cache_read_input_tokens: data.usage?.cache_read_input_tokens || 0,
+    cache_creation_input_tokens: data.usage?.cache_creation_input_tokens || 0
   };
+  trackUsage(model, usage);
+  return { text, toolCalls, finishReason, message: openAIMessage, usage };
 }
 
 // ── DeepSeek (V3 + R1) ────────────────────────────────────────────────────────
@@ -343,6 +372,8 @@ async function callDeepSeek(model, system, messages, aiTools, maxTokens) {
     input: (() => { try { return JSON.parse(tc.function.arguments); } catch { return {}; } })()
   }));
 
+  const usage = data.usage || {};
+  trackUsage(model, usage);
   return {
     text,
     toolCalls,
@@ -352,7 +383,7 @@ async function callDeepSeek(model, system, messages, aiTools, maxTokens) {
       content: text || null,
       ...(toolCalls.length > 0 ? { tool_calls: message.tool_calls } : {})
     },
-    usage: data.usage || {}
+    usage
   };
 }
 
