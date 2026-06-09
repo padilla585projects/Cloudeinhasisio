@@ -475,40 +475,79 @@ app.post('/api/chat', async (req, res) => {
 app.get('/api/status', async (req, res) => {
   try {
     const states = await haGet('/states');
+
+    // Luces — todas, con nombre + brillo
     const lights = states.filter(e => e.entity_id.startsWith('light.'));
     const lightsOn = lights.filter(e => e.state === 'on');
+    const lightsData = lights.slice(0, 20).map(l => ({
+      entity_id: l.entity_id,
+      name: l.attributes.friendly_name || l.entity_id,
+      state: l.state,
+      brightness: l.attributes.brightness !== undefined
+        ? Math.round(l.attributes.brightness / 2.55) : null
+    }));
+
+    // Temperatura (sensores reales de habitación, excluir HW/NAS)
     const temps = states.filter(e =>
       e.entity_id.startsWith('sensor.') &&
       e.attributes?.unit_of_measurement === '°C' &&
       e.attributes?.device_class === 'temperature' &&
       !isNaN(parseFloat(e.state))
-    ).slice(0, 6).map(t => ({
+    ).slice(0, 10).map(t => ({
       name: (t.attributes.friendly_name || t.entity_id).replace(/temperatura/i, '').trim(),
       value: parseFloat(t.state).toFixed(1),
       unit: '°C'
     }));
+
+    // Clima (thermostats)
+    const climate = states.filter(e => e.entity_id.startsWith('climate.')).map(c => ({
+      name: c.attributes.friendly_name || c.entity_id,
+      state: c.state,
+      target: c.attributes.temperature,
+      current: c.attributes.current_temperature
+    }));
+
+    // Cortinas/persianas
+    const covers = states.filter(e => e.entity_id.startsWith('cover.')).map(c => ({
+      name: c.attributes.friendly_name || c.entity_id,
+      state: c.state,
+      position: c.attributes.current_position ?? null
+    }));
+
+    // Personas
     const persons = states.filter(e => e.entity_id.startsWith('person.')).map(p => ({
       name: p.attributes.friendly_name || p.entity_id,
       state: p.state
     }));
+
+    // Media players activos
+    const mediaPlaying = states.filter(e =>
+      e.entity_id.startsWith('media_player.') && ['playing','paused'].includes(e.state)
+    ).map(m => ({
+      name: m.attributes.friendly_name || m.entity_id,
+      state: m.state,
+      media: m.attributes.media_title || m.attributes.media_content_id || ''
+    }));
+
+    // Entidades no disponibles
     const unavailable = states.filter(e =>
       ['unavailable', 'unknown'].includes(e.state) &&
       (e.entity_id.startsWith('sensor.') || e.entity_id.startsWith('binary_sensor.') ||
        e.entity_id.startsWith('light.') || e.entity_id.startsWith('switch.'))
     ).length;
-    const mediaPlaying = states.filter(e =>
-      e.entity_id.startsWith('media_player.') && e.state === 'playing'
-    ).map(m => ({ name: m.attributes.friendly_name || m.entity_id, media: m.attributes.media_title || '' }));
+
     const thoughts = loadJSON(path.join(C.DATA_DIR, 'pending_thoughts.json'), []).filter(t => t.status === 'pending');
     const activeEmergencies = loadJSON(path.join(C.DATA_DIR, 'active_emergencies.json'), {});
 
     res.json({
-      lights: { on: lightsOn.length, total: lights.length, names: lightsOn.slice(0, 5).map(l => l.attributes.friendly_name || l.entity_id) },
+      lights: { on: lightsOn.length, total: lights.length, entities: lightsData },
       temperature: temps,
+      climate,
+      covers,
       persons,
       unavailable,
       media: mediaPlaying,
-      pending_thoughts: thoughts.slice(0, 3).map(t => ({ title: t.title, priority: t.priority, type: t.type })),
+      pending_thoughts: thoughts.slice(0, 5).map(t => ({ title: t.title, priority: t.priority, type: t.type })),
       active_emergencies: Object.keys(activeEmergencies).length,
       ts: new Date().toISOString()
     });

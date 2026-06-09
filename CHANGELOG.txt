@@ -3,6 +3,28 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.21 (2026-06-09) — Panel visual de estado de la casa en el chat
+────────────────────────────────────────────────────────────────────────────────
+
+Nueva tool 'show_house_status': cuando el usuario pide el estado de la casa (o usa
+/estado), Jarvis inyecta directamente en el chat un panel visual estructurado con:
+  · Resumen: 6 tiles (luces on/total, temp media, presencia, unavailable, emergencias, pensamientos)
+  · Detalle luces: cada luz con estado on/off y brillo %
+  · Temperatura: sensores por habitación (filtrados: excluye HW/NAS)
+  · Climatización: thermostats con temp actual y objetivo
+  · Persianas: estado y posición %
+  · Reproduciendo: media players en playing/paused
+
+Implementación sin coste extra:
+  - Tool envía SSE { type: 'status_panel' } via state.currentSendEvent → llega directo al frontend
+  - El LLM recibe solo un resumen compacto (~80 tokens) como resultado de la tool
+  - Cero loops nuevos → $0 en idle
+  - /api/status enriquecido con luces individuales, covers, climate
+  - Estilos CSS añadidos: .status-details, .status-section, .status-detail-row, .status-detail-extra
+
+Impacto tokens: +$0.001/día (solo cuando se invoca la tool)
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.20 (2026-06-09) — Auditoría de tokens: 6 fixes, -50% coste estimado
 ────────────────────────────────────────────────────────────────────────────────
 

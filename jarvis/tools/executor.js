@@ -4031,6 +4031,98 @@ ${dots}`;
         };
       }
 
+      case 'show_house_status': {
+        const sts = await haGet('/states');
+
+        // Luces
+        const allLights = sts.filter(e => e.entity_id.startsWith('light.'));
+        const onLights  = allLights.filter(e => e.state === 'on');
+        const lightsData = allLights.slice(0, 20).map(l => ({
+          entity_id: l.entity_id,
+          name: l.attributes.friendly_name || l.entity_id,
+          state: l.state,
+          brightness: l.attributes.brightness !== undefined ? Math.round(l.attributes.brightness / 2.55) : null
+        }));
+
+        // Temperatura
+        const temps = sts.filter(e =>
+          e.entity_id.startsWith('sensor.') &&
+          e.attributes?.unit_of_measurement === '°C' &&
+          e.attributes?.device_class === 'temperature' &&
+          !isNaN(parseFloat(e.state))
+        ).slice(0, 10).map(t => ({
+          name: (t.attributes.friendly_name || t.entity_id).replace(/temperatura/i, '').trim(),
+          value: parseFloat(t.state).toFixed(1), unit: '°C'
+        }));
+
+        // Clima
+        const climate = sts.filter(e => e.entity_id.startsWith('climate.')).map(c => ({
+          name: c.attributes.friendly_name || c.entity_id,
+          state: c.state,
+          target: c.attributes.temperature,
+          current: c.attributes.current_temperature
+        }));
+
+        // Persianas
+        const covers = sts.filter(e => e.entity_id.startsWith('cover.')).map(c => ({
+          name: c.attributes.friendly_name || c.entity_id,
+          state: c.state,
+          position: c.attributes.current_position ?? null
+        }));
+
+        // Personas
+        const persons = sts.filter(e => e.entity_id.startsWith('person.')).map(p => ({
+          name: p.attributes.friendly_name || p.entity_id,
+          state: p.state
+        }));
+
+        // Media
+        const media = sts.filter(e =>
+          e.entity_id.startsWith('media_player.') && ['playing','paused'].includes(e.state)
+        ).map(m => ({
+          name: m.attributes.friendly_name || m.entity_id,
+          state: m.state,
+          media: m.attributes.media_title || ''
+        }));
+
+        // No disponibles
+        const unavailable = sts.filter(e =>
+          ['unavailable','unknown'].includes(e.state) &&
+          /^(sensor|binary_sensor|light|switch)\./.test(e.entity_id)
+        ).length;
+
+        const { loadJSON: lj } = require('../utils/persistence');
+        const thoughts = lj(require('path').join(C.DATA_DIR, 'pending_thoughts.json'), [])
+          .filter(t => t.status === 'pending').slice(0, 5)
+          .map(t => ({ title: t.title, priority: t.priority, type: t.type }));
+        const emergencies = Object.keys(lj(require('path').join(C.DATA_DIR, 'active_emergencies.json'), {})).length;
+
+        const payload = {
+          lights: { on: onLights.length, total: allLights.length, entities: lightsData },
+          temperature: temps, climate, covers, persons, media,
+          unavailable, pending_thoughts: thoughts, active_emergencies: emergencies,
+          ts: new Date().toISOString()
+        };
+
+        // Inyectar panel visual directamente en el chat del usuario
+        if (typeof state.currentSendEvent === 'function') {
+          state.currentSendEvent({ type: 'status_panel', data: payload });
+        }
+
+        // Resumen compacto para el LLM (sin repetir el JSON completo)
+        const atHome = persons.filter(p => p.state === 'home').map(p => p.name).join(', ') || 'nadie';
+        const avgTmp = temps.length
+          ? (temps.filter(t => !/(disk|cpu|shelly|omv)/i.test(t.name))
+              .reduce((s, t) => s + parseFloat(t.value), 0) /
+             (temps.filter(t => !/(disk|cpu|shelly|omv)/i.test(t.name)).length || 1)).toFixed(1) + '°C'
+          : 'sin datos';
+        return {
+          panel_enviado: true,
+          resumen: `Luces: ${onLights.length}/${allLights.length} encendidas. Temp. media: ${avgTmp}. En casa: ${atHome}. No disponibles: ${unavailable}. Emergencias: ${emergencies}.`,
+          pensamientos_pendientes: thoughts.length
+        };
+      }
+
       default:
         return { error: `Tool desconocida: ${name}` };
     }

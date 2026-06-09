@@ -641,6 +641,16 @@
   .status-tile.alert { border: 1px solid rgba(244,67,54,0.5); }
   .status-tile.ok    { border: 1px solid rgba(76,175,80,0.35); }
   .status-thoughts { border-top: 1px solid var(--border); padding-top: 8px; margin-top: 2px; }
+  /* Secciones de detalle del panel de estado */
+  .status-details { border-top: 1px solid var(--border); margin-top: 10px; padding-top: 10px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .status-section { }
+  .status-section-title { font-size: 10px; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 6px; }
+  .status-detail-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 12px; color: var(--text2); }
+  .status-detail-row.on  { color: var(--text1); }
+  .status-detail-row.off { opacity: 0.5; }
+  .status-detail-icon { font-size: 13px; width: 16px; text-align: center; flex-shrink: 0; }
+  .status-detail-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .status-detail-extra { font-size: 11px; color: var(--text3); white-space: nowrap; margin-left: auto; }
   .status-thought-item {
     font-size: 12px; color: var(--text2); padding: 3px 0;
     display: flex; align-items: flex-start; gap: 6px; line-height: 1.4;
@@ -1169,6 +1179,75 @@
             <span>${t.title || ''}</span>
           </div>`).join('')}
       </div>` : ''}
+
+      ${(() => {
+        const sections = [];
+
+        // Luces individuales
+        const lightEntities = (d.lights?.entities || []);
+        if (lightEntities.length > 0) {
+          const rows = lightEntities.map(l => {
+            const bri = l.brightness !== null ? ` <span class="status-detail-extra">${l.brightness}%</span>` : '';
+            return `<div class="status-detail-row ${l.state === 'on' ? 'on' : 'off'}">
+              <span class="status-detail-icon">${l.state === 'on' ? '💡' : '○'}</span>
+              <span class="status-detail-name">${l.name}</span>${bri}
+            </div>`;
+          }).join('');
+          sections.push(`<div class="status-section"><div class="status-section-title">Luces</div>${rows}</div>`);
+        }
+
+        // Temperaturas
+        const tempRows = (d.temperature || []).filter(t => !/(disk|cpu|shelly|omv)/i.test(t.name));
+        if (tempRows.length > 0) {
+          const rows = tempRows.map(t =>
+            `<div class="status-detail-row">
+              <span class="status-detail-icon">🌡️</span>
+              <span class="status-detail-name">${t.name}</span>
+              <span class="status-detail-extra">${t.value}${t.unit}</span>
+            </div>`
+          ).join('');
+          sections.push(`<div class="status-section"><div class="status-section-title">Temperatura</div>${rows}</div>`);
+        }
+
+        // Climatización
+        if ((d.climate || []).length > 0) {
+          const rows = d.climate.map(c =>
+            `<div class="status-detail-row">
+              <span class="status-detail-icon">❄️</span>
+              <span class="status-detail-name">${c.name}</span>
+              <span class="status-detail-extra">${c.current !== undefined ? c.current + '°C' : ''} ${c.target !== undefined ? '→ ' + c.target + '°C' : ''}</span>
+            </div>`
+          ).join('');
+          sections.push(`<div class="status-section"><div class="status-section-title">Climatización</div>${rows}</div>`);
+        }
+
+        // Persianas
+        if ((d.covers || []).length > 0) {
+          const rows = d.covers.map(c => {
+            const pos = c.position !== null ? ` <span class="status-detail-extra">${c.position}%</span>` : '';
+            return `<div class="status-detail-row">
+              <span class="status-detail-icon">${c.state === 'open' ? '🪟' : '▬'}</span>
+              <span class="status-detail-name">${c.name}</span>${pos}
+            </div>`;
+          }).join('');
+          sections.push(`<div class="status-section"><div class="status-section-title">Persianas</div>${rows}</div>`);
+        }
+
+        // Media
+        if ((d.media || []).length > 0) {
+          const rows = d.media.map(m =>
+            `<div class="status-detail-row">
+              <span class="status-detail-icon">${m.state === 'playing' ? '🔊' : '⏸'}</span>
+              <span class="status-detail-name">${m.name}</span>
+              ${m.media ? `<span class="status-detail-extra">${m.media.slice(0, 30)}</span>` : ''}
+            </div>`
+          ).join('');
+          sections.push(`<div class="status-section"><div class="status-section-title">Reproduciendo</div>${rows}</div>`);
+        }
+
+        if (sections.length === 0) return '';
+        return `<div class="status-details">${sections.join('')}</div>`;
+      })()}
     `;
 
     wrap.appendChild(label);
@@ -2156,6 +2235,9 @@
 
               } else if (event.type === 'local_request') {
                 handleLocalRequest(event);
+
+              } else if (event.type === 'status_panel') {
+                renderStatusCard(event.data);
 
               } else if (event.type === 'tool_start') {
                 addPermanentTool(event.tool, event.input);

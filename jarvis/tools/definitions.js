@@ -1065,6 +1065,17 @@ const tools = [
       },
       required: ['identifier']
     }
+  },
+
+  // ─── Panel visual ───
+  {
+    name: 'show_house_status',
+    description: 'Muestra un panel visual en el chat con el estado de la casa: luces (on/off/brillo), temperaturas por habitación, climatización, persianas, presencia y media en reproducción. Úsala cuando el usuario pida el estado de la casa, resumen de la casa, o /estado.',
+    input_schema: {
+      type: 'object',
+      properties: {},
+      required: []
+    }
   }
 ];
 

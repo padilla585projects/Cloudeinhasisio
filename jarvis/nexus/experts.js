@@ -13,7 +13,7 @@ const EXPERTS = {
     label: 'Rápido',
     tools: ['get_entities', 'search_entities', 'get_entity_state', 'call_service',
             'save_memory', 'get_memory', 'speak', 'web_search', 'fetch_url',
-            'list_directory', 'read_file']
+            'list_directory', 'read_file', 'show_house_status']
   },
 
   ha_control: {
@@ -26,7 +26,7 @@ const EXPERTS = {
             'read_file', 'write_file', 'patch_file', 'validate_yaml', 'list_directory',
             'save_memory', 'get_memory', 'learn', 'web_search', 'ha_knowledge',
             'scan_installation', 'check_config', 'speak', 'telegram_send', 'rollback',
-            'dev_workspace']
+            'show_house_status', 'dev_workspace']
   },
 
   diagnostico: {
