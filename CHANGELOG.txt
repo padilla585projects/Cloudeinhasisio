@@ -3,6 +3,18 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.25 (2026-06-09) — Migración generate_image a gpt-image-1 (dall-e-3 retirado)
+────────────────────────────────────────────────────────────────────────────────
+
+generate_image: dall-e-3 fue retirado por OpenAI — migrado a gpt-image-1
+- Modelo: dall-e-3 → gpt-image-1 (respuesta base64 en vez de URL temporal)
+- Guarda directamente desde base64 sin fetch secundario de URL
+- Mantiene fallback a URL si la respuesta la incluye
+- output_format: 'png' explícito
+- Sin cambio en interfaz ni parámetros para Jarvis/usuario
+- Impacto tokens: sin cambio ($0.04-0.08/imagen estimado con gpt-image-1) ✅
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.24 (2026-06-09) — Fix generate_image: sin 'style', filename funcional + copia /local/jarvis/
 ────────────────────────────────────────────────────────────────────────────────
 

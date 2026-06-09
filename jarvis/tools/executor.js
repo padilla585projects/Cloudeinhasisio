@@ -3227,7 +3227,7 @@ ${dots}`;
           const imagesDir = path.join(C.HA_SHARE, 'jarvis', 'images');
           if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true });
 
-          // Llamar a DALL-E 3 (sin 'style' — parámetro eliminado por OpenAI)
+          // gpt-image-1 (sucesor de dall-e-3): devuelve base64 por defecto
           const res = await fetch('https://api.openai.com/v1/images/generations', {
             method: 'POST',
             headers: {
@@ -3235,11 +3235,12 @@ ${dots}`;
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-              model: 'dall-e-3',
+              model: 'gpt-image-1',
               prompt,
               n: 1,
               size,
-              quality
+              quality,
+              output_format: 'png'
             })
           });
 
@@ -3249,12 +3250,20 @@ ${dots}`;
           }
 
           const data = await res.json();
-          const imageUrl = data.data[0].url;
-          const revised_prompt = data.data[0].revised_prompt;
+          const item = data.data?.[0];
+          if (!item) return { error: 'OpenAI no devolvió imagen', raw: JSON.stringify(data).slice(0, 200) };
 
-          // Descargar la imagen
-          const imgRes = await fetch(imageUrl);
-          const buffer = await imgRes.buffer();
+          // gpt-image-1 devuelve b64_json; fallback a URL si la hubiera
+          let buffer;
+          if (item.b64_json) {
+            buffer = Buffer.from(item.b64_json, 'base64');
+          } else if (item.url) {
+            const imgRes = await fetch(item.url);
+            buffer = await imgRes.buffer();
+          } else {
+            return { error: 'Formato de respuesta desconocido', raw: JSON.stringify(item).slice(0, 200) };
+          }
+
           const filepath = path.join(imagesDir, imgFilename);
           fs.writeFileSync(filepath, buffer);
 
@@ -3269,7 +3278,6 @@ ${dots}`;
             lovelace_url: `/local/jarvis/${imgFilename}`,
             share_url: `/share/jarvis/images/${imgFilename}`,
             prompt,
-            revised_prompt,
             size,
             message: `Imagen guardada en /share/jarvis/images/${imgFilename} y accesible en /local/jarvis/${imgFilename}`
           };
