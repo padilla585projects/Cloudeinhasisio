@@ -140,11 +140,23 @@ Entidades NO disponibles: ${unavailable.length}` +
   return { seed, unavailable };
 }
 
+// Focos que se ejecutan incluso si el usuario lleva tiempo inactivo (afectan a la casa)
+const CRITICAL_FOCUSES = new Set(['system_health', 'fallen_devices']);
+
 async function proactiveThinkingLoop() {
   try {
     if (!C.ANTHROPIC_API_KEY && !C.OPENAI_API_KEY) return;
 
+    const idleMs = Date.now() - (state.lastUserActivity || 0);
+    const idleHours = idleMs / 3600_000;
+
     const focus = pickFocus();
+
+    // Si el usuario lleva más de 6h sin actividad, solo ejecutar focos críticos
+    if (idleHours > 6 && !CRITICAL_FOCUSES.has(focus)) {
+      console.log(`[proactive] Saltando foco '${focus}' — usuario inactivo ${idleHours.toFixed(1)}h (solo críticos en idle)`);
+      return;
+    }
     console.log(`[proactive] Ciclo autónomo — foco: ${focus}`);
 
     const { seed, unavailable } = await gatherSeed(focus);

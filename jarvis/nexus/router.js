@@ -36,7 +36,8 @@ async function nexusRoute(message) {
   // CAPA 1: regex (0 tokens)
   if (/emergencia|urgente|fallo cr[ií]tico|se ha roto|no arranca|error grave|ayuda urgente/.test(text))
     return { expert: 'emergencia', source: 'regex', confidence: 0.95 };
-  if (/crea|modifica|escribe|a[ñn]ade una tool|nuevo endpoint|github|server\.js|index\.html|add.?on|desarrolla|implementa/.test(text))
+  // 'dev' SOLO para tareas explícitas de código/Jarvis — evitar coste de Claude Sonnet en tareas generales
+  if (/server\.js|index\.html|executor\.js|experts\.js|router\.js|package\.json|add.?on nuevo|crea.*add.?on|github|npm install|node_modules|nueva tool|nuevo endpoint|a[ñn]ade.*tool|desarrolla|implementa.*funci[oó]n|escribe.*c[oó]digo|escribe.*script|modifica.*jarvis|actualiza.*jarvis/.test(text))
     return { expert: 'dev', source: 'regex', confidence: 0.9 };
   if (/automatizaci[oó]n|dashboard|lovelace|card|panel|vista|mushroom|button.card/.test(text))
     return { expert: 'automatizacion', source: 'regex', confidence: 0.85 };

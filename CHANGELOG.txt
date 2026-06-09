@@ -3,6 +3,35 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.20 (2026-06-09) — Auditoría de tokens: 6 fixes, -50% coste estimado
+────────────────────────────────────────────────────────────────────────────────
+
+Fix A — nexus/experts.js: maxIter y maxTokens reducidos al mínimo funcional por experto
+  · ha_control:    maxIter 15→8,  maxTokens 6144→4096
+  · diagnostico:   maxIter 20→10, maxTokens 8192→4096
+  · automatizacion:maxIter 15→8,  maxTokens 8192→4096
+  · archivo:       maxIter 10→6,  maxTokens 4096→3072
+  · emergencia:    maxIter 20→12, maxTokens 8192→6144
+  · dev:           maxIter 20→10, maxTokens 8192→8192 (Claude Sonnet, necesita espacio)
+  · multimedia:    maxIter 10→6,  maxTokens 4096→2048
+  · energia:       maxIter 15→8,  maxTokens 6144→4096
+  · seguridad:     maxIter 15→8,  maxTokens 6144→4096
+  · red:           maxIter 15→8,  maxTokens 6144→4096
+  · aprendizaje:   maxIter 15→8,  maxTokens 6144→4096
+  · analisis:      maxIter 12→8,  maxTokens 8192→4096
+
+Fix B — server.js: historial 30→20 mensajes (saverMode 15→10)
+Fix B — server.js: resultados de tools truncados a 3000 chars (antes 8000; saverMode 1500)
+Fix C — state.js + server.js: tracking de lastUserActivity en cada mensaje del usuario
+Fix C — proactive.js: skip focos no críticos (dashboard/optimization/security_maintenance)
+         si usuario lleva >6h inactivo → ahorra ~60% del coste del proactive en idle
+Fix D — router.js: regex de experto 'dev' (Claude Sonnet) más estricta — solo dispara
+         para tareas explícitas de código Jarvis (server.js, index.html, github, etc.)
+         Eliminado 'crea'/'modifica' genéricos que activaban Claude Sonnet innecesariamente
+
+Resultado estimado: ~$0.30-0.35/día vs $0.63/día anterior
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.19 (2026-06-09) — Ahorro de tokens: proactive usa gpt-4.1-mini, ciclo 2h, tracking real
 ────────────────────────────────────────────────────────────────────────────────
 

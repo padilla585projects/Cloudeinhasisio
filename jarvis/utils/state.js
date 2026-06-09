@@ -22,6 +22,7 @@ const state = {
 
   // ── Modos de operación ───────────────────────────────────────────────────
   saverMode: false,
+  lastUserActivity: Date.now(), // ms — se actualiza en cada mensaje del usuario
 
   // ── NEXUS dinámico ───────────────────────────────────────────────────────
   dynamicExperts: {},
@@ -50,7 +51,7 @@ const state = {
   scheduledTasks: {},
 
   // ── Versión ──────────────────────────────────────────────────────────────
-  JARVIS_VERSION: '3.33.19',
+  JARVIS_VERSION: '3.33.20',
 };
 
 module.exports = state;

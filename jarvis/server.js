@@ -83,7 +83,7 @@ console.log(`[init] Memoria: ${state.userMemory.length} notas | Historial: ${sta
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function saveHistory() {
-  const histLimit = state.saverMode ? 15 : 30;
+  const histLimit = state.saverMode ? 10 : 20;
   if (state.conversationHistory.length > histLimit)
     state.conversationHistory = state.conversationHistory.slice(-histLimit);
   saveJSON(C.HISTORY_FILE, state.conversationHistory);
@@ -313,6 +313,7 @@ app.post('/api/chat', async (req, res) => {
     }
 
     const userMsg = lastMsg?.content || '';
+    state.lastUserActivity = Date.now(); // para que proactive sepa si el usuario está activo
     saveJSON(C.PENDING_TASK_FILE, { status: 'running', message: userMsg, startedAt: new Date().toISOString() });
 
     // NEXUS: Router dinámico
@@ -435,7 +436,7 @@ app.post('/api/chat', async (req, res) => {
 
       currentMessages.push(result.message);
 
-      const maxLen = (state.saverMode || activeModel === C.BG_MODEL) ? 2000 : 8000;
+      const maxLen = state.saverMode ? 1500 : (activeModel === C.BG_MODEL ? 2000 : 3000);
       for (let i = 0; i < result.toolCalls.length; i++) {
         const tc = result.toolCalls[i];
         sendEvent({ type: 'tool_end', tool: tc.name, result: results[i] });
