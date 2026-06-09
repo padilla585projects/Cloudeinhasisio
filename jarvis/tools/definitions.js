@@ -1070,7 +1070,7 @@ const tools = [
   // ─── Generación de imágenes Gemini ───
   {
     name: 'generate_image_gemini',
-    description: 'Genera imágenes con Google Gemini Imagen 3 (alta calidad). Ideal para planos de casas, renders de habitaciones, visualizaciones de domótica, diagramas arquitectónicos. Requiere GEMINI_API_KEY configurada. Guarda el resultado en /share/jarvis/images/ y devuelve la URL local.',
+    description: 'Genera imágenes con Google Gemini Imagen 4 (alta calidad). Ideal para planos de casas, renders de habitaciones, visualizaciones de domótica, diagramas arquitectónicos. Requiere GEMINI_API_KEY configurada. Guarda el resultado en /share/jarvis/images/ y devuelve la URL local.',
     input_schema: {
       type: 'object',
       properties: {
@@ -1089,8 +1089,8 @@ const tools = [
         },
         model: {
           type: 'string',
-          enum: ['imagen-3', 'gemini-flash'],
-          description: 'imagen-3: máxima calidad (Imagen 3). gemini-flash: más rápido (Gemini 2.0 Flash). Default: imagen-3'
+          enum: ['imagen-4', 'gemini-flash'],
+          description: 'imagen-4: máxima calidad (Imagen 4, auto-fallback a versiones anteriores). gemini-flash: más rápido. Default: imagen-4'
         }
       },
       required: ['prompt', 'filename']

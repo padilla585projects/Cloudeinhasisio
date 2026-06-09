@@ -3,6 +3,17 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.23 (2026-06-09) — Migración Imagen 4: auto-fallback de modelos Gemini
+────────────────────────────────────────────────────────────────────────────────
+
+generate_image_gemini: migración a Imagen 4 (Imagen 3 se retira 24 jun 2026)
+- Imagen: auto-fallback en cadena imagen-4.0-generate-001 → imagen-4.0-fast-generate-001 → imagen-3.0-generate-002
+- Flash: auto-fallback en cadena gemini-2.0-flash-preview-image-generation → gemini-2.0-flash-exp → gemini-2.5-flash-preview-image-generation
+- definitions.js: enum actualizado de 'imagen-3' a 'imagen-4'
+- Robustez: si un modelo devuelve 404 prueba el siguiente sin exponer error al usuario
+- Impacto tokens: sin cambio ✅
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.22 (2026-06-09) — Gemini Imagen 3: generación de imágenes AI para planos y más
 ────────────────────────────────────────────────────────────────────────────────
 

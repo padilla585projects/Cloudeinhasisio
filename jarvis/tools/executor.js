@@ -4045,40 +4045,56 @@ ${dots}`;
         let imageBase64, mimeType;
 
         if (useFlash) {
-          // Gemini 2.0 Flash con salida de imagen
-          const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${C.GEMINI_API_KEY}`;
-          const body = {
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { responseModalities: ['TEXT', 'IMAGE'] }
-          };
-          const r = await fetch(geminiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-          if (!r.ok) {
-            const err = await r.text();
-            return { error: `Gemini Flash error ${r.status}: ${err.slice(0, 300)}` };
+          // Gemini Flash con salida de imagen — prueba modelos en orden
+          const flashModels = [
+            'gemini-2.0-flash-preview-image-generation',
+            'gemini-2.0-flash-exp',
+            'gemini-2.5-flash-preview-image-generation',
+          ];
+          let flashDone = false;
+          for (const flashModel of flashModels) {
+            const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${flashModel}:generateContent?key=${C.GEMINI_API_KEY}`;
+            const body = {
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: { responseModalities: ['TEXT', 'IMAGE'] }
+            };
+            const r = await fetch(geminiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+            if (!r.ok) continue; // prueba siguiente modelo
+            const data = await r.json();
+            const parts = data.candidates?.[0]?.content?.parts || [];
+            const imgPart = parts.find(p => p.inlineData?.mimeType?.startsWith('image/'));
+            if (!imgPart) continue;
+            imageBase64 = imgPart.inlineData.data;
+            mimeType = imgPart.inlineData.mimeType;
+            flashDone = true;
+            break;
           }
-          const data = await r.json();
-          const parts = data.candidates?.[0]?.content?.parts || [];
-          const imgPart = parts.find(p => p.inlineData?.mimeType?.startsWith('image/'));
-          if (!imgPart) return { error: 'Gemini Flash no devolvió imagen', raw: JSON.stringify(data).slice(0, 300) };
-          imageBase64 = imgPart.inlineData.data;
-          mimeType = imgPart.inlineData.mimeType;
+          if (!flashDone) return { error: 'Gemini Flash: ningún modelo de imagen disponible en tu plan/región. Usa model=imagen-4 en su lugar.' };
         } else {
-          // Imagen 3 — máxima calidad
-          const imagenUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-004:predict?key=${C.GEMINI_API_KEY}`;
-          const body = {
-            instances: [{ prompt }],
-            parameters: { sampleCount: 1, aspectRatio: ratio, safetyFilterLevel: 'BLOCK_SOME', personGeneration: 'DONT_ALLOW' }
-          };
-          const r = await fetch(imagenUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-          if (!r.ok) {
-            const err = await r.text();
-            return { error: `Imagen 3 error ${r.status}: ${err.slice(0, 300)}` };
+          // Imagen 4 — máxima calidad (Imagen 3 se retiró junio 2026)
+          const imagenModels = [
+            'imagen-4.0-generate-001',
+            'imagen-4.0-fast-generate-001',
+            'imagen-3.0-generate-002',  // fallback Imagen 3
+          ];
+          let imagenDone = false;
+          for (const imagenModel of imagenModels) {
+            const imagenUrl = `https://generativelanguage.googleapis.com/v1beta/models/${imagenModel}:predict?key=${C.GEMINI_API_KEY}`;
+            const body = {
+              instances: [{ prompt }],
+              parameters: { sampleCount: 1, aspectRatio: ratio, safetyFilterLevel: 'BLOCK_SOME', personGeneration: 'DONT_ALLOW' }
+            };
+            const r = await fetch(imagenUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+            if (!r.ok) continue; // prueba siguiente modelo
+            const data = await r.json();
+            const pred = data.predictions?.[0];
+            if (!pred?.bytesBase64Encoded) continue;
+            imageBase64 = pred.bytesBase64Encoded;
+            mimeType = pred.mimeType || 'image/png';
+            imagenDone = true;
+            break;
           }
-          const data = await r.json();
-          const pred = data.predictions?.[0];
-          if (!pred?.bytesBase64Encoded) return { error: 'Imagen 3 no devolvió imagen', raw: JSON.stringify(data).slice(0, 300) };
-          imageBase64 = pred.bytesBase64Encoded;
-          mimeType = pred.mimeType || 'image/png';
+          if (!imagenDone) return { error: 'Imagen 4: ningún modelo disponible en tu plan/región. Verifica que tu API key tiene acceso a imagen-4.0-generate-001.' };
         }
 
         // Guardar imagen
@@ -4097,7 +4113,7 @@ ${dots}`;
           file: outPath,
           lovelace_url: `/local/jarvis/${filename}.${ext}`,
           share_url: `/share/jarvis/images/${filename}.${ext}`,
-          model_used: useFlash ? 'gemini-2.0-flash' : 'imagen-3.0',
+          model_used: useFlash ? 'gemini-flash' : 'imagen-4.0',
           size_kb: Math.round(Buffer.from(imageBase64, 'base64').length / 1024)
         };
       }

@@ -70,7 +70,7 @@ if bashio::config.has_value 'agent_net_invite'; then
   export AGENT_NET_INVITE="$(bashio::config 'agent_net_invite')"
 fi
 
-bashio::log.info "Iniciando Jarvis AI Agent v3.33.22..."
+bashio::log.info "Iniciando Jarvis AI Agent v3.33.23..."
 bashio::log.info "Modelos cloud: gpt-4o-mini (bg) + gpt-4.1-mini (principal) + claude-sonnet-4-5 (dev)"
 bashio::log.info "☁️ Núcleos activos:"
 bashio::log.info "  · OpenAI: gpt-4.1-mini (principal) + gpt-4o-mini (rápido)"
