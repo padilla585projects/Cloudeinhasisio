@@ -3209,7 +3209,11 @@ ${dots}`;
       }
 
       case 'generate_image': {
-        const { prompt, size = '1024x1024', quality = 'standard' } = input;
+        // Tamaños válidos para gpt-image-1: 1024x1024, 1024x1536, 1536x1024, auto
+        const validSizes = new Set(['1024x1024','1024x1536','1536x1024','auto']);
+        const rawSize = input.size || '1024x1024';
+        const size = validSizes.has(rawSize) ? rawSize : '1024x1024';
+        const { prompt, quality = 'standard' } = input;
         // filename: usa el proporcionado o genera uno por timestamp
         const imgFilename = input.filename
           ? input.filename.replace(/[^a-zA-Z0-9_-]/g, '_') + '.png'

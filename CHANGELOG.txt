@@ -3,6 +3,15 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.25 (2026-06-09) — Migración generate_image a gpt-image-1 + fix tamaños válidos
+────────────────────────────────────────────────────────────────────────────────
+
+generate_image fix adicional: tamaños válidos para gpt-image-1
+- Tamaños válidos: 1024x1024, 1024x1536, 1536x1024, auto (eliminados 1792x1024, 1024x1792)
+- executor.js: validación automática — si llega tamaño inválido se usa 1024x1024
+- definitions.js: enum actualizado con tamaños correctos de gpt-image-1
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.25 (2026-06-09) — Migración generate_image a gpt-image-1 (dall-e-3 retirado)
 ────────────────────────────────────────────────────────────────────────────────
 

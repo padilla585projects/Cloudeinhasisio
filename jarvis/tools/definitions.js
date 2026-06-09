@@ -808,7 +808,7 @@ const tools = [
       properties: {
         prompt: { type: 'string', description: 'Descripción detallada. Para interiores: estilo, colores, muebles, iluminación, perspectiva.' },
         filename: { type: 'string', description: 'Nombre del archivo sin extensión (ej: "plano_planta0"). Si no se especifica, se genera automáticamente.' },
-        size: { type: 'string', enum: ['1024x1024', '1792x1024', '1024x1792'], description: '1792x1024 para planos/panorámicas. 1024x1792 para verticales. Default: 1024x1024' },
+        size: { type: 'string', enum: ['1024x1024', '1536x1024', '1024x1536'], description: '1536x1024 para planos/panorámicas. 1024x1536 para verticales/retratos. Default: 1024x1024' },
         quality: { type: 'string', enum: ['standard', 'hd'], description: 'hd: más detallado y lento. Default: standard' }
       },
       required: ['prompt']
