@@ -80,6 +80,20 @@ Si los archivos están en la raíz, HA no detecta actualizaciones. NUNCA mover a
 
 ## Reglas del proyecto
 
+### 🔴 REGLA DE ORO: Impacto de tokens (OBLIGATORIO en cada cambio)
+Toda modificación o mejora debe incluir análisis de impacto de consumo de tokens.
+- **Si el cambio añade o modifica una llamada LLM**: estimar modelo, frecuencia, tokens in/out, coste diario incremental
+- **Si el impacto es negativo** (aumenta coste): justificarlo explícitamente o mitigarlo en el mismo cambio
+- **Jerarquía de modelos** (usar el más barato que cumpla el objetivo):
+  1. `gpt-4o-mini` ($0.15/$0.60 /MTok) — background, clasificación, resúmenes
+  2. `gpt-4.1-mini` ($0.40/$1.60 /MTok) — chat principal, análisis moderado
+  3. `deepseek-chat` ($0.27/$1.10 /MTok) — análisis avanzado
+  4. `deepseek-reasoner` ($0.55/$2.19 /MTok) — razonamiento profundo, con cautela
+  5. `claude-sonnet-4-5` ($3/$15 /MTok) — SOLO tareas de código/dev explícitas
+- **Loops de background**: BG_MODEL por defecto, frecuencia en horas (no minutos), MAX_ITER ≤ 6
+- **Todo `fetch` a una API de LLM** debe pasar por `callLLM`/`callOpenAI`/etc. (tracking centralizado en llm.js)
+- Referencia: coste base actual ~$0.30-0.35/día (v3.33.20). Cualquier feature nueva no debe subirlo más de $0.05/día sin justificación.
+
 ### Estructura del repo (CRÍTICO)
 - Los archivos del add-on VAN SIEMPRE dentro de `jarvis/`
 - NUNCA poner config.yaml, Dockerfile, server.js, etc. en la raíz
