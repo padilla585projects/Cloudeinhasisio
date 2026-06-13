@@ -4,16 +4,17 @@ const { OPENAI_API_KEY, ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, DEEPSEEK_URL } = re
 const state = require('./state');
 
 // Precios reales por modelo (USD / token)
+// cache_read / cache_write: coste de tokens de prompt caching (Anthropic)
 const MODEL_PRICES = {
-  'gpt-4.1-mini':       { in: 0.40 / 1e6, out: 1.60 / 1e6 },
-  'gpt-4o-mini':        { in: 0.15 / 1e6, out: 0.60 / 1e6 },
-  'gpt-4.1':            { in: 2.00 / 1e6, out: 8.00 / 1e6 },
-  'gpt-4o':             { in: 2.50 / 1e6, out: 10.00 / 1e6 },
-  'claude-sonnet-4-5':  { in: 3.00 / 1e6, out: 15.00 / 1e6 },
-  'claude-sonnet-4-6':  { in: 3.00 / 1e6, out: 15.00 / 1e6 },
-  'claude-opus-4-7':    { in: 15.00 / 1e6, out: 75.00 / 1e6 },
-  'deepseek-chat':      { in: 0.27 / 1e6, out: 1.10 / 1e6 },
-  'deepseek-reasoner':  { in: 0.55 / 1e6, out: 2.19 / 1e6 },
+  'gpt-4.1-mini':       { in: 0.40 / 1e6, out: 1.60 / 1e6, cache_read: 0.10 / 1e6,  cache_write: 0 },
+  'gpt-4o-mini':        { in: 0.15 / 1e6, out: 0.60 / 1e6, cache_read: 0.075 / 1e6, cache_write: 0 },
+  'gpt-4.1':            { in: 2.00 / 1e6, out: 8.00 / 1e6, cache_read: 0.50 / 1e6,  cache_write: 0 },
+  'gpt-4o':             { in: 2.50 / 1e6, out: 10.00 / 1e6, cache_read: 0.625 / 1e6, cache_write: 0 },
+  'claude-sonnet-4-5':  { in: 3.00 / 1e6, out: 15.00 / 1e6, cache_read: 0.30 / 1e6,  cache_write: 3.75 / 1e6 },
+  'claude-sonnet-4-6':  { in: 3.00 / 1e6, out: 15.00 / 1e6, cache_read: 0.30 / 1e6,  cache_write: 3.75 / 1e6 },
+  'claude-opus-4-7':    { in: 15.00 / 1e6, out: 75.00 / 1e6, cache_read: 1.50 / 1e6, cache_write: 18.75 / 1e6 },
+  'deepseek-chat':      { in: 0.27 / 1e6, out: 1.10 / 1e6, cache_read: 0, cache_write: 0 },
+  'deepseek-reasoner':  { in: 0.55 / 1e6, out: 2.19 / 1e6, cache_read: 0, cache_write: 0 },
 };
 
 function trackUsage(model, usage) {
@@ -29,7 +30,18 @@ function trackUsage(model, usage) {
   state.apiUsage.cacheCreationTokens  += cache_c;
   // Acumular coste real por modelo
   const prices = MODEL_PRICES[model] || MODEL_PRICES['gpt-4.1-mini'];
-  state.apiUsage.costUSD = (state.apiUsage.costUSD || 0) + in_tok * prices.in + out_tok * prices.out;
+  state.apiUsage.costUSD = (state.apiUsage.costUSD || 0)
+    + in_tok  * prices.in
+    + out_tok * prices.out
+    + cache_r * (prices.cache_read  || 0)
+    + cache_c * (prices.cache_write || 0);
+  // Auto-saverMode: si el gasto supera el límite diario, activar ahorro automático
+  const dailyLimit = parseFloat(process.env.DAILY_COST_LIMIT || '1.5');
+  if (!state.saverMode && state.apiUsage.costUSD > dailyLimit) {
+    state.saverMode = true;
+    state._saverAutoActivated = true;
+    console.warn(`[cost-guard] ⚠️ Gasto $${state.apiUsage.costUSD.toFixed(2)} > límite $${dailyLimit}/día → Modo ahorro ACTIVADO automáticamente`);
+  }
 }
 
 module.exports._trackUsage = trackUsage;

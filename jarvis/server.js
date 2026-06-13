@@ -316,6 +316,20 @@ app.post('/api/chat', async (req, res) => {
     state.lastUserActivity = Date.now(); // para que proactive sepa si el usuario está activo
     saveJSON(C.PENDING_TASK_FILE, { status: 'running', message: userMsg, startedAt: new Date().toISOString() });
 
+    // ── Cost guard: avisar si el modo ahorro se activó automáticamente ──────────
+    if (state._saverAutoActivated) {
+      state._saverAutoActivated = false;
+      const costMsg = `⚠️ **Modo ahorro activado automáticamente** — el gasto diario de API superó el límite ($${(state.apiUsage.costUSD || 0).toFixed(2)}). Claude Sonnet reemplazado por gpt-4.1-mini hasta mañana. Puedes desactivarlo con \`/saver off\`.`;
+      sendEvent({ type: 'text', text: costMsg });
+      // También notificar por Telegram si está configurado
+      try {
+        const { haPost } = require('./utils/ha-api');
+        if (process.env.TELEGRAM_CHAT_ID) {
+          await haPost('/services/telegram_bot/send_message', { message: costMsg, target: process.env.TELEGRAM_CHAT_ID });
+        }
+      } catch (_) {}
+    }
+
     // NEXUS: Router dinámico
     let nexusExpertName = 'ha_control';
     if (!state.saverMode) {
@@ -330,8 +344,11 @@ app.post('/api/chat', async (req, res) => {
       nexusExpertName = 'rapido';
     }
     const nexusExpert = nexusGetAllExperts()[nexusExpertName] || EXPERTS.ha_control;
-    const activeModel = nexusExpert.model;
-    const activeMaxTokens = nexusExpert.maxTokens;
+    // En modo ahorro: expertos Claude caen a gpt-4.1-mini para proteger créditos Anthropic
+    const activeModel = (state.saverMode && nexusExpert.model && nexusExpert.model.startsWith('claude-'))
+      ? C.MODEL
+      : (nexusExpert.model || C.MODEL);
+    const activeMaxTokens = state.saverMode ? Math.min(nexusExpert.maxTokens || 4096, 2048) : nexusExpert.maxTokens;
     const activeMaxIter = nexusExpert.maxIter;
     const layerInfo = nexusLogLayerStats(nexusExpertName);
     console.log(`[nexus] ${nexusExpert.label} | model=${activeModel} | health=${nexusGetScore(nexusExpertName)} | tools=${layerInfo.tools}/${layerInfo.toolsTotal}`);
@@ -1516,6 +1533,20 @@ app.listen(PORT, '0.0.0.0', () => {
 
   // ── Bot de Telegram standalone (opt-in via telegram_bot_token en config) ──
   startTelegramBot().catch(e => console.log('[tg-bot] start error:', e.message));
+
+  // ── Reset diario de costes API a medianoche + desactivar saverMode automático ──
+  function scheduleMidnightReset() {
+    const now = new Date();
+    const msUntilMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 1, 0) - now;
+    setTimeout(() => {
+      const prev = (state.apiUsage.costUSD || 0).toFixed(4);
+      state.apiUsage = { calls: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, costUSD: 0, lastReset: new Date().toISOString() };
+      if (state.saverMode) { state.saverMode = false; console.log('[cost-guard] Medianoche: saverMode desactivado, contadores reseteados'); }
+      console.log(`[cost-guard] Reset diario — coste ayer: $${prev}`);
+      scheduleMidnightReset(); // programar siguiente reset
+    }, msUntilMidnight);
+  }
+  scheduleMidnightReset();
 
   // ── Limpieza de pensamientos proactivos duplicados al arrancar (una vez) ──
   setTimeout(() => {

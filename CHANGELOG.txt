@@ -3,6 +3,31 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.27 (2026-06-11) — Cost-guard: Jarvis consciente del gasto + fix tracking Anthropic cache
+────────────────────────────────────────────────────────────────────────────────
+
+PROBLEMA: Jarvis no contabilizaba los tokens de caché de Anthropic → $8 real vs $4.64 reportado.
+Tampoco limitaba el gasto automáticamente ni reseteaba el contador diario.
+
+FIXES:
+- utils/llm.js: MODEL_PRICES ahora incluye cache_read y cache_write por modelo
+  claude-sonnet: cache_write=$3.75/MTok, cache_read=$0.30/MTok
+  gpt-4.1-mini: cache_read=$0.10/MTok
+- utils/llm.js: trackUsage() suma el coste real de tokens de caché al costUSD
+- utils/llm.js: Auto-saverMode — si costUSD > DAILY_COST_LIMIT (default $1.50/día),
+  activa saverMode automáticamente y marca state._saverAutoActivated
+- server.js: En saverMode, expertos con modelo Claude caen a gpt-4.1-mini
+  (el experto dev ya no quema créditos Anthropic en modo ahorro)
+- server.js: saverMode activo también reduce maxTokens a 2048 en todos los expertos
+- server.js: Aviso visible en el chat cuando saverMode se activa automáticamente
+  + notificación Telegram si TELEGRAM_CHAT_ID configurado
+- server.js: Reset diario a medianoche — reinicia contadores y desactiva saverMode
+
+IMPACTO TOKENS:
+- Sin cambios en frecuencia de loops. Coste mínimo de esta funcionalidad: 0 tokens extra.
+- Límite configurable via env var DAILY_COST_LIMIT (default "1.5" USD/día)
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.26 (2026-06-11) — Fix coste Anthropic: dev expert más barato + guards background corregidos
 ────────────────────────────────────────────────────────────────────────────────
 
