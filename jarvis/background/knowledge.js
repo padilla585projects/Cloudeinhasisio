@@ -62,7 +62,7 @@ let knowledgeTopicIndex = 0;
 
 async function knowledgeExpansionLoop() {
   try {
-    if (!C.ANTHROPIC_API_KEY) return;
+    if (!C.OPENAI_API_KEY) return;
 
     // Elegir tema siguiente (rotativo)
     const topic = KNOWLEDGE_TOPICS[knowledgeTopicIndex % KNOWLEDGE_TOPICS.length];
@@ -121,7 +121,7 @@ Solo información VERIFICABLE y PRÁCTICA. Nada genérico.`;
 
 async function distillLearnings() {
   try {
-    if (!C.ANTHROPIC_API_KEY || state.learnings.length < 5) return;
+    if (!C.OPENAI_API_KEY || state.learnings.length < 5) return;
     console.log(`[distill] Destilando ${state.learnings.length} learnings en reglas...`);
 
     const prompt = `Eres Jarvis. Tienes ${state.learnings.length} aprendizajes acumulados de tu instalación de Home Assistant.

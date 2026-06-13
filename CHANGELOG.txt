@@ -3,6 +3,28 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.26 (2026-06-11) — Fix coste Anthropic: dev expert más barato + guards background corregidos
+────────────────────────────────────────────────────────────────────────────────
+
+PROBLEMA: el experto dev (claude-sonnet-4-5) consumía créditos Anthropic en exceso.
+Causa: maxIter=10, maxTokens=8192, 9 módulos → hasta $1/sesión dev.
+Además 3 guards de background invertidos bloqueaban loops cuando Anthropic no estaba disponible.
+
+FIXES:
+- nexus/experts.js: dev expert maxIter 10→5, maxTokens 8192→3500, módulos 9→5
+  (se mantienen: base, philosophy, dev, autonomy, inamovible — se eliminan: ha_internals,
+  ha_config_engineering, filesystem, optimization — no esenciales para tareas de código)
+- background/knowledge.js: corregidos guards invertidos:
+  · knowledgeExpansionLoop: if(!ANTHROPIC_API_KEY) → if(!OPENAI_API_KEY)
+  · distillLearnings: if(!ANTHROPIC_API_KEY||...) → if(!OPENAI_API_KEY||...)
+- background/selfcheck.js: autoRepair: if(!ANTHROPIC_API_KEY) → if(!OPENAI_API_KEY)
+
+IMPACTO TOKENS:
+- Coste dev expert por sesión: reducción ~65-75% (de $0.50-1.00 a $0.15-0.25)
+- Background loops: ahora funcionan correctamente sin key Anthropic (usan OpenAI)
+- Sin cambios en frecuencia ni en loops de background — coste base sin cambios
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.25 (2026-06-09) — Migración generate_image a gpt-image-1 + fix tamaños válidos
 ────────────────────────────────────────────────────────────────────────────────
 

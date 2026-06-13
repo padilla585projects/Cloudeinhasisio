@@ -71,8 +71,8 @@ const EXPERTS = {
   },
 
   dev: {
-    model: CLAUDE_MODEL, maxTokens: 8192, maxIter: 10,
-    modules: ['base', 'philosophy', 'dev', 'ha_internals', 'ha_config_engineering', 'filesystem', 'autonomy', 'optimization', 'inamovible'],
+    model: CLAUDE_MODEL, maxTokens: 3500, maxIter: 5,
+    modules: ['base', 'philosophy', 'dev', 'autonomy', 'inamovible'],
     label: 'Desarrollo',
     tools: ['read_file', 'write_file', 'append_file', 'list_directory', 'patch_file',
             'rollback', 'exec_command', 'update_self', 'create_addon', 'github_push',

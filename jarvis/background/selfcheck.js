@@ -199,7 +199,7 @@ async function bootSelfCheck() {
 }
 
 async function autoRepair(logs) {
-  if (!C.ANTHROPIC_API_KEY) return;
+  if (!C.OPENAI_API_KEY) return;
   console.log('[self-repair] Iniciando autoreparación automática...');
   try {
     let ownCode = '';
