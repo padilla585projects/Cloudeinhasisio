@@ -212,11 +212,20 @@ async function executeTool(name, input) {
         if (!fs.existsSync(resolvedFp)) return { error: `Archivo no existe: ${input.filepath}` };
         const content = fs.readFileSync(resolvedFp, 'utf8');
         const lines = content.split('\n');
-        const maxLines = input.lines || 200;
+        // Default 500 líneas (antes: 200 — insuficiente para automations.yaml de ~1200 líneas)
+        // Usar offset para paginar ficheros grandes: read_file(path, lines:500, offset:500)
+        const maxLines  = input.lines  || 500;
+        const startLine = input.offset || 0;
+        const slice     = lines.slice(startLine, startLine + maxLines);
         return {
-          content: lines.slice(0, maxLines).join('\n'),
+          content: slice.join('\n'),
           totalLines: lines.length,
-          truncated: lines.length > maxLines
+          startLine,
+          endLine: startLine + slice.length,
+          truncated: (startLine + slice.length) < lines.length,
+          hint_pagination: lines.length > maxLines
+            ? `Archivo tiene ${lines.length} líneas. Leídas ${startLine+1}–${startLine+slice.length}. Para continuar: read_file(path, lines:500, offset:${startLine+maxLines})`
+            : undefined
         };
       }
 
@@ -3795,12 +3804,69 @@ ${dots}`;
           return { error: `Automatización "${id}" no encontrada`, available_aliases: available };
         }
         const oldAlias = automations[idx].alias || automations[idx].id || '(sin alias)';
+        const oldData  = automations[idx];
 
         // 4. Localizar el bloque en el texto original y reemplazarlo
         //    sin pasar el archivo por yaml.dump (que reformatea TODO y corrompe templates)
         const lines = rawContent.split('\n');
         const topLevelStarts = [];
         lines.forEach((line, i) => { if (/^-(\s|$)/.test(line)) topLevelStarts.push(i); });
+
+        // ── PREFLIGHT: extraer el bloque ACTUAL antes de tocarlo ────────────────
+        let currentBlockYaml = '';
+        let preflight = '';
+        if (topLevelStarts.length === automations.length) {
+          const bStart = topLevelStarts[idx];
+          const bEnd   = idx + 1 < topLevelStarts.length ? topLevelStarts[idx + 1] : lines.length;
+          currentBlockYaml = lines.slice(bStart, bEnd).join('\n').trimEnd();
+
+          // Comparar complejidad old vs new para detectar simplificaciones accidentales
+          try {
+            const newData = yaml.load(input.yaml_content) || {};
+            const oldTriggers = [].concat(oldData.trigger || oldData.triggers || []).length;
+            const newTriggers = [].concat(newData.trigger || newData.triggers || []).length;
+            const oldActions  = [].concat(oldData.action  || oldData.actions  || []).length;
+            const newActions  = [].concat(newData.action  || newData.actions  || []).length;
+            const oldYamlLen  = currentBlockYaml.length;
+            const newYamlLen  = input.yaml_content.length;
+
+            const warnings = [];
+            if (newTriggers > 0 && newTriggers < oldTriggers)
+              warnings.push(`TRIGGERS: ${oldTriggers} → ${newTriggers} (¿eliminaste alguno?)`);
+            if (newActions > 0 && newActions < oldActions)
+              warnings.push(`ACTIONS: ${oldActions} → ${newActions} (¿perdiste lógica de apagado?)`);
+            if (newYamlLen < oldYamlLen * 0.6)
+              warnings.push(`TAMAÑO: ${oldYamlLen} → ${newYamlLen} chars (reducción >40% — ¿simplificaste?)`);
+            // Detectar si el original tenía turn_off y el nuevo no
+            const hadTurnOff = /turn_off|light\.off|switch\.off/.test(currentBlockYaml);
+            const hasTurnOff = /turn_off|light\.off|switch\.off/.test(input.yaml_content);
+            if (hadTurnOff && !hasTurnOff)
+              warnings.push('APAGADO: el original tenía lógica turn_off y el nuevo NO — ¿la eliminaste?');
+            // Detectar wait_for_trigger perdido
+            const hadWait = /wait_for_trigger/.test(currentBlockYaml);
+            const hasWait = /wait_for_trigger/.test(input.yaml_content);
+            if (hadWait && !hasWait)
+              warnings.push('ESPERA: el original tenía wait_for_trigger y el nuevo NO');
+
+            if (warnings.length > 0)
+              preflight = ` ⚠ SIMPLIFICACIÓN DETECTADA — ${warnings.join(' | ')} — Revisa si esto es intencional.`;
+          } catch {}
+
+          // ── VALIDACIÓN entity_ids (no bloqueante, solo aviso) ──────────────
+          try {
+            const entityMatches = [...input.yaml_content.matchAll(/entity_id:\s*([^\n{]+)/g)];
+            const usedIds = entityMatches.map(m => m[1].trim().replace(/['"]/g, ''))
+              .flatMap(v => v.startsWith('[') ? v.slice(1,-1).split(',').map(s=>s.trim()) : [v])
+              .filter(v => v.includes('.') && !v.includes('{') && !v.includes('*'));
+            if (usedIds.length > 0) {
+              const haStates = await haGet('/states').catch(() => []);
+              const existingIds = new Set(haStates.map(s => s.entity_id));
+              const missing = usedIds.filter(id => !existingIds.has(id));
+              if (missing.length > 0)
+                preflight += ` ⚠ ENTITY_IDS INEXISTENTES: ${missing.join(', ')} — usa search_entities() para encontrar el id real.`;
+            }
+          } catch {}
+        }
 
         autoBackup(automationsPath);
 
@@ -3831,7 +3897,7 @@ ${dots}`;
         try { await haPost('/services/automation/reload', {}); } catch {}
         await new Promise(r => setTimeout(r, 2500));
 
-        // Verificar que no hay "restored" tras el reload
+        // Verificar que no hay nuevos "restored" tras el reload
         let restoredWarning = '';
         try {
           const states = await haGet('/states');
@@ -3843,7 +3909,13 @@ ${dots}`;
 
         let newAlias = '(sin alias)';
         try { const p = yaml.load(input.yaml_content); newAlias = p?.alias || p?.id || '(sin alias)'; } catch {}
-        return { success: true, message: `Automatización editada. Sólo el bloque "${oldAlias}" fue modificado — el resto del archivo quedó intacto.${restoredWarning}`, old_alias: oldAlias, new_alias: newAlias };
+        return {
+          success: true,
+          message: `Automatización editada. Sólo el bloque "${oldAlias}" fue modificado — el resto del archivo quedó intacto.${preflight}${restoredWarning}`,
+          old_alias: oldAlias,
+          new_alias: newAlias,
+          previous_yaml: currentBlockYaml  // ← bloque anterior completo para comparación
+        };
       }
 
       // ─── delete_automation ───

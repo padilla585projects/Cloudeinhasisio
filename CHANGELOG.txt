@@ -3,6 +3,34 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.29 (2026-06-14) — Fix raíces: read_file con paginación + edit_automation con preflight
+────────────────────────────────────────────────────────────────────────────────
+
+CAUSA RAÍZ de que Jarvis rompa automatizaciones (3 bugs en el código):
+
+BUG 1 — read_file truncaba a 200 líneas. automations.yaml tiene ~1200 líneas.
+  Jarvis solo veía el 16% del archivo y alucinaba el resto.
+  FIX: default 200→500, parámetro offset para paginar archivos grandes.
+  tools/executor.js: read_file devuelve startLine, endLine, hint_pagination.
+  tools/definitions.js: documenta offset y nuevo default.
+
+BUG 2 — edit_automation no devolvía el bloque que iba a reemplazar.
+  Jarvis escribía desde cero sin ver el original → perdía lógica compleja.
+  FIX: edit_automation extrae el bloque ACTUAL antes de reemplazarlo y lo devuelve
+  como previous_yaml. El LLM ve exactamente lo que reemplazó y puede detectar pérdidas.
+
+BUG 3 — edit_automation no detectaba simplificaciones ni entity_ids inválidos.
+  FIX: Preflight check en edit_automation:
+    - Compara triggers old vs new (avisa si hay menos)
+    - Compara actions old vs new (avisa si hay menos)
+    - Detecta si había turn_off y el nuevo no lo tiene
+    - Detecta si había wait_for_trigger y el nuevo no lo tiene
+    - Compara longitud del bloque (avisa si reducción >40%)
+    - Valida entity_ids contra HA states → avisa de los que no existen
+
+IMPACTO TOKENS: +1 llamada haGet('/states') por edit_automation (coste mínimo ~100 tokens).
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.28 (2026-06-14) — Reglas de automatizaciones: Jarvis aprende a no romperlas
 ────────────────────────────────────────────────────────────────────────────────
 

@@ -111,12 +111,13 @@ const tools = [
   // ─── Filesystem ───
   {
     name: 'read_file',
-    description: 'Lee un archivo del sistema. Rutas válidas: /config/... (configuración HA), /addons/... (add-ons), /share/... (compartido), /data/... (datos del agente)',
+    description: 'Lee un archivo del sistema. Rutas válidas: /config/... (configuración HA), /addons/... (add-ons), /share/... (compartido), /data/... (datos del agente). Para archivos grandes (automations.yaml ~1200 líneas) usa offset para paginar.',
     input_schema: {
       type: 'object',
       properties: {
         filepath: { type: 'string', description: 'Ruta absoluta del archivo. Ej: /config/configuration.yaml, /config/automations.yaml' },
-        lines: { type: 'number', description: 'Número máximo de líneas a leer (default: 200)' }
+        lines:  { type: 'number', description: 'Número máximo de líneas a leer (default: 500). Aumentar para archivos grandes.' },
+        offset: { type: 'number', description: 'Línea desde la que empezar (0-based, default: 0). Usar para paginar: offset:500 lee a partir de la línea 500.' }
       },
       required: ['filepath']
     }
