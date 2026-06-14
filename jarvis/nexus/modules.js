@@ -340,13 +340,75 @@ FLUJO COMPLETO PARA CREAR UNA AUTOMATIZACIÓN:
 7. Si state = "unavailable" → problema, investigar con check_config y get_system_logs
 8. learn(success/error) según resultado
 
+══════════════════════════════════════════════════════════
+⚠ REGLA CRÍTICA: VERIFICAR ENTITY_IDS ANTES DE ESCRIBIR
+══════════════════════════════════════════════════════════
+NUNCA inventar ni suponer un entity_id. Antes de usarlo en trigger, condition o action:
+  1. search_entities("nombre aproximado") → obtener el entity_id REAL
+  2. Si no aparece → probar variantes (movimiento_X, sensor_X_occupancy, binary_sensor.X_contact)
+  3. Solo escribir en YAML el entity_id confirmado que existe en HA
+
+ENTITY_IDS FRECUENTES en esta instalación (confirmar siempre igualmente):
+  - Luces Shelly: light.interruptor_NOMBRE_interruptor_1 (o _2)
+  - Sensores movimiento: binary_sensor.movimiento_NOMBRE_occupancy
+  - Sensores puerta: binary_sensor.puerta_NOMBRE_contact
+  - Switches físicos: switch.interruptor_NOMBRE_interruptor_1
+
+══════════════════════════════════════════════════════════
+⚠ REGLA CRÍTICA: NUNCA SIMPLIFICAR AUTOMATIZACIONES AL EDITAR
+══════════════════════════════════════════════════════════
+Cuando editas una automatización existente, PRESERVAS TODA LA LÓGICA ORIGINAL.
+NO eliminar, NO simplificar, NO "limpiar" — solo modificar lo que se pide.
+
+ANTES de editar, leer el bloque completo y mapear:
+  - ¿Qué triggers tiene? (no eliminar ninguno que no se pida eliminar)
+  - ¿Tiene lógica de apagado? (wait_for_trigger, delay, turn_off)
+  - ¿Tiene conditions? (preservarlas)
+  - ¿Tiene if/then/else? (preservar la estructura)
+
+SEÑAL DE ALARMA: si tu yaml_content para edit_automation es más corto que el original → PARA.
+Probablemente estás perdiendo lógica. Revisa qué eliminaste y por qué.
+
+══════════════════════════════════════════════════════════
+⚠ REGLA CRÍTICA: AUTOMATIZACIONES DE SENSOR SIEMPRE TIENEN APAGADO
+══════════════════════════════════════════════════════════
+Una automatización que ENCIENDE por sensor (movimiento, presencia, puerta) SIN lógica de
+apagado es INCORRECTA. Siempre implementar el ciclo completo:
+
+PATRÓN SENSOR-MOVIMIENTO (el más común en esta instalación):
+  trigger: binary_sensor.X_occupancy → 'on'
+  action:
+    - action: light.turn_on  (target: entity_id real confirmado)
+    - wait_for_trigger:
+        platform: state
+        entity_id: binary_sensor.X_occupancy
+        to: 'off'
+      timeout: '01:00:00'
+      continue_on_timeout: true
+    - delay: {minutes: 2}       ← gracia de 2 minutos tras perder presencia
+    - action: light.turn_off
+  mode: restart   ← si hay movimiento nuevo mientras espera, reinicia el contador
+
+PATRÓN PUERTA (para luces de despensa, armario, garaje):
+  trigger: binary_sensor.puerta_X_contact → 'on'  (abierta)
+           binary_sensor.puerta_X_contact → 'off'  (cerrada)
+  action:
+    - if [condition: trigger → 'on']: light.turn_on
+    - else: light.turn_off
+  mode: single
+
+PATRÓN HORARIO/SOL (para luces de exterior/entrada):
+  trigger: platform: sun, event: sunset   → light.turn_on
+           platform: time, at: '00:00:00' → light.turn_off
+
 FLUJO COMPLETO PARA EDITAR:
-1. get_automations → encontrar el alias/id exacto
-2. Pedir el contenido actual: read_file('/config/automations.yaml') → localizar el bloque
-3. Modificar SOLO lo necesario
-4. validate_yaml(yaml_content_nuevo)
-5. edit_automation(identifier, yaml_content_nuevo)
-6. Verificar → get_automations → confirmar que el alias/id sigue activo
+1. get_automations → encontrar el alias/id exacto (usar el id numérico real de HA, no inventarlo)
+2. read_file('/config/automations.yaml') → localizar el bloque COMPLETO, leerlo entero
+3. Mapear triggers, conditions, actions, lógica de apagado existente
+4. Modificar SOLO lo que se pidió, preservando todo lo demás
+5. validate_yaml(yaml_content_nuevo)
+6. edit_automation(identifier, yaml_content_nuevo)
+7. Verificar → get_automations → confirmar que el alias/id sigue activo
 
 FLUJO COMPLETO PARA BORRAR:
 1. get_automations → confirmar alias/id exacto con Adrián

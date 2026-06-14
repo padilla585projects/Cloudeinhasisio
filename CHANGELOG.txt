@@ -3,6 +3,31 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.28 (2026-06-14) — Reglas de automatizaciones: Jarvis aprende a no romperlas
+────────────────────────────────────────────────────────────────────────────────
+
+PROBLEMA: Jarvis simplificaba automatizaciones al editarlas (eliminaba lógica de
+apagado, usaba entity_ids inventados). Dos ejemplos reales:
+  - Luz Garaje Pequeño: perdió la lógica wait→delay→turn_off, quedó solo encendiendo
+  - Luz Entradita: usaba binary_sensor.movimiento_entrada_occupancy y light.luz_entradita
+    (entidades que no existen) → nunca funcionó
+
+FIXES (nexus/modules.js — módulo 'automation'):
+  - Nueva sección: VERIFICAR ENTITY_IDS ANTES DE ESCRIBIR
+    → search_entities() obligatorio antes de poner cualquier entity_id en YAML
+    → Listado de patrones reales de esta instalación (interruptor_X, puerta_X_contact, etc.)
+  - Nueva sección: NUNCA SIMPLIFICAR AUTOMATIZACIONES AL EDITAR
+    → Leer el bloque completo antes de editar
+    → Señal de alarma: si el YAML nuevo es más corto → revisar qué se perdió
+  - Nueva sección: PATRONES COMPLETOS DE AUTOMATIZACIÓN
+    → SENSOR-MOVIMIENTO: turn_on → wait_for_trigger(off) → delay 2min → turn_off (mode: restart)
+    → PUERTA: turn_on si abierta, turn_off si cerrada
+    → HORARIO/SOL: sunset → on, medianoche → off
+  - Flujo editar actualizado: añadido paso de mapear triggers/conditions/apagado antes de tocar
+
+IMPACTO TOKENS: 0 — solo texto estático en el system prompt del experto automatizacion.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.27 (2026-06-11) — Cost-guard: Jarvis consciente del gasto + fix tracking Anthropic cache
 ────────────────────────────────────────────────────────────────────────────────
 
