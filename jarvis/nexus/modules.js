@@ -401,6 +401,40 @@ PATRÓN HORARIO/SOL (para luces de exterior/entrada):
   trigger: platform: sun, event: sunset   → light.turn_on
            platform: time, at: '00:00:00' → light.turn_off
 
+══════════════════════════════════════════════════════════
+⚠ REGLA CRÍTICA: FORMATO DE ACCIONES EN scripts.yaml
+══════════════════════════════════════════════════════════
+scripts.yaml en esta instalación contiene bloques con el formato ANTIGUO de device actions
+generado por la UI de HA:
+  ❌ FORMATO ANTIGUO (NO usar al editar/crear):
+    - type: turn_on
+      device_id: f79ca73d299b1a6c403795880e8db352   ← UUID interno, frágil
+      entity_id: add5419e9be7922e7f07f05b55cbd315   ← UUID interno, no es el entity_id real
+      domain: light
+
+  ✓ FORMATO CORRECTO (service call, siempre usar este):
+    - action: light.turn_on
+      target:
+        entity_id: light.interruptor_escalera_p_baja   ← entity_id real confirmado
+      continue_on_error: true   ← OBLIGATORIO si el dispositivo puede estar unavailable
+
+RAZONES:
+- El formato `type:` usa device_id/entity_id internos (UUIDs) que cambian al reinstalar
+- El formato `type:` NO soporta continue_on_error → si el device está unavailable, el script
+  se aborta y el resto de acciones (incluido el turn_off) nunca se ejecuta
+- El formato `action:` usa entity_ids reales, es portable y soporta continue_on_error
+
+CUÁNDO USAR continue_on_error: true:
+- Siempre que el dispositivo pueda estar unavailable (switches Shelly, Zigbee, WiFi)
+- En scripts con secuencias donde el fallo de un paso no debe abortar los siguientes
+- Especialmente en los turn_off de secuencias con delay — si el turn_off falla, la luz
+  queda encendida indefinidamente
+
+PARA EDITAR scripts.yaml: usar patch_file (reemplaza solo el bloque afectado).
+NUNCA usar write_file sobre scripts.yaml completo sin leer antes todos los scripts que contiene.
+Scripts actuales conocidos: luz_escalera, luz_habitacion_mia_cortesia, llenado_de_piscina,
+luz_garaje_exterior_auto, luz_2_grupo, apagar_luz_2_grupo.
+
 FLUJO COMPLETO PARA EDITAR:
 1. get_automations → encontrar el alias/id exacto (usar el id numérico real de HA, no inventarlo)
 2. read_file('/config/automations.yaml') → localizar el bloque COMPLETO, leerlo entero

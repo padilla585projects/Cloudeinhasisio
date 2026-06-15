@@ -3,6 +3,24 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.30 (2026-06-15) — Regla: formato correcto de acciones en scripts.yaml
+────────────────────────────────────────────────────────────────────────────────
+
+PROBLEMA: Jarvis proponía el formato antiguo de device actions al editar scripts.yaml:
+  type: turn_on / device_id: UUID / entity_id: UUID
+Este formato NO soporta continue_on_error → si un dispositivo está unavailable el script
+se aborta y el turn_off nunca se ejecuta (bug real: luces escalera no se apagaban).
+
+FIX (nexus/modules.js — módulo automation):
+- Nueva sección: FORMATO DE ACCIONES EN scripts.yaml
+  → Documentado el formato incorrecto (type:/device_id) vs correcto (action:/target:/entity_id)
+  → continue_on_error: true obligatorio en dispositivos que pueden estar unavailable
+  → Regla: usar patch_file para editar scripts.yaml, nunca write_file sin leer todos los scripts
+  → Lista de scripts actuales conocidos en la instalación
+
+IMPACTO TOKENS: 0 — solo texto estático en el system prompt.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.29 (2026-06-14) — Fix raíces: read_file con paginación + edit_automation con preflight
 ────────────────────────────────────────────────────────────────────────────────
 
