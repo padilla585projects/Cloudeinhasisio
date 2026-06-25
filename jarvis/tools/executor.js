@@ -4642,6 +4642,148 @@ ${dots}`;
         }
       }
 
+      // ─── ZHA / Matter management ───
+      case 'zha_matter_manage': {
+        const wsCall = async (msgType, data = {}) => {
+          const url = `${C.HA_URL}/api/services`;
+          try {
+            const r = await fetch(`${C.HA_URL}/api/config/device_registry/list`, {
+              headers: { Authorization: `Bearer ${C.HA_TOKEN}` }
+            });
+            if (r.ok) return await r.json();
+          } catch {}
+          return [];
+        };
+
+        switch (input.action) {
+          case 'list_zha': {
+            const states = await haGet('/states');
+            const zhaDevices = states.filter(e => {
+              const src = e.attributes?.integration || '';
+              return src === 'zha' || e.entity_id.includes('zha');
+            });
+            if (zhaDevices.length === 0) {
+              try {
+                const configEntries = await fetch(`${C.HA_URL}/api/config/config_entries/entry`, {
+                  headers: { Authorization: `Bearer ${C.HA_TOKEN}` }
+                }).then(r => r.json());
+                const zhaEntry = configEntries.find(e => e.domain === 'zha');
+                if (!zhaEntry) return { error: 'Integración ZHA no encontrada. ¿Usas Zigbee2MQTT? Usa zigbee_manage en su lugar.' };
+              } catch {}
+            }
+            const devices = await fetch(`${C.HA_URL}/api/config/device_registry/list`, {
+              headers: { Authorization: `Bearer ${C.HA_TOKEN}` }
+            }).then(r => r.json()).catch(() => []);
+            const zha = devices.filter(d => d.identifiers?.some(id => id[0] === 'zha'));
+            return { devices: zha.map(d => ({ id: d.id, name: d.name_by_user || d.name, model: d.model, manufacturer: d.manufacturer, area: d.area_id })), total: zha.length };
+          }
+          case 'list_matter': {
+            const devices = await fetch(`${C.HA_URL}/api/config/device_registry/list`, {
+              headers: { Authorization: `Bearer ${C.HA_TOKEN}` }
+            }).then(r => r.json()).catch(() => []);
+            const matter = devices.filter(d => d.identifiers?.some(id => id[0] === 'matter'));
+            return { devices: matter.map(d => ({ id: d.id, name: d.name_by_user || d.name, model: d.model, manufacturer: d.manufacturer, area: d.area_id })), total: matter.length };
+          }
+          case 'device_info': {
+            const deviceId = input.device_id || input.ieee;
+            if (!deviceId) return { error: 'device_id o ieee requerido' };
+            const devices = await fetch(`${C.HA_URL}/api/config/device_registry/list`, {
+              headers: { Authorization: `Bearer ${C.HA_TOKEN}` }
+            }).then(r => r.json()).catch(() => []);
+            const device = devices.find(d => d.id === deviceId || d.identifiers?.some(id => id.includes(deviceId)));
+            if (!device) return { error: `Dispositivo no encontrado: ${deviceId}` };
+            const entities = await fetch(`${C.HA_URL}/api/config/entity_registry/list`, {
+              headers: { Authorization: `Bearer ${C.HA_TOKEN}` }
+            }).then(r => r.json()).catch(() => []);
+            const deviceEntities = entities.filter(e => e.device_id === device.id);
+            return { device, entities: deviceEntities.map(e => ({ entity_id: e.entity_id, name: e.name, platform: e.platform, disabled: e.disabled_by })) };
+          }
+          case 'permit_join': {
+            try {
+              await haPost('/services/zha/permit', { duration: input.duration || 60 });
+              return { success: true, message: `ZHA permit join activado por ${input.duration || 60}s` };
+            } catch (e) {
+              return { error: `ZHA permit join: ${e.message}. ¿Está ZHA configurado?` };
+            }
+          }
+          case 'remove': {
+            if (!input.ieee) return { error: 'ieee requerido para remove' };
+            try {
+              await haPost('/services/zha/remove', { ieee_address: input.ieee });
+              return { success: true, message: `Dispositivo ${input.ieee} eliminado de ZHA` };
+            } catch (e) { return { error: `ZHA remove: ${e.message}` }; }
+          }
+          case 'reconfigure': {
+            if (!input.ieee) return { error: 'ieee requerido para reconfigure' };
+            try {
+              await haPost('/services/zha/reconfigure_device', { ieee_address: input.ieee });
+              return { success: true, message: `Reconfiguración de ${input.ieee} iniciada` };
+            } catch (e) { return { error: `ZHA reconfigure: ${e.message}` }; }
+          }
+          case 'get_groups': {
+            const states = await haGet('/states');
+            const groups = states.filter(e => e.entity_id.startsWith('light.') && e.attributes?.is_zha_group);
+            return { groups: groups.map(g => ({ entity_id: g.entity_id, name: g.attributes?.friendly_name, members: g.attributes?.group_members })) };
+          }
+          case 'get_network': {
+            try {
+              const configEntries = await fetch(`${C.HA_URL}/api/config/config_entries/entry`, {
+                headers: { Authorization: `Bearer ${C.HA_TOKEN}` }
+              }).then(r => r.json());
+              const zhaEntry = configEntries.find(e => e.domain === 'zha');
+              const matterEntry = configEntries.find(e => e.domain === 'matter');
+              return {
+                zha: zhaEntry ? { entry_id: zhaEntry.entry_id, title: zhaEntry.title, state: zhaEntry.state } : 'No configurado',
+                matter: matterEntry ? { entry_id: matterEntry.entry_id, title: matterEntry.title, state: matterEntry.state } : 'No configurado'
+              };
+            } catch (e) { return { error: e.message }; }
+          }
+          default:
+            return { error: `Acción ZHA/Matter desconocida: ${input.action}` };
+        }
+      }
+
+      // ─── System Info ───
+      case 'system_info': {
+        const svGet = async (ep) => {
+          const r = await fetch(`http://supervisor${ep}`, { headers: { Authorization: `Bearer ${C.HA_TOKEN}` } });
+          const t = await r.text(); try { return JSON.parse(t); } catch { return { raw: t }; }
+        };
+        switch (input.action) {
+          case 'host': {
+            const r = await svGet('/host/info');
+            return r.data || r;
+          }
+          case 'hardware': {
+            const r = await svGet('/hardware/info');
+            return r.data || r;
+          }
+          case 'network': {
+            const r = await svGet('/network/info');
+            const d = r.data || r;
+            return { interfaces: d.interfaces, docker: d.docker, host_internet: d.host_internet };
+          }
+          case 'dns': {
+            const r = await svGet('/dns/info');
+            return r.data || r;
+          }
+          case 'os': {
+            const r = await svGet('/os/info');
+            return r.data || r;
+          }
+          case 'multicast': {
+            const r = await svGet('/multicast/info');
+            return r.data || r;
+          }
+          case 'resolution': {
+            const r = await svGet('/resolution/info');
+            return r.data || r;
+          }
+          default:
+            return { error: `Acción system_info desconocida: ${input.action}` };
+        }
+      }
+
       // ─── ESPHome management ───
       case 'esphome_manage': {
         const espSlug = '5c53de3b_esphome';

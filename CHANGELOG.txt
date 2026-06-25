@@ -3,6 +3,33 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.34.4 (2026-06-25) — Matter/ZHA + System Info + History Search
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVAS TOOLS:
+- zha_matter_manage: gestión de dispositivos ZHA y Matter/Thread.
+  Acciones: list_zha, list_matter, device_info, permit_join, remove,
+  reconfigure, get_groups, get_network. Usa device_registry y ZHA services.
+  Asignada a: ha_control, diagnostico.
+
+- system_info: información del sistema vía Supervisor API.
+  Acciones: host, hardware, network, dns, os, multicast, resolution.
+  Asignada a: ha_control, diagnostico, red.
+
+NUEVO ENDPOINT:
+- GET /api/history/search?q=texto&limit=50 — busca en el historial de
+  conversación por texto. Devuelve mensajes matching con role, content
+  truncado y si tiene tool_calls. Base para UI de historial.
+
+ROUTER:
+- Regex para Matter/Thread/ZHA: "matter", "thread", "zha", "emparejar
+  dispositivo", "nuevo dispositivo" rutan a ha_control.
+
+IMPACTO TOKENS: 0 — todo son tools cargadas bajo demanda y endpoints REST.
+
+TOTAL TOOLS: 90.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.34.3 (2026-06-25) — 3 tools nuevas: backup, notify_all, energy
 ────────────────────────────────────────────────────────────────────────────────
 

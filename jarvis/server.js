@@ -264,6 +264,25 @@ app.delete('/api/history', (req, res) => {
   res.json({ success: true });
 });
 
+app.get('/api/history/search', (req, res) => {
+  const q = (req.query.q || '').toLowerCase();
+  const from = req.query.from ? new Date(req.query.from) : null;
+  const to = req.query.to ? new Date(req.query.to) : null;
+  const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+  let results = state.conversationHistory.filter(m => {
+    const text = typeof m.content === 'string' ? m.content : (Array.isArray(m.content) ? m.content.map(c => c.text || '').join(' ') : '');
+    if (q && !text.toLowerCase().includes(q)) return false;
+    return true;
+  });
+  results = results.slice(-limit).map((m, i) => ({
+    index: i,
+    role: m.role,
+    content: typeof m.content === 'string' ? m.content.slice(0, 500) : '[multipart]',
+    has_tools: !!m.tool_calls
+  }));
+  res.json({ results, total: results.length, query: q || '*' });
+});
+
 app.get('/api/pending_task', (req, res) => {
   res.json(loadJSON(C.PENDING_TASK_FILE, { status: 'idle' }));
 });

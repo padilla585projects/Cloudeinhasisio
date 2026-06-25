@@ -29,7 +29,8 @@ const EXPERTS = {
             'show_house_status', 'generate_image', 'generate_image_gemini', 'dev_workspace',
             'edit_script', 'delete_script', 'mqtt_publish', 'zigbee_manage',
             'score_installation', 'render_floorplan', 'manage_users', 'esphome_manage',
-            'backup_restore', 'notify_all', 'energy_query']
+            'backup_restore', 'notify_all', 'energy_query',
+            'zha_matter_manage', 'system_info']
   },
 
   diagnostico: {
@@ -40,7 +41,8 @@ const EXPERTS = {
             'get_system_logs', 'get_error_log', 'check_config', 'web_search', 'web_search_native', 'fetch_url',
             'read_file', 'learn', 'ha_supervisor', 'network', 'get_notifications',
             'get_repairs', 'scan_installation', 'ha_knowledge', 'rollback', 'validate_yaml',
-            'score_installation', 'esphome_manage', 'backup_restore']
+            'score_installation', 'esphome_manage', 'backup_restore',
+            'zha_matter_manage', 'system_info']
   },
 
   automatizacion: {
@@ -124,7 +126,7 @@ const EXPERTS = {
     tools: ['network', 'proxmox_api', 'agent_chat', 'agent_communicate', 'web_search',
             'fetch_url', 'read_file', 'write_file', 'exec_command', 'get_system_logs',
             'ha_supervisor', 'learn', 'knowledge_db', 'mqtt_publish', 'zigbee_manage',
-            'esphome_manage']
+            'esphome_manage', 'system_info']
   },
 
   aprendizaje: {

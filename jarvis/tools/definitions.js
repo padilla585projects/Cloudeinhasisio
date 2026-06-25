@@ -1201,6 +1201,35 @@ const tools = [
     }
   },
 
+  // ─── Matter / ZHA management ───
+  {
+    name: 'zha_matter_manage',
+    description: 'Gestiona dispositivos ZHA (Zigbee Home Automation) y Matter/Thread. Listar dispositivos, info, emparejar, eliminar, reconfigurar. Funciona con la integración ZHA o Matter de HA.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['list_zha', 'list_matter', 'device_info', 'permit_join', 'remove', 'reconfigure', 'get_groups', 'get_network'], description: 'Acción a realizar' },
+        ieee: { type: 'string', description: 'IEEE address del dispositivo ZHA (para device_info, remove, reconfigure)' },
+        device_id: { type: 'string', description: 'Device ID de Matter (para device_info, remove)' },
+        duration: { type: 'number', description: 'Duración en segundos para permit_join (default: 60)' }
+      },
+      required: ['action']
+    }
+  },
+
+  // ─── System Info ───
+  {
+    name: 'system_info',
+    description: 'Información del sistema: hardware, host, red, DNS, almacenamiento. Usa la API del Supervisor para obtener datos del sistema.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['host', 'hardware', 'network', 'dns', 'os', 'multicast', 'resolution'], description: 'host: info del host. hardware: CPU, RAM, discos. network: interfaces. dns: resolución DNS. os: versión OS. resolution: centro de resolución.' }
+      },
+      required: ['action']
+    }
+  },
+
   // ─── ESPHome management ───
   {
     name: 'esphome_manage',
