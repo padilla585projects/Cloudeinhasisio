@@ -960,6 +960,10 @@ async function executeTool(name, input) {
             }
             case 'custom': {
               if (!input.endpoint) return { error: 'endpoint requerido para action=custom' };
+              const blocked = ['/access/users', '/access/roles', '/access/acl', '/access/domains',
+                '/nodes/' + node + '/qemu/*/destroy', '/pool', '/sdn'];
+              if (blocked.some(b => input.endpoint.includes(b.replace('*', ''))))
+                return { error: `Endpoint bloqueado por seguridad: ${input.endpoint}` };
               const result = await proxGet(input.endpoint);
               return result.data || result;
             }
@@ -3172,6 +3176,12 @@ ${dots}`;
           /curl\s+.*\|\s*(ba)?sh/,   // descargar y ejecutar
           /wget\s+.*\|\s*(ba)?sh/,   // descargar y ejecutar
           /chmod\s+[0-7]*7\s+\//,    // chmod 777 / o similar en raíz
+          /nc\s+-[el]|ncat\s+-[el]|socat\b/, // reverse shells
+          /\bpasswd\b/,                // cambiar passwords
+          /\buseradd\b|\buserdel\b/,   // gestión de usuarios del sistema
+          /\biptables\b|\bnft\b/,      // reglas de firewall
+          /cat\s+\/etc\/(shadow|passwd)/, // leer credenciales del sistema
+          /eval\s*\(|exec\s*\(/,       // eval/exec en scripts
         ];
         const cmdToCheck = command || script || '';
         const blocked = BLOCKED_PATTERNS.find(p => p.test(cmdToCheck));

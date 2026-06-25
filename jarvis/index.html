@@ -1041,13 +1041,26 @@
     msgs.scrollTop = msgs.scrollHeight;
   }
 
+  // ── Sanitización HTML ────────────────────────────────────────────────────────
+  function sanitizeHTML(html) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    tmp.querySelectorAll('script,iframe,object,embed,form,input[type="hidden"]').forEach(el => el.remove());
+    tmp.querySelectorAll('*').forEach(el => {
+      for (const attr of [...el.attributes]) {
+        if (attr.name.startsWith('on') || (attr.name === 'href' && attr.value.trim().toLowerCase().startsWith('javascript:')))
+          el.removeAttribute(attr.name);
+      }
+    });
+    return tmp.innerHTML;
+  }
+
   // ── Markdown renderer ────────────────────────────────────────────────────────
   function renderMarkdown(text) {
     if (typeof marked === 'undefined') return text;
     marked.setOptions({ breaks: true, gfm: true });
     const html = marked.parse(text);
-    // Añadir botón copiar a cada bloque pre>code
-    return html.replace(/<pre><code/g, '<pre><button class="copy-btn" onclick="copyCode(this)">copiar</button><code');
+    return sanitizeHTML(html).replace(/<pre><code/g, '<pre><button class="copy-btn" onclick="copyCode(this)">copiar</button><code');
   }
 
   window.copyCode = function(btn) {
@@ -1065,7 +1078,7 @@
         const raw = block.textContent;
         const wrapper = document.createElement('div');
         wrapper.className = 'html-render-block';
-        wrapper.innerHTML = raw;
+        wrapper.innerHTML = sanitizeHTML(raw);
         block.closest('pre').replaceWith(wrapper);
 
       } else if (block.classList.contains('language-entity-cards')) {

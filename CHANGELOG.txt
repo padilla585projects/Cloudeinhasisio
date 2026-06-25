@@ -3,6 +3,29 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.34.2 (2026-06-25) — Seguridad + Race condition + NL automations
+────────────────────────────────────────────────────────────────────────────────
+
+SEGURIDAD:
+- XSS fix: sanitizeHTML() filtra <script>, <iframe>, <object>, <embed>, <form>,
+  atributos on*, y javascript: en hrefs. Aplicado a renderMarkdown() y html-render.
+- exec_command: bloqueados reverse shells (nc -e, socat), passwd, useradd/del,
+  iptables, cat /etc/shadow, eval/exec en scripts.
+- proxmox_api custom endpoint: bloqueados /access/users, /access/roles, /access/acl,
+  destroy VM, /pool, /sdn.
+
+RACE CONDITION:
+- Chat mutex: requests concurrentes a /api/chat se serializan con un async lock.
+  Evita corrupción de conversationHistory cuando llegan 2 mensajes simultáneos.
+
+NATURAL LANGUAGE AUTOMATIONS:
+- Router mejorado: añadidos patrones "si llueve", "si baja/sube de", "a las X",
+  "quiero que cuando", "avísame si/cuando", "notifícame si/cuando".
+- El módulo natural_automation ya existía con mapping completo ES→YAML.
+
+IMPACTO TOKENS: 0 — todo son guards de seguridad, mutex y regex (0 tokens).
+
+────────────────────────────────────────────────────────────────────────────────
 v3.34.1 (2026-06-25) — Memoria larga + ESPHome + tools huérfanas
 ────────────────────────────────────────────────────────────────────────────────
 

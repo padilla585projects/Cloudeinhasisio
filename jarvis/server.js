@@ -280,12 +280,26 @@ app.post('/api/local_response', (req, res) => {
   res.json({ ok: true });
 });
 
+// Mutex: serializa requests de chat para evitar corrupción de historial
+let chatLock = Promise.resolve();
+function withChatLock(fn) {
+  let release;
+  const next = new Promise(r => { release = r; });
+  const waiting = chatLock;
+  chatLock = next;
+  return waiting.then(() => fn().finally(release));
+}
+
 // Chat principal
-app.post('/api/chat', async (req, res) => {
+app.post('/api/chat', (req, res) => {
   const { messages, files } = req.body;
   if (!messages || !Array.isArray(messages)) {
     return res.status(400).json({ error: 'messages es requerido' });
   }
+  withChatLock(() => handleChat(req, res, messages, files));
+});
+
+async function handleChat(req, res, messages, files) {
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -576,7 +590,7 @@ app.post('/api/chat', async (req, res) => {
   } finally {
     state.currentSendEvent = null;
   }
-});
+}
 
 // ── Estado rápido de la casa ──────────────────────────────────────────────────
 app.get('/api/status', async (req, res) => {
