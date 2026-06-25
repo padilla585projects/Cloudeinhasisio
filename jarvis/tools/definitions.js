@@ -1154,6 +1154,53 @@ const tools = [
     }
   },
 
+  // ─── Backup/Restore ───
+  {
+    name: 'backup_restore',
+    description: 'Gestiona backups (snapshots) de Home Assistant: listar, crear, info, restaurar, eliminar. Usa la API del Supervisor.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['list', 'create', 'info', 'restore', 'delete'], description: 'list: listar backups. create: crear nuevo. info: detalles de uno. restore: restaurar. delete: eliminar.' },
+        slug: { type: 'string', description: 'Slug del backup (para info, restore, delete)' },
+        name: { type: 'string', description: 'Nombre del backup (para create). Default: "Jarvis backup FECHA"' },
+        partial: { type: 'boolean', description: 'true para backup parcial (solo config), false para completo. Default: false' }
+      },
+      required: ['action']
+    }
+  },
+
+  // ─── Notificación unificada ───
+  {
+    name: 'notify_all',
+    description: 'Envía notificación por múltiples canales simultáneamente: Telegram, push HA (companion app), y/o TTS por altavoces. Ideal para alertas importantes.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', description: 'Mensaje a enviar' },
+        title: { type: 'string', description: 'Título (opcional, para push)' },
+        channels: { type: 'array', items: { type: 'string', enum: ['telegram', 'push', 'tts'] }, description: 'Canales. Default: ["telegram", "push"]' },
+        priority: { type: 'string', enum: ['low', 'normal', 'high', 'critical'], description: 'Prioridad. critical: TTS inmediato + notificación persistente' },
+        tts_target: { type: 'string', description: 'Entity ID del media_player para TTS. Default: todos los media_player disponibles.' }
+      },
+      required: ['message']
+    }
+  },
+
+  // ─── Energy dashboard ───
+  {
+    name: 'energy_query',
+    description: 'Consulta datos energéticos de Home Assistant: consumo actual, historial, producción solar, coste estimado. Usa la API de estadísticas de HA.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['current', 'daily', 'weekly', 'monthly', 'sensors', 'cost'], description: 'current: consumo ahora. daily/weekly/monthly: historial. sensors: listar sensores energéticos. cost: estimación de coste.' },
+        period: { type: 'string', description: 'Periodo para daily/weekly/monthly. Formato ISO o "today", "yesterday", "this_week", "this_month"' }
+      },
+      required: ['action']
+    }
+  },
+
   // ─── ESPHome management ───
   {
     name: 'esphome_manage',

@@ -4463,6 +4463,185 @@ ${dots}`;
         };
       }
 
+      // ─── Backup / Restore ───
+      case 'backup_restore': {
+        const svGet = async (ep) => {
+          const r = await fetch(`http://supervisor${ep}`, { headers: { Authorization: `Bearer ${C.HA_TOKEN}` } });
+          const t = await r.text(); try { return JSON.parse(t); } catch { return { raw: t }; }
+        };
+        const svPost = async (ep, body) => {
+          const opts = { method: 'POST', headers: { Authorization: `Bearer ${C.HA_TOKEN}`, 'Content-Type': 'application/json' } };
+          if (body) opts.body = JSON.stringify(body);
+          const r = await fetch(`http://supervisor${ep}`, opts);
+          const t = await r.text(); try { return JSON.parse(t); } catch { return { raw: t }; }
+        };
+        const svDel = async (ep) => {
+          const r = await fetch(`http://supervisor${ep}`, { method: 'DELETE', headers: { Authorization: `Bearer ${C.HA_TOKEN}` } });
+          const t = await r.text(); try { return JSON.parse(t); } catch { return { raw: t }; }
+        };
+
+        switch (input.action) {
+          case 'list': {
+            const r = await svGet('/backups');
+            const backups = (r.data || r).backups || [];
+            return { backups: backups.map(b => ({ slug: b.slug, name: b.name, date: b.date, type: b.type, size: b.size })), total: backups.length };
+          }
+          case 'create': {
+            const backupName = input.name || `Jarvis backup ${new Date().toISOString().slice(0, 16)}`;
+            const body = { name: backupName };
+            const ep = input.partial ? '/backups/new/partial' : '/backups/new/full';
+            if (input.partial) body.folders = ['config'];
+            const r = await svPost(ep, body);
+            return r.result === 'ok' ? { success: true, slug: r.data?.slug, name: backupName, type: input.partial ? 'partial' : 'full' } : r;
+          }
+          case 'info': {
+            if (!input.slug) return { error: 'slug requerido' };
+            const r = await svGet(`/backups/${input.slug}/info`);
+            return r.data || r;
+          }
+          case 'restore': {
+            if (!input.slug) return { error: 'slug requerido' };
+            const r = await svPost(`/backups/${input.slug}/restore/full`);
+            return r.result === 'ok' ? { success: true, message: `Restauración de ${input.slug} iniciada. HA se reiniciará.` } : r;
+          }
+          case 'delete': {
+            if (!input.slug) return { error: 'slug requerido' };
+            const r = await svDel(`/backups/${input.slug}`);
+            return r.result === 'ok' ? { success: true, message: `Backup ${input.slug} eliminado` } : r;
+          }
+          default:
+            return { error: `Acción backup desconocida: ${input.action}` };
+        }
+      }
+
+      // ─── Notify All (broadcast unificado) ───
+      case 'notify_all': {
+        const channels = input.channels || (input.priority === 'critical' ? ['telegram', 'push', 'tts'] : ['telegram', 'push']);
+        const results = {};
+
+        if (channels.includes('telegram')) {
+          try {
+            const chatId = process.env.TELEGRAM_CHAT_ID || '';
+            if (chatId) {
+              await haPost('/services/telegram_bot/send_message', { message: input.message, title: input.title || undefined, target: chatId });
+              results.telegram = 'sent';
+            } else {
+              await haPost('/services/notify/notify', { message: input.message, title: input.title || 'Jarvis' });
+              results.telegram = 'sent via notify.notify';
+            }
+          } catch (e) { results.telegram = `error: ${e.message}`; }
+        }
+
+        if (channels.includes('push')) {
+          try {
+            await haPost('/services/notify/notify', {
+              message: input.message,
+              title: input.title || 'Jarvis',
+              data: input.priority === 'critical' ? { push: { sound: { name: 'default', critical: 1, volume: 1.0 } } } : undefined
+            });
+            results.push = 'sent';
+          } catch (e) { results.push = `error: ${e.message}`; }
+        }
+
+        if (channels.includes('tts')) {
+          try {
+            const target = input.tts_target;
+            if (target) {
+              await haPost('/services/tts/speak', { entity_id: target, message: input.message });
+            } else {
+              const states = await haGet('/states');
+              const players = states.filter(e => e.entity_id.startsWith('media_player.') && e.state !== 'unavailable');
+              for (const p of players.slice(0, 3)) {
+                try { await haPost('/services/tts/speak', { entity_id: p.entity_id, message: input.message }); } catch {}
+              }
+            }
+            results.tts = 'sent';
+          } catch (e) { results.tts = `error: ${e.message}`; }
+        }
+
+        return { success: true, channels: results, priority: input.priority || 'normal' };
+      }
+
+      // ─── Energy Query ───
+      case 'energy_query': {
+        const states = await haGet('/states');
+
+        switch (input.action) {
+          case 'sensors': {
+            const energySensors = states.filter(e => {
+              const cls = e.attributes?.device_class;
+              const unit = e.attributes?.unit_of_measurement;
+              return cls === 'energy' || cls === 'power' || unit === 'kWh' || unit === 'W' || unit === 'Wh';
+            }).map(e => ({
+              entity_id: e.entity_id,
+              name: e.attributes?.friendly_name,
+              state: e.state,
+              unit: e.attributes?.unit_of_measurement,
+              device_class: e.attributes?.device_class
+            }));
+            return { sensors: energySensors, total: energySensors.length };
+          }
+          case 'current': {
+            const power = states.filter(e => {
+              const cls = e.attributes?.device_class;
+              const unit = e.attributes?.unit_of_measurement;
+              return (cls === 'power' || unit === 'W') && !isNaN(parseFloat(e.state));
+            }).map(e => ({
+              entity_id: e.entity_id,
+              name: e.attributes?.friendly_name,
+              value: parseFloat(e.state),
+              unit: 'W'
+            }));
+            const totalW = power.reduce((s, p) => s + p.value, 0);
+            return { current_power: power, total_watts: Math.round(totalW), total_kw: (totalW / 1000).toFixed(2) };
+          }
+          case 'daily':
+          case 'weekly':
+          case 'monthly': {
+            const now = new Date();
+            let startDate;
+            if (input.action === 'daily') {
+              startDate = new Date(now); startDate.setHours(0, 0, 0, 0);
+            } else if (input.action === 'weekly') {
+              startDate = new Date(now); startDate.setDate(now.getDate() - 7);
+            } else {
+              startDate = new Date(now); startDate.setMonth(now.getMonth() - 1);
+            }
+            const energyEntities = states.filter(e =>
+              e.attributes?.device_class === 'energy' || e.attributes?.unit_of_measurement === 'kWh'
+            ).map(e => e.entity_id);
+
+            if (energyEntities.length === 0) return { error: 'No hay sensores de energía (kWh) configurados' };
+
+            try {
+              const histUrl = `${C.HA_URL}/api/history/period/${startDate.toISOString()}?filter_entity_id=${energyEntities.slice(0, 5).join(',')}&minimal_response&no_attributes`;
+              const histResp = await fetch(histUrl, { headers: { Authorization: `Bearer ${C.HA_TOKEN}` } });
+              const histData = await histResp.json();
+              const summary = histData.map((entityHist, i) => {
+                if (!entityHist || entityHist.length === 0) return null;
+                const first = parseFloat(entityHist[0]?.state) || 0;
+                const last = parseFloat(entityHist[entityHist.length - 1]?.state) || 0;
+                return { entity_id: energyEntities[i], consumption_kwh: Math.max(0, last - first).toFixed(2) };
+              }).filter(Boolean);
+              return { period: input.action, from: startDate.toISOString(), to: now.toISOString(), consumption: summary };
+            } catch (e) {
+              return { error: `Error consultando historial: ${e.message}` };
+            }
+          }
+          case 'cost': {
+            const pvpc = states.find(e => e.entity_id.includes('pvpc') || (e.attributes?.device_class === 'monetary' && e.attributes?.unit_of_measurement?.includes('€')));
+            const energy = states.filter(e => e.attributes?.device_class === 'energy' && e.attributes?.unit_of_measurement === 'kWh');
+            return {
+              pvpc_price: pvpc ? { entity_id: pvpc.entity_id, price: pvpc.state, unit: pvpc.attributes?.unit_of_measurement } : 'No encontrado',
+              energy_sensors: energy.map(e => ({ entity_id: e.entity_id, name: e.attributes?.friendly_name, kwh: e.state })),
+              hint: 'Usa el sensor PVPC y el consumo diario para calcular el coste. Coste = consumo_kwh * precio_€/kWh'
+            };
+          }
+          default:
+            return { error: `Acción energy desconocida: ${input.action}` };
+        }
+      }
+
       // ─── ESPHome management ───
       case 'esphome_manage': {
         const espSlug = '5c53de3b_esphome';

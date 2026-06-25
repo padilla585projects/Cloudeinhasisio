@@ -3,6 +3,29 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.34.3 (2026-06-25) — 3 tools nuevas: backup, notify_all, energy
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVAS TOOLS:
+- backup_restore: gestión completa de backups HA via Supervisor API.
+  Acciones: list, create (full/partial), info, restore, delete.
+  Asignada a: ha_control, diagnostico, emergencia.
+
+- notify_all: broadcast unificado por múltiples canales simultáneos.
+  Canales: telegram, push (companion app), tts (altavoces).
+  Prioridad critical: activa TTS + notificación sonora persistente.
+  Asignada a: ha_control, emergencia, seguridad, multimedia.
+
+- energy_query: consulta datos energéticos de la instalación.
+  Acciones: current (potencia ahora), daily/weekly/monthly (consumo kWh),
+  sensors (listar sensores energéticos), cost (precio PVPC + estimación).
+  Asignada a: ha_control, energia.
+
+IMPACTO TOKENS: 0 extra — tools se cargan solo cuando el experto las necesita.
+
+TOTAL TOOLS: 88 (3 nuevas en este release).
+
+────────────────────────────────────────────────────────────────────────────────
 v3.34.2 (2026-06-25) — Seguridad + Race condition + NL automations
 ────────────────────────────────────────────────────────────────────────────────
 

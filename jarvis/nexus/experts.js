@@ -28,7 +28,8 @@ const EXPERTS = {
             'scan_installation', 'check_config', 'speak', 'telegram_send', 'rollback',
             'show_house_status', 'generate_image', 'generate_image_gemini', 'dev_workspace',
             'edit_script', 'delete_script', 'mqtt_publish', 'zigbee_manage',
-            'score_installation', 'render_floorplan', 'manage_users', 'esphome_manage']
+            'score_installation', 'render_floorplan', 'manage_users', 'esphome_manage',
+            'backup_restore', 'notify_all', 'energy_query']
   },
 
   diagnostico: {
@@ -39,7 +40,7 @@ const EXPERTS = {
             'get_system_logs', 'get_error_log', 'check_config', 'web_search', 'web_search_native', 'fetch_url',
             'read_file', 'learn', 'ha_supervisor', 'network', 'get_notifications',
             'get_repairs', 'scan_installation', 'ha_knowledge', 'rollback', 'validate_yaml',
-            'score_installation', 'esphome_manage']
+            'score_installation', 'esphome_manage', 'backup_restore']
   },
 
   automatizacion: {
@@ -71,7 +72,7 @@ const EXPERTS = {
     tools: ['get_entities', 'get_entity_state', 'call_service', 'get_system_logs',
             'get_error_log', 'read_file', 'write_file', 'reload_config', 'check_config',
             'ha_supervisor', 'emergency_config', 'learn', 'rollback', 'scan_installation',
-            'telegram_send', 'validate_yaml']
+            'telegram_send', 'validate_yaml', 'backup_restore', 'notify_all']
   },
 
   dev: {
@@ -93,7 +94,7 @@ const EXPERTS = {
     label: 'Multimedia',
     tools: ['call_service', 'speak', 'alexa_bidirectional', 'get_entities',
             'get_entity_state', 'generate_image', 'image_edit', 'telegram_send_image',
-            'web_search', 'fetch_url', 'save_memory', 'read_file']
+            'web_search', 'fetch_url', 'save_memory', 'read_file', 'notify_all']
   },
 
   energia: {
@@ -103,7 +104,7 @@ const EXPERTS = {
     tools: ['get_entities', 'get_entity_state', 'get_history', 'get_logbook', 'call_service',
             'template_render', 'create_automation', 'analyze_patterns',
             'save_memory', 'learn', 'web_search', 'ha_knowledge',
-            'knowledge_db', 'read_file']
+            'knowledge_db', 'read_file', 'energy_query']
   },
 
   seguridad: {
@@ -113,7 +114,7 @@ const EXPERTS = {
     tools: ['get_entities', 'get_entity_state', 'call_service', 'get_history', 'get_logbook',
             'telegram_send', 'telegram_send_image', 'telegram_get_updates',
             'get_automations', 'create_automation', 'reload_config', 'get_system_logs',
-            'learn', 'network', 'save_memory', 'manage_users']
+            'learn', 'network', 'save_memory', 'manage_users', 'notify_all']
   },
 
   red: {
