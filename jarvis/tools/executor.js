@@ -4880,6 +4880,167 @@ ${dots}`;
         }
       }
 
+      // ─── Smart scheduling ───
+      case 'smart_schedule': {
+        const duration = input.duration_hours || 2;
+        switch (input.action) {
+          case 'pvpc_windows': {
+            const allStates = await haGet(`/api/states`);
+            const pvpc = allStates.filter(e => e.entity_id.includes('pvpc') || e.entity_id.includes('esios') || e.entity_id.includes('energy_cost'));
+            if (!pvpc.length) return { error: 'No se encontraron sensores PVPC/ESIOS. ¿Está configurada la integración pvpc_hourly_pricing?' };
+            const priceEntity = pvpc[0];
+            const attrs = priceEntity.attributes || {};
+            const prices = {};
+            for (let h = 0; h < 24; h++) {
+              const key = `price_${String(h).padStart(2, '0')}h`;
+              if (attrs[key] !== undefined) prices[h] = attrs[key];
+            }
+            const sorted = Object.entries(prices).sort((a, b) => a[1] - b[1]);
+            const cheapest = sorted.slice(0, 6).map(([h, p]) => ({ hour: parseInt(h), price: p }));
+            const expensive = sorted.slice(-3).map(([h, p]) => ({ hour: parseInt(h), price: p }));
+            return {
+              entity: priceEntity.entity_id, current_price: priceEntity.state,
+              unit: attrs.unit_of_measurement || '€/kWh',
+              cheapest_hours: cheapest, most_expensive: expensive,
+              min: attrs.min_price, max: attrs.max_price,
+              recommendation: cheapest.length ? `Mejores horas para dispositivos de alto consumo: ${cheapest.slice(0, 3).map(h => h.hour + ':00').join(', ')}` : 'Sin datos de precios horarios'
+            };
+          }
+          case 'recommend': {
+            const deviceType = input.device_type || 'general';
+            const presencePref = input.prefer_presence !== undefined ? input.prefer_presence : (deviceType === 'lavadora');
+            const allStates = await haGet(`/api/states`);
+            const pvpc = allStates.filter(e => e.entity_id.includes('pvpc') || e.entity_id.includes('esios'));
+            const persons = allStates.filter(e => e.entity_id.startsWith('person.'));
+            const weather = allStates.find(e => e.entity_id.startsWith('weather.'));
+            const attrs = pvpc[0]?.attributes || {};
+            const prices = {};
+            for (let h = 0; h < 24; h++) {
+              const key = `price_${String(h).padStart(2, '0')}h`;
+              if (attrs[key] !== undefined) prices[h] = attrs[key];
+            }
+            const windows = [];
+            const sortedHours = Object.entries(prices).sort((a, b) => a[1] - b[1]);
+            for (let i = 0; i <= 24 - duration; i++) {
+              let windowPrice = 0;
+              let valid = true;
+              for (let j = 0; j < duration; j++) {
+                if (prices[i + j] !== undefined) windowPrice += prices[i + j];
+                else valid = false;
+              }
+              if (valid) windows.push({ start: i, end: i + duration, total_cost: windowPrice.toFixed(4), avg_price: (windowPrice / duration).toFixed(4) });
+            }
+            windows.sort((a, b) => parseFloat(a.total_cost) - parseFloat(b.total_cost));
+            return {
+              device: deviceType, duration_hours: duration, prefer_presence: presencePref,
+              best_windows: windows.slice(0, 5),
+              weather: weather ? { condition: weather.state, temp: weather.attributes.temperature } : null,
+              persons_home: persons.filter(p => p.state === 'home').map(p => p.entity_id),
+              recommendation: windows[0] ? `Mejor ventana para ${deviceType}: ${windows[0].start}:00-${windows[0].end}:00 (coste: ${windows[0].total_cost}€/kWh total)` : 'Sin datos suficientes'
+            };
+          }
+          case 'weekly': {
+            return {
+              plan: 'Genera un plan semanal combinando: precios PVPC medios por franja horaria, patrones de presencia detectados, y tipo de dispositivo.',
+              tips: [
+                'Lavadora/secadora: horas valle + presencia en casa (seguridad)',
+                'Calentador de agua: madrugada (2-6h), precio mínimo, no requiere presencia',
+                'Carga EV: noche (0-7h), precio supervalle',
+                'Riego: amanecer (6-8h), menos evaporación + precio moderado',
+                'Piscina: mediodía solar si hay paneles, madrugada si no'
+              ],
+              action_needed: 'Usa action=recommend con device_type para obtener horarios específicos para cada dispositivo'
+            };
+          }
+          default:
+            return { error: `Acción smart_schedule desconocida: ${input.action}` };
+        }
+      }
+
+      // ─── Device health ───
+      case 'device_health': {
+        const staleHours = input.stale_hours || 24;
+        switch (input.action) {
+          case 'batteries': {
+            const allStates = await haGet(`/api/states`);
+            const batteries = allStates.filter(e => e.entity_id.includes('battery') && !isNaN(parseFloat(e.state)) && e.state !== 'unavailable');
+            const sorted = batteries.sort((a, b) => parseFloat(a.state) - parseFloat(b.state));
+            const critical = sorted.filter(b => parseFloat(b.state) < 10);
+            const low = sorted.filter(b => parseFloat(b.state) >= 10 && parseFloat(b.state) < 30);
+            const ok = sorted.filter(b => parseFloat(b.state) >= 30);
+            return {
+              total: batteries.length, critical: critical.length, low: low.length, ok: ok.length,
+              critical_devices: critical.map(b => ({ id: b.entity_id, level: b.state + '%', name: b.attributes.friendly_name })),
+              low_devices: low.map(b => ({ id: b.entity_id, level: b.state + '%', name: b.attributes.friendly_name })),
+              summary: `${batteries.length} baterías monitorizadas: ${critical.length} críticas (<10%), ${low.length} bajas (<30%), ${ok.length} OK.`
+            };
+          }
+          case 'stale': {
+            const allStates = await haGet(`/api/states`);
+            const threshold = Date.now() - staleHours * 3600000;
+            const stale = allStates.filter(e => {
+              if (e.state === 'unavailable' || e.state === 'unknown') return true;
+              const lastChanged = e.last_changed ? new Date(e.last_changed).getTime() : 0;
+              const lastUpdated = e.last_updated ? new Date(e.last_updated).getTime() : 0;
+              return Math.max(lastChanged, lastUpdated) < threshold;
+            }).filter(e => !e.entity_id.startsWith('automation.') && !e.entity_id.startsWith('scene.') && !e.entity_id.startsWith('script.'));
+            return {
+              stale_threshold_hours: staleHours,
+              stale_count: stale.length,
+              devices: stale.slice(0, 30).map(e => {
+                const lastAct = e.last_updated ? new Date(e.last_updated) : null;
+                return { id: e.entity_id, state: e.state, last_updated: lastAct ? lastAct.toISOString() : 'never', hours_ago: lastAct ? Math.round((Date.now() - lastAct.getTime()) / 3600000) : null, name: e.attributes.friendly_name };
+              })
+            };
+          }
+          case 'overview': {
+            const allStates = await haGet(`/api/states`);
+            const total = allStates.length;
+            const byDomain = {};
+            for (const e of allStates) {
+              const domain = e.entity_id.split('.')[0];
+              if (!byDomain[domain]) byDomain[domain] = { total: 0, unavailable: 0, unknown: 0 };
+              byDomain[domain].total++;
+              if (e.state === 'unavailable') byDomain[domain].unavailable++;
+              if (e.state === 'unknown') byDomain[domain].unknown++;
+            }
+            const unavailable = allStates.filter(e => e.state === 'unavailable').length;
+            const unknown = allStates.filter(e => e.state === 'unknown').length;
+            const batteries = allStates.filter(e => e.entity_id.includes('battery') && !isNaN(parseFloat(e.state)));
+            const lowBatteries = batteries.filter(b => parseFloat(b.state) < 20);
+            const healthScore = total > 0 ? Math.round(((total - unavailable - unknown) / total) * 100) : 0;
+            return {
+              health_score: healthScore, total_entities: total,
+              unavailable, unknown,
+              low_batteries: lowBatteries.length,
+              domains_with_issues: Object.entries(byDomain).filter(([, v]) => v.unavailable > 0 || v.unknown > 0).map(([d, v]) => ({ domain: d, ...v })),
+              top_domains: Object.entries(byDomain).sort((a, b) => b[1].total - a[1].total).slice(0, 10).map(([d, v]) => ({ domain: d, ...v }))
+            };
+          }
+          case 'integration': {
+            const integ = input.integration || 'zigbee2mqtt';
+            const allStates = await haGet(`/api/states`);
+            const filtered = allStates.filter(e => {
+              const fn = (e.attributes.friendly_name || '').toLowerCase();
+              const eid = e.entity_id.toLowerCase();
+              return eid.includes(integ) || fn.includes(integ);
+            });
+            if (!filtered.length) return { error: `No se encontraron entidades para integración: ${integ}` };
+            const stats = { total: filtered.length, unavailable: 0, states: {} };
+            for (const e of filtered) {
+              if (e.state === 'unavailable') stats.unavailable++;
+              stats.states[e.state] = (stats.states[e.state] || 0) + 1;
+            }
+            return {
+              integration: integ, ...stats,
+              entities: filtered.slice(0, 25).map(e => ({ id: e.entity_id, state: e.state, name: e.attributes.friendly_name, last_updated: e.last_updated }))
+            };
+          }
+          default:
+            return { error: `Acción device_health desconocida: ${input.action}` };
+        }
+      }
+
       // ─── Climate optimization ───
       case 'climate_optimize': {
         const period = input.period_hours || 48;

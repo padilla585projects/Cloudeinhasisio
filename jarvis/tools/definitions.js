@@ -1283,6 +1283,33 @@ const tools = [
     }
   },
   {
+    name: 'smart_schedule',
+    description: 'Genera horarios inteligentes para dispositivos de alto consumo combinando: precios PVPC (horas baratas), patrones de presencia (cuándo está Adrián en casa), y previsión meteorológica. Ideal para: lavadora, calentador, carga de EV, bomba de piscina, riego. Acciones: recommend (sugiere mejor horario para un dispositivo), pvpc_windows (muestra las horas más baratas de hoy/mañana), weekly (plan semanal optimizado).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['recommend', 'pvpc_windows', 'weekly'], description: 'Tipo de planificación' },
+        device_type: { type: 'string', description: 'Tipo de dispositivo: lavadora, calentador, ev_charger, piscina, riego, otro' },
+        duration_hours: { type: 'number', description: 'Duración del ciclo en horas (default: 2)' },
+        prefer_presence: { type: 'boolean', description: 'Preferir horas cuando hay alguien en casa (default: true para lavadora, false para calentador)' }
+      },
+      required: ['action']
+    }
+  },
+  {
+    name: 'device_health',
+    description: 'Informe completo de salud de dispositivos: niveles de batería de sensores Zigbee, tiempos de última actividad, firmware, señal, dispositivos caídos. Agrupa por integración y zona. Acciones: batteries (todos los niveles de batería), stale (dispositivos sin actividad reciente), overview (resumen general de salud), integration (estado por integración específica).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['batteries', 'stale', 'overview', 'integration'], description: 'Tipo de informe' },
+        integration: { type: 'string', description: 'Filtrar por integración (para action=integration): zigbee2mqtt, esphome, shelly, etc.' },
+        stale_hours: { type: 'number', description: 'Horas sin actividad para considerar stale (default: 24)' }
+      },
+      required: ['action']
+    }
+  },
+  {
     name: 'anomaly_detect',
     description: 'Detecta anomalías en dispositivos y sensores comparando con línea base histórica. Acciones: scan (escanea todos los dispositivos buscando anomalías), baseline (calcula línea base de un sensor/dispositivo), check (comprueba un dispositivo específico contra su línea base), report (genera informe de salud de la instalación).',
     input_schema: {

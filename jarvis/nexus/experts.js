@@ -31,7 +31,8 @@ const EXPERTS = {
             'score_installation', 'render_floorplan', 'manage_users', 'esphome_manage',
             'backup_restore', 'notify_all', 'energy_query',
             'zha_matter_manage', 'system_info',
-            'climate_optimize', 'presence_predict', 'anomaly_detect']
+            'climate_optimize', 'presence_predict', 'anomaly_detect',
+            'smart_schedule', 'device_health']
   },
 
   diagnostico: {
@@ -43,7 +44,7 @@ const EXPERTS = {
             'read_file', 'learn', 'ha_supervisor', 'network', 'get_notifications',
             'get_repairs', 'scan_installation', 'ha_knowledge', 'rollback', 'validate_yaml',
             'score_installation', 'esphome_manage', 'backup_restore',
-            'zha_matter_manage', 'system_info', 'anomaly_detect']
+            'zha_matter_manage', 'system_info', 'anomaly_detect', 'device_health']
   },
 
   automatizacion: {
@@ -107,7 +108,8 @@ const EXPERTS = {
     tools: ['get_entities', 'get_entity_state', 'get_history', 'get_logbook', 'call_service',
             'template_render', 'create_automation', 'analyze_patterns',
             'save_memory', 'learn', 'web_search', 'ha_knowledge',
-            'knowledge_db', 'read_file', 'energy_query', 'climate_optimize']
+            'knowledge_db', 'read_file', 'energy_query', 'climate_optimize',
+            'smart_schedule', 'device_health']
   },
 
   seguridad: {

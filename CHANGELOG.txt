@@ -3,6 +3,31 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.34.7 (2026-06-25) — Smart Scheduling + Device Health Monitoring
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVAS TOOLS (2):
+- smart_schedule: genera horarios óptimos para dispositivos de alto consumo
+  combinando precios PVPC, patrones de presencia y previsión meteorológica.
+  Acciones: recommend (mejor ventana para lavadora/calentador/EV/riego),
+  pvpc_windows (6 horas más baratas del día), weekly (plan semanal).
+  Asignada a: ha_control, energia.
+
+- device_health: informe completo de salud de dispositivos.
+  Acciones: batteries (todos los niveles de batería, ordenados por urgencia),
+  stale (dispositivos sin actividad en X horas), overview (resumen por dominio
+  con health score), integration (filtro por integración: zigbee2mqtt, shelly...).
+  Asignada a: ha_control, diagnostico.
+
+ROUTER:
+- Nuevos regex: "programa la lavadora/mejor hora para/horario óptimo" → energia.
+- Nuevos regex: "salud dispositivos/baterías/devices caídos" → diagnostico.
+
+TOTAL TOOLS: 95 (era 93).
+
+IMPACTO TOKENS: $0.00/día — tools bajo demanda, no background.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.34.6 (2026-06-25) — Intelligence: Climate + Presence + Anomaly Detection
 ────────────────────────────────────────────────────────────────────────────────
 
