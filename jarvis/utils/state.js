@@ -51,7 +51,7 @@ const state = {
   scheduledTasks: {},
 
   // ── Versión ──────────────────────────────────────────────────────────────
-  JARVIS_VERSION: '3.35.0',
+  JARVIS_VERSION: '3.35.1',
 };
 
 module.exports = state;

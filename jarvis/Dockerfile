@@ -11,7 +11,7 @@ RUN npm install --production
 
 # ARG VERSION DESPUÉS del npm install: invalida el cache de código en cada versión
 # pero NO el layer de npm → mucho más rápido en updates (~10s vs ~3min)
-ARG VERSION=3.35.0
+ARG VERSION=3.35.1
 RUN echo "Jarvis v${VERSION} — deps cacheadas, código copiado"
 
 # Código principal

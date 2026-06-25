@@ -3,6 +3,27 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.35.1 (2026-06-25) — UX: Quick dashboard, smart notifications, toast alerts
+────────────────────────────────────────────────────────────────────────────────
+
+UI/UX:
+- Quick dashboard bar: al abrir el chat sin historial, muestra estado compacto
+  (luces, temp, presencia, alertas) en una barra clicable. Click expande a card.
+- Toast notifications: alertas del background aparecen como toast con slide-in,
+  prioridad visual (🚨🔴🟡🔵), auto-dismiss, cierre manual. Browser Notification.
+
+BACKEND:
+- Smart notification batching system (background/notifications.js):
+  · Agrupa alertas similares en ventana de 30s antes de enviar
+  · Cooldowns por tipo: battery_low(6h), device_down(30min), emergency(0)
+  · Prioridad: urgent envía inmediato, high+urgent van a Telegram
+  · Log persistente en /data/notification_log.json (7 días rolling)
+  · API: GET /api/notifications — historial reciente
+- Device health scan ahora usa el sistema de batching (no envía Telegram directo)
+
+IMPACTO TOKENS: $0.00/día extra (todo es código puro, sin LLM)
+
+────────────────────────────────────────────────────────────────────────────────
 v3.35.0 (2026-06-25) — Hardening: seguridad, estabilidad y proactividad
 ────────────────────────────────────────────────────────────────────────────────
 

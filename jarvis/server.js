@@ -27,6 +27,7 @@ const { checkEmergencies, bootRecoverScripts, bootSelfCheck, bootLearnHA, bootLe
 const { netGuardLoop } = require('./background/netguard');
 const { infraGuardLoop } = require('./background/infraguard');
 const { startTelegramBot } = require('./background/telegram_bot');
+const { init: initNotifications, queueNotification, getRecentNotifications } = require('./background/notifications');
 
 // agent_network es OPCIONAL — si el archivo falta (deployment incompleto, build cache, etc.)
 // NO debe tirar abajo todo el add-on. Stub silencioso como fallback.
@@ -46,6 +47,7 @@ try {
 // ── Inyectar en state lo que los módulos necesitan acceder ───────────────────
 state.openAITools = openAITools;
 state.executeTool = executeTool;
+initNotifications();
 
 // ── Asegurar que /data existe ─────────────────────────────────────────────────
 if (!fs.existsSync(C.DATA_DIR)) fs.mkdirSync(C.DATA_DIR, { recursive: true });
@@ -1339,6 +1341,11 @@ app.get('/api/agent_network/status', (req, res) => {
 
 
 // Modo ahorro
+app.get('/api/notifications', (req, res) => {
+  const limit = parseInt(req.query.limit) || 20;
+  res.json({ notifications: getRecentNotifications(limit) });
+});
+
 app.get('/api/config', (req, res) => {
   const expertList = Object.entries(EXPERTS).map(([k, v]) => ({
     name: k, label: v.label, model: v.model, tools: (v.tools || []).length, modules: (v.modules || []).length
@@ -1582,12 +1589,13 @@ async function proactiveDeviceHealthScan() {
 
     if (issues.length > 0) {
       console.log(`[health-scan] ${issues.length} problemas detectados: ${batteries.length} baterías bajas, ${unavailable.length} dispositivos caídos`);
-      // Telegram alert if configured and issues are significant
-      if (process.env.TELEGRAM_BOT_TOKEN && (batteries.length > 0 || unavailable.length > 5)) {
-        try {
-          const msg = `🏥 *Jarvis Health Scan*\n${issues.slice(0, 8).join('\n')}`;
-          await haPost('/services/telegram_bot/send_message', { message: msg, parse_mode: 'markdown' }).catch(() => {});
-        } catch {}
+      // Use smart notification batching
+      for (const b of batteries) {
+        const name = b.attributes?.friendly_name || b.entity_id;
+        queueNotification('battery_low', 'Batería baja', `${name}: ${b.state}%`, parseFloat(b.state) < 5 ? 'high' : 'medium');
+      }
+      if (unavailable.length > 5) {
+        queueNotification('device_down', 'Dispositivos caídos', `${unavailable.length} dispositivos no disponibles`, 'high');
       }
     } else {
       console.log('[health-scan] Todo OK — 0 problemas detectados');

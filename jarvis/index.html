@@ -617,6 +617,35 @@
     padding: 10px; margin: 8px 0; background: rgba(0,0,0,0.25);
     overflow-x: auto; max-width: 100%;
   }
+  /* ── Quick dashboard (compact bar on load) ─────────────── */
+  .quick-dashboard {
+    display: flex; justify-content: center; padding: 8px 12px;
+    cursor: pointer; transition: opacity 0.2s;
+  }
+  .quick-dashboard:hover { opacity: 0.8; }
+  .qd-items {
+    display: flex; gap: 16px; align-items: center;
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 20px; padding: 6px 16px; font-size: 13px;
+  }
+  .qd-item { white-space: nowrap; }
+  .qd-warn { color: #f59e0b; font-weight: 600; }
+  .qd-ok { color: #22c55e; }
+  /* ── Toast notifications ─────────────────────────────────── */
+  .notif-toast {
+    position: fixed; top: 16px; right: 16px; z-index: 9999;
+    max-width: 380px; display: flex; align-items: flex-start; gap: 8px;
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 12px; padding: 12px 14px; box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    font-size: 13px; color: var(--text);
+    transform: translateX(120%); transition: transform 0.3s ease;
+  }
+  .notif-toast.notif-show { transform: translateX(0); }
+  .notif-urgent { border-color: #ef4444; }
+  .notif-high { border-color: #f59e0b; }
+  .notif-icon { font-size: 18px; flex-shrink: 0; }
+  .notif-body { flex: 1; line-height: 1.4; }
+  .notif-close { background: none; border: none; color: var(--text3); cursor: pointer; font-size: 14px; padding: 0 0 0 4px; }
   /* ── Status card (panel visual /estado) ────────────────── */
   .status-card {
     background: var(--bg2); border: 1px solid var(--border);
@@ -2953,6 +2982,8 @@
     if (conversationHistory.length === 0) {
       await loadGreeting();
       loadContextualSuggestions();
+      // Auto-dashboard: mostrar estado compacto de la casa al abrir
+      loadQuickDashboard();
     } else {
       await loadPendingThoughts();
     }
@@ -2960,6 +2991,37 @@
     updateCostBadge();
     connectPushEvents();
   }
+
+  async function loadQuickDashboard() {
+    try {
+      const r = await fetch('api/status');
+      if (!r.ok) return;
+      const d = await r.json();
+      const lightsOn = d.lights?.on ?? 0;
+      const lightsAll = d.lights?.total ?? 0;
+      const persons = (d.persons || []).filter(p => p.state === 'home').map(p => p.name);
+      const unavail = d.unavailable ?? 0;
+      const tempSensors = (d.temperature || []).filter(t => !/(disk|cpu|shelly|omv)/i.test(t.name || ''));
+      const avgTemp = tempSensors.length > 0
+        ? (tempSensors.reduce((s, t) => s + parseFloat(t.value || 0), 0) / tempSensors.length).toFixed(1) : null;
+
+      const container = document.getElementById('messages');
+      const bar = document.createElement('div');
+      bar.className = 'quick-dashboard';
+      bar.id = 'quick-dashboard';
+      bar.innerHTML = `
+        <div class="qd-items">
+          <span class="qd-item" title="Luces encendidas">💡 ${lightsOn}/${lightsAll}</span>
+          ${avgTemp ? `<span class="qd-item" title="Temperatura media">🌡️ ${avgTemp}°C</span>` : ''}
+          <span class="qd-item" title="En casa">👤 ${persons.length > 0 ? persons.join(', ') : 'Nadie'}</span>
+          ${unavail > 0 ? `<span class="qd-item qd-warn" title="Dispositivos no disponibles">⚠️ ${unavail}</span>` : `<span class="qd-item qd-ok" title="Todo OK">✅ OK</span>`}
+        </div>
+      `;
+      bar.onclick = () => { injectStatusCard(); bar.remove(); };
+      container.insertBefore(bar, container.firstChild);
+    } catch {}
+  }
+
   init();
 
   // ── Canal SSE persistente — mensajes de agentes en tiempo real ───────────────
@@ -2968,12 +3030,28 @@
     es.onmessage = (e) => {
       try {
         const event = JSON.parse(e.data);
-        if (false) {
-          // (gateway de agentes eliminado — gestionado externamente)
+        if (event.type === 'notification') {
+          showNotificationToast(event);
         }
       } catch {}
     };
     es.onerror = () => { es.close(); setTimeout(connectPushEvents, 5000); };
+  }
+
+  // ── Toast notifications from background processes ─────────────────────────
+  function showNotificationToast(event) {
+    const toast = document.createElement('div');
+    toast.className = 'notif-toast notif-' + (event.priority || 'medium');
+    const icon = { urgent: '🚨', high: '🔴', medium: '🟡', low: '🔵' }[event.priority] || '🔔';
+    const text = (event.message || '').replace(/\*([^*]+)\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
+    toast.innerHTML = `<span class="notif-icon">${icon}</span><div class="notif-body">${text}</div><button class="notif-close" onclick="this.parentElement.remove()">✕</button>`;
+    document.body.appendChild(toast);
+    requestAnimationFrame(() => toast.classList.add('notif-show'));
+    setTimeout(() => { toast.classList.remove('notif-show'); setTimeout(() => toast.remove(), 400); }, event.priority === 'urgent' ? 15000 : 8000);
+    // Browser notification if allowed
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification('Jarvis', { body: (event.message || '').replace(/[*_]/g, '').slice(0, 100), icon: '🏠' });
+    }
   }
 
   // Pedir permiso de notificaciones al cargar
