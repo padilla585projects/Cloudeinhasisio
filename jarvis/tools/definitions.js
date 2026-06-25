@@ -1283,6 +1283,45 @@ const tools = [
     }
   },
   {
+    name: 'weather_forecast',
+    description: 'Obtiene previsión meteorológica de HA y la interpreta para decisiones domóticas: ¿llueve mañana? ¿hace falta regar? ¿cerrar toldos por viento? ¿pre-calentar por frío?',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['current', 'forecast', 'alerts'], description: 'current=ahora, forecast=próximas horas/días, alerts=condiciones adversas' },
+        entity_id: { type: 'string', description: 'Entity de weather (default: primer weather.* encontrado)' }
+      },
+      required: ['action']
+    }
+  },
+  {
+    name: 'input_manage',
+    description: 'Gestiona input helpers de HA (input_boolean, input_number, input_text, input_select, input_datetime). Acciones: list (lista todos), set (cambia valor), create (crea nuevo via config). Útil para flags, contadores, modos de la casa.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['list', 'set', 'create'], description: 'Tipo de acción' },
+        entity_id: { type: 'string', description: 'Entity del input helper (para set)' },
+        value: { type: 'string', description: 'Nuevo valor (para set)' },
+        helper_type: { type: 'string', enum: ['input_boolean', 'input_number', 'input_text', 'input_select', 'input_datetime'], description: 'Tipo de helper (para create)' },
+        name: { type: 'string', description: 'Nombre del helper (para create)' },
+        options: { type: 'object', description: 'Opciones adicionales: min, max, step, initial, options[], etc.' }
+      },
+      required: ['action']
+    }
+  },
+  {
+    name: 'automation_analytics',
+    description: 'Analiza el rendimiento y uso de automatizaciones. Acciones: usage (cuáles se disparan más/menos), unused (automatizaciones que nunca se activan), conflicts (automatizaciones que podrían entrar en conflicto), optimize (sugerencias de mejora).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['usage', 'unused', 'conflicts', 'optimize'], description: 'Tipo de análisis' }
+      },
+      required: ['action']
+    }
+  },
+  {
     name: 'camera_analyze',
     description: 'Captura snapshot de una cámara HA y lo analiza con IA de visión (GPT-4o). Describe qué se ve: personas, vehículos, animales, objetos, actividad sospechosa. Ideal para seguridad, monitorización y alertas proactivas.',
     input_schema: {

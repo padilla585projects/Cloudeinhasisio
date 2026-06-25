@@ -3,6 +3,42 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.34.9 (2026-06-25) — Weather + Input Helpers + Automation Analytics (102 tools)
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVAS TOOLS (3):
+- weather_forecast: previsión meteorológica con interpretación domótica.
+  Acciones: current (condiciones ahora), forecast (próximas 12h/días),
+  alerts (helada, viento fuerte, calor extremo → acciones recomendadas).
+  Asignada a: ha_control, energia.
+
+- input_manage: gestión completa de input helpers de HA.
+  Acciones: list (todos agrupados por tipo), set (cambia valor con servicio
+  correcto por dominio), create (crea nuevo via API config).
+  Asignada a: ha_control.
+
+- automation_analytics: análisis de rendimiento de automatizaciones.
+  Acciones: usage (más/menos disparadas), unused (sin disparar en 30 días),
+  conflicts (nombres similares que podrían conflicturar), optimize (issues:
+  unavailable, desactivadas, nunca disparadas).
+  Asignada a: ha_control, automatizacion.
+
+TOTAL TOOLS: 102.
+
+IMPACTO TOKENS: $0.00/día — tools bajo demanda.
+
+RESUMEN ACUMULADO v3.34.0→v3.34.9 (12 sprints):
+  - Tools: 67 → 102 (+35 tools, +52%)
+  - NEXUS modules: 14 → 17 (+3: clima, presencia, anomalias)
+  - Experts: 14 (sin cambios, pero con muchas más tools por experto)
+  - Seguridad: XSS fix, mutex, exec/proxmox hardening
+  - UI: settings panel, history browser, drag-drop, cancel button, responsive
+  - Inteligencia: HVAC optimizer, presence predictor, anomaly detector,
+    smart scheduler, device health, camera vision AI, weather alerts,
+    automation analytics, integration repair
+  - Coste base: sigue en ~$0.30-0.35/día (todas las features nuevas son on-demand)
+
+────────────────────────────────────────────────────────────────────────────────
 v3.34.8 (2026-06-25) — Vision AI + Integration Repair + Multi-Room + Areas
 ────────────────────────────────────────────────────────────────────────────────
 

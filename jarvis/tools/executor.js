@@ -4880,6 +4880,189 @@ ${dots}`;
         }
       }
 
+      // ─── Weather forecast ───
+      case 'weather_forecast': {
+        switch (input.action) {
+          case 'current': {
+            const allStates = await haGet('/api/states');
+            const weatherEntity = input.entity_id
+              ? allStates.find(e => e.entity_id === input.entity_id)
+              : allStates.find(e => e.entity_id.startsWith('weather.'));
+            if (!weatherEntity) return { error: 'No se encontró entidad weather.*' };
+            const a = weatherEntity.attributes || {};
+            return {
+              entity_id: weatherEntity.entity_id, condition: weatherEntity.state,
+              temperature: a.temperature, humidity: a.humidity,
+              pressure: a.pressure, wind_speed: a.wind_speed,
+              wind_bearing: a.wind_bearing, visibility: a.visibility,
+              unit_system: { temperature: a.temperature_unit, speed: a.wind_speed_unit, pressure: a.pressure_unit }
+            };
+          }
+          case 'forecast': {
+            const allStates = await haGet('/api/states');
+            const weatherEntity = input.entity_id
+              ? allStates.find(e => e.entity_id === input.entity_id)
+              : allStates.find(e => e.entity_id.startsWith('weather.'));
+            if (!weatherEntity) return { error: 'No se encontró entidad weather.*' };
+            const forecast = weatherEntity.attributes.forecast || [];
+            return {
+              entity_id: weatherEntity.entity_id, current: weatherEntity.state,
+              forecast: forecast.slice(0, 12).map(f => ({
+                datetime: f.datetime, condition: f.condition,
+                temperature: f.temperature, templow: f.templow,
+                precipitation: f.precipitation, precipitation_probability: f.precipitation_probability,
+                wind_speed: f.wind_speed
+              }))
+            };
+          }
+          case 'alerts': {
+            const allStates = await haGet('/api/states');
+            const weatherEntity = allStates.find(e => e.entity_id.startsWith('weather.'));
+            if (!weatherEntity) return { error: 'No se encontró weather.*' };
+            const forecast = weatherEntity.attributes.forecast || [];
+            const alerts = [];
+            const a = weatherEntity.attributes;
+            if (a.wind_speed && a.wind_speed > 40) alerts.push({ type: 'viento_fuerte', value: a.wind_speed, action: 'Recoger toldos, cerrar ventanas' });
+            if (a.temperature && a.temperature < 2) alerts.push({ type: 'helada', value: a.temperature, action: 'Proteger tuberías exteriores, pre-calentar' });
+            if (a.temperature && a.temperature > 38) alerts.push({ type: 'calor_extremo', value: a.temperature, action: 'Cerrar persianas, AC a máximo, hidratación' });
+            for (const f of forecast.slice(0, 6)) {
+              if (f.condition === 'rainy' || f.condition === 'pouring') alerts.push({ type: 'lluvia', datetime: f.datetime, action: 'Recoger ropa, cancelar riego' });
+              if (f.condition === 'snowy') alerts.push({ type: 'nieve', datetime: f.datetime, action: 'Pre-calentar, sal para entrada' });
+              if (f.precipitation_probability && f.precipitation_probability > 70) alerts.push({ type: 'precipitacion_probable', datetime: f.datetime, prob: f.precipitation_probability, action: 'Recoger toldo, cerrar ventanas' });
+            }
+            return { current: weatherEntity.state, alerts_count: alerts.length, alerts };
+          }
+          default:
+            return { error: `Acción weather_forecast desconocida: ${input.action}` };
+        }
+      }
+
+      // ─── Input helpers management ───
+      case 'input_manage': {
+        switch (input.action) {
+          case 'list': {
+            const allStates = await haGet('/api/states');
+            const inputs = allStates.filter(e => e.entity_id.startsWith('input_'));
+            const grouped = {};
+            for (const inp of inputs) {
+              const domain = inp.entity_id.split('.')[0];
+              if (!grouped[domain]) grouped[domain] = [];
+              grouped[domain].push({ entity_id: inp.entity_id, state: inp.state, name: inp.attributes.friendly_name, editable: inp.attributes.editable });
+            }
+            return { total: inputs.length, by_type: grouped };
+          }
+          case 'set': {
+            if (!input.entity_id || !input.value) return { error: 'Requiere entity_id y value' };
+            const domain = input.entity_id.split('.')[0];
+            let service;
+            if (domain === 'input_boolean') service = input.value === 'true' || input.value === 'on' ? 'input_boolean/turn_on' : 'input_boolean/turn_off';
+            else if (domain === 'input_number') service = 'input_number/set_value';
+            else if (domain === 'input_text') service = 'input_text/set_value';
+            else if (domain === 'input_select') service = 'input_select/select_option';
+            else if (domain === 'input_datetime') service = 'input_datetime/set_datetime';
+            else return { error: `Dominio no soportado: ${domain}` };
+            const data = { entity_id: input.entity_id };
+            if (domain === 'input_number') data.value = parseFloat(input.value);
+            else if (domain === 'input_text') data.value = input.value;
+            else if (domain === 'input_select') data.option = input.value;
+            else if (domain === 'input_datetime') { if (input.value.includes(':')) data.time = input.value; else data.date = input.value; }
+            await haPost(`/api/services/${service}`, data);
+            return { entity_id: input.entity_id, new_value: input.value, result: 'OK' };
+          }
+          case 'create': {
+            if (!input.helper_type || !input.name) return { error: 'Requiere helper_type y name' };
+            const helperData = { name: input.name, ...(input.options || {}) };
+            const configEndpoint = `/api/config/${input.helper_type}/items`;
+            try {
+              const r = await haPost(configEndpoint, helperData);
+              return { action: 'create', type: input.helper_type, name: input.name, result: r };
+            } catch (e) {
+              return { error: `No se pudo crear ${input.helper_type}: ${e.message}. Puede requerir configuración en configuration.yaml.` };
+            }
+          }
+          default:
+            return { error: `Acción input_manage desconocida: ${input.action}` };
+        }
+      }
+
+      // ─── Automation analytics ───
+      case 'automation_analytics': {
+        const automations = await haGet('/api/states').then(s => s.filter(e => e.entity_id.startsWith('automation.')));
+        switch (input.action) {
+          case 'usage': {
+            const sorted = automations.sort((a, b) => {
+              const aCount = parseInt(a.attributes.current || 0);
+              const bCount = parseInt(b.attributes.current || 0);
+              return bCount - aCount;
+            });
+            return {
+              total: automations.length,
+              active: automations.filter(a => a.state === 'on').length,
+              disabled: automations.filter(a => a.state === 'off').length,
+              unavailable: automations.filter(a => a.state === 'unavailable').length,
+              most_triggered: sorted.slice(0, 10).map(a => ({
+                entity_id: a.entity_id, alias: a.attributes.friendly_name,
+                state: a.state, last_triggered: a.attributes.last_triggered,
+                current: a.attributes.current || 0
+              })),
+              never_triggered: automations.filter(a => !a.attributes.last_triggered).map(a => ({
+                entity_id: a.entity_id, alias: a.attributes.friendly_name, state: a.state
+              }))
+            };
+          }
+          case 'unused': {
+            const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
+            const unused = automations.filter(a => {
+              if (!a.attributes.last_triggered) return true;
+              return new Date(a.attributes.last_triggered) < thirtyDaysAgo;
+            });
+            return {
+              unused_count: unused.length,
+              unused: unused.map(a => ({
+                entity_id: a.entity_id, alias: a.attributes.friendly_name,
+                state: a.state, last_triggered: a.attributes.last_triggered || 'nunca'
+              })),
+              recommendation: unused.length > 5 ? 'Considerar eliminar automatizaciones que no se usan en 30+ días' : 'Pocas automatizaciones sin usar'
+            };
+          }
+          case 'conflicts': {
+            const potentialConflicts = [];
+            for (let i = 0; i < automations.length; i++) {
+              for (let j = i + 1; j < automations.length; j++) {
+                const a = automations[i];
+                const b = automations[j];
+                const aName = (a.attributes.friendly_name || '').toLowerCase();
+                const bName = (b.attributes.friendly_name || '').toLowerCase();
+                if (aName && bName) {
+                  const aWords = new Set(aName.split(/\s+/));
+                  const bWords = new Set(bName.split(/\s+/));
+                  const common = [...aWords].filter(w => bWords.has(w) && w.length > 3);
+                  if (common.length >= 2) {
+                    potentialConflicts.push({ a: a.attributes.friendly_name, b: b.attributes.friendly_name, common_words: common });
+                  }
+                }
+              }
+            }
+            return { potential_conflicts: potentialConflicts.length, conflicts: potentialConflicts.slice(0, 10) };
+          }
+          case 'optimize': {
+            const issues = [];
+            for (const a of automations) {
+              if (a.state === 'unavailable') issues.push({ entity_id: a.entity_id, issue: 'unavailable — YAML roto o integración no cargada', severity: 'high' });
+              if (a.state === 'off' && a.attributes.last_triggered) issues.push({ entity_id: a.entity_id, issue: 'Desactivada pero se usaba antes', severity: 'low' });
+              if (!a.attributes.last_triggered && a.state === 'on') issues.push({ entity_id: a.entity_id, issue: 'Activa pero nunca disparada — posible trigger incorrecto', severity: 'medium' });
+            }
+            return {
+              total_issues: issues.length,
+              issues: issues.slice(0, 20),
+              summary: `${issues.filter(i => i.severity === 'high').length} críticos, ${issues.filter(i => i.severity === 'medium').length} moderados, ${issues.filter(i => i.severity === 'low').length} leves`
+            };
+          }
+          default:
+            return { error: `Acción automation_analytics desconocida: ${input.action}` };
+        }
+      }
+
       // ─── Camera vision analysis ───
       case 'camera_analyze': {
         if (!input.entity_id || !input.entity_id.startsWith('camera.'))

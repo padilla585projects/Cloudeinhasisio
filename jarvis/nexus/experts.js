@@ -33,7 +33,8 @@ const EXPERTS = {
             'zha_matter_manage', 'system_info',
             'climate_optimize', 'presence_predict', 'anomaly_detect',
             'smart_schedule', 'device_health',
-            'camera_analyze', 'integration_repair', 'multi_room_audio', 'area_manage']
+            'camera_analyze', 'integration_repair', 'multi_room_audio', 'area_manage',
+            'weather_forecast', 'input_manage', 'automation_analytics']
   },
 
   diagnostico: {
@@ -59,7 +60,7 @@ const EXPERTS = {
             'get_installed_frontend', 'search_hacs_resources', 'install_hacs_resource',
             'read_file', 'write_file', 'append_file', 'patch_file', 'rollback',
             'validate_yaml', 'list_directory', 'save_memory', 'learn', 'ha_knowledge',
-            'dev_workspace', 'edit_script', 'delete_script']
+            'dev_workspace', 'edit_script', 'delete_script', 'automation_analytics']
   },
 
   archivo: {
@@ -112,7 +113,7 @@ const EXPERTS = {
             'template_render', 'create_automation', 'analyze_patterns',
             'save_memory', 'learn', 'web_search', 'ha_knowledge',
             'knowledge_db', 'read_file', 'energy_query', 'climate_optimize',
-            'smart_schedule', 'device_health']
+            'smart_schedule', 'device_health', 'weather_forecast']
   },
 
   seguridad: {
