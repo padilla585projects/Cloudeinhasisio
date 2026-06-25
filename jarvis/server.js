@@ -1339,6 +1339,22 @@ app.get('/api/agent_network/status', (req, res) => {
 
 
 // Modo ahorro
+app.get('/api/config', (req, res) => {
+  const expertList = Object.entries(EXPERTS).map(([k, v]) => ({
+    name: k, label: v.label, model: v.model, tools: (v.tools || []).length, modules: (v.modules || []).length
+  }));
+  res.json({
+    version: state.JARVIS_VERSION,
+    saver_mode: state.saverMode,
+    models: { main: C.MODEL, bg: C.BG_MODEL, dev: C.CLAUDE_MODEL, analysis: C.DEEPSEEK_MODEL, reasoning: C.DEEPSEEK_R1_MODEL },
+    keys: { openai: !!C.OPENAI_API_KEY, anthropic: !!C.ANTHROPIC_API_KEY, deepseek: !!C.DEEPSEEK_API_KEY, serper: !!C.SERPER_API_KEY, github: !!C.GITHUB_TOKEN, telegram: !!C.TELEGRAM_BOT_TOKEN },
+    experts: expertList,
+    stats: { tools: openAITools.length, memories: state.userMemory.length, learnings: state.learnings.length, history_msgs: state.conversationHistory.length },
+    api_usage: { ...state.apiUsage, cost_usd: calcCost(state.apiUsage) },
+    uptime: Math.floor(process.uptime())
+  });
+});
+
 app.post('/api/saver', (req, res) => {
   state.saverMode = req.body.enabled !== undefined ? !!req.body.enabled : !state.saverMode;
   console.log(`[saver] Modo ahorro ${state.saverMode ? 'ACTIVADO' : 'desactivado'}`);

@@ -3,6 +3,30 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.34.5 (2026-06-25) — Settings Panel + History Browser + Drag-Drop Upload
+────────────────────────────────────────────────────────────────────────────────
+
+UI — SETTINGS PANEL:
+- Botón gear en el header abre modal con configuración completa de Jarvis.
+- Muestra: versión, uptime, modo ahorro, modelos activos, API keys (configurada/no),
+  uso de API (llamadas, tokens in/out, coste), estadísticas, grid de expertos NEXUS.
+- Consume /api/config endpoint (añadido en v3.34.4). Coste: 0 tokens (solo lectura local).
+
+UI — HISTORY BROWSER:
+- Barra de búsqueda mejorada: además de filtrar mensajes visibles en DOM,
+  ahora consulta /api/history/search con debounce (400ms, 3+ chars).
+- Muestra resultados del historial del servidor en panel desplegable bajo el input.
+- Coste: 0 tokens (búsqueda local en memoria del servidor).
+
+UI — DRAG-AND-DROP FILE UPLOAD:
+- Overlay visual al arrastrar archivos sobre el área de mensajes.
+- Los archivos soltados se inyectan en el input de adjuntos existente (handleFileSelect).
+- Contador de dragenter/dragleave evita parpadeo del overlay.
+- Coste: 0 tokens (solo UI).
+
+IMPACTO TOKENS: $0.00/día — las 3 features son puramente frontend/UI.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.34.4 (2026-06-25) — Matter/ZHA + System Info + History Search
 ────────────────────────────────────────────────────────────────────────────────
 
