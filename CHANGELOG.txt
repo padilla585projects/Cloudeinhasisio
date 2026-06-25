@@ -3,6 +3,16 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.33.31 (2026-06-25) — Fix crash: backticks sin escapar en modules.js
+────────────────────────────────────────────────────────────────────────────────
+
+BUG: El texto añadido en v3.33.30 contenía backticks de markdown (`type:`, `action:`)
+dentro de un template literal de JavaScript, lo que cerraba el string prematuramente
+y causaba un SyntaxError en la línea 422 de modules.js → el add-on no arrancaba.
+
+FIX: Eliminados los backticks de markdown del texto dentro del template literal.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.30 (2026-06-15) — Regla: formato correcto de acciones en scripts.yaml
 ────────────────────────────────────────────────────────────────────────────────
 

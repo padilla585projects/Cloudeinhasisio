@@ -419,10 +419,10 @@ generado por la UI de HA:
       continue_on_error: true   ← OBLIGATORIO si el dispositivo puede estar unavailable
 
 RAZONES:
-- El formato `type:` usa device_id/entity_id internos (UUIDs) que cambian al reinstalar
-- El formato `type:` NO soporta continue_on_error → si el device está unavailable, el script
+- El formato type: usa device_id/entity_id internos (UUIDs) que cambian al reinstalar
+- El formato type: NO soporta continue_on_error → si el device está unavailable, el script
   se aborta y el resto de acciones (incluido el turn_off) nunca se ejecuta
-- El formato `action:` usa entity_ids reales, es portable y soporta continue_on_error
+- El formato action: usa entity_ids reales, es portable y soporta continue_on_error
 
 CUÁNDO USAR continue_on_error: true:
 - Siempre que el dispositivo pueda estar unavailable (switches Shelly, Zigbee, WiFi)
