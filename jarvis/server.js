@@ -1542,6 +1542,61 @@ app.post('/api/deploy-update', async (req, res) => {
 });
 
 // ── Arrancar ─────────────────────────────────────────────────────────────────
+// ── Proactive device health scanner (zero LLM cost) ─────────────────────────
+async function proactiveDeviceHealthScan() {
+  try {
+    const allStates = await haGet('/states');
+    if (!Array.isArray(allStates)) return;
+    const issues = [];
+
+    // Low batteries (< 15%)
+    const batteries = allStates.filter(e =>
+      (e.attributes?.device_class === 'battery' || e.entity_id.includes('battery')) &&
+      !isNaN(parseFloat(e.state)) && parseFloat(e.state) < 15
+    );
+    for (const b of batteries) {
+      issues.push(`🔋 ${b.attributes?.friendly_name || b.entity_id}: ${b.state}%`);
+    }
+
+    // Unavailable devices (> 5 min)
+    const unavailable = allStates.filter(e =>
+      (e.state === 'unavailable' || e.state === 'unknown') &&
+      !e.entity_id.startsWith('automation.') &&
+      !e.entity_id.startsWith('script.') &&
+      !e.entity_id.startsWith('scene.') &&
+      !e.entity_id.startsWith('input_')
+    );
+    if (unavailable.length > 0 && unavailable.length <= 20) {
+      for (const u of unavailable.slice(0, 10)) {
+        issues.push(`⚠️ ${u.attributes?.friendly_name || u.entity_id}: ${u.state}`);
+      }
+      if (unavailable.length > 10) issues.push(`...y ${unavailable.length - 10} más`);
+    }
+
+    // Save results
+    const healthFile = path.join(C.DATA_DIR, 'device_health_log.json');
+    let healthLog = loadJSON(healthFile, []);
+    healthLog.push({ ts: new Date().toISOString(), batteries_low: batteries.length, unavailable: unavailable.length, issues: issues.length });
+    if (healthLog.length > 180) healthLog = healthLog.slice(-180);
+    saveJSON(healthFile, healthLog);
+
+    if (issues.length > 0) {
+      console.log(`[health-scan] ${issues.length} problemas detectados: ${batteries.length} baterías bajas, ${unavailable.length} dispositivos caídos`);
+      // Telegram alert if configured and issues are significant
+      if (process.env.TELEGRAM_BOT_TOKEN && (batteries.length > 0 || unavailable.length > 5)) {
+        try {
+          const msg = `🏥 *Jarvis Health Scan*\n${issues.slice(0, 8).join('\n')}`;
+          await haPost('/services/telegram_bot/send_message', { message: msg, parse_mode: 'markdown' }).catch(() => {});
+        } catch {}
+      }
+    } else {
+      console.log('[health-scan] Todo OK — 0 problemas detectados');
+    }
+  } catch (e) {
+    console.log(`[health-scan] Error: ${e.message}`);
+  }
+}
+
 const PORT = 3000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Jarvis AI Agent v${state.JARVIS_VERSION} corriendo en puerto ${PORT}`);
@@ -1669,6 +1724,10 @@ app.listen(PORT, '0.0.0.0', () => {
   //    Cada 5 min; primer chequeo a los 5 min (cuando HA esté estable).
   setInterval(infraGuardLoop, 5 * 60_000);
   setTimeout(infraGuardLoop, 5 * 60_000);
+
+  // ── Proactive device health scan (cada 4h, primer chequeo a los 10 min)
+  setInterval(proactiveDeviceHealthScan, 4 * 3600_000);
+  setTimeout(proactiveDeviceHealthScan, 10 * 60_000);
 
   // ── Bot de Telegram standalone (opt-in via telegram_bot_token en config) ──
   startTelegramBot().catch(e => console.log('[tg-bot] start error:', e.message));

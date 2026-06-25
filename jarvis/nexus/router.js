@@ -77,6 +77,14 @@ async function nexusRoute(message) {
     return { expert: 'diagnostico', source: 'regex', confidence: 0.85 };
   if (/predic|cu[aá]ndo.*llego|cu[aá]ndo.*vuelv|hora.*llegar|rutina.*diaria|patr[oó]n.*presencia|ocupaci[oó]n|habitaci[oó]n.*ocupada/.test(text))
     return { expert: 'seguridad', source: 'regex', confidence: 0.8 };
+  if (/tiempo|pron[oó]stico|lluvia|llueve|lloviendo|meteo|meteorolog|viento|tormenta|nieve|helada|temperatura exterior|grados fuera|clima exterior|previsi[oó]n/.test(text))
+    return { expert: 'ha_control', source: 'regex', confidence: 0.85 };
+  if (/[aá]rea|zona|habitaci[oó]n|sala|cuarto|organiza.*casa|planta|piso|asigna.*dispositivo.*[aá]rea/.test(text) && !/automatiz/.test(text))
+    return { expert: 'ha_control', source: 'regex', confidence: 0.8 };
+  if (/integraci[oó]n|a[ñn]adir.*dispositivo|configurar.*dispositivo|nueva.*integraci[oó]n|reparar.*integraci[oó]n|recargar.*integraci[oó]n/.test(text))
+    return { expert: 'diagnostico', source: 'regex', confidence: 0.85 };
+  if (/input_boolean|input_number|input_select|input_text|input_datetime|helper|ayudante|variable|contador/.test(text))
+    return { expert: 'ha_control', source: 'regex', confidence: 0.85 };
   if (/lee|escribe|lista|archivo|fichero|directorio|config|yaml|json/.test(text) && text.length < 150)
     return { expert: 'archivo', source: 'regex', confidence: 0.8 };
   if (/\brazona\b|an[aá]lisis profundo|piensa.*fondo|explica.*detalle.*por qu[eé]|r1\b|deepseek.?r1|cadena de pensamiento/.test(text))

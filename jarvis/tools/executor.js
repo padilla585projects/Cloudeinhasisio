@@ -2386,10 +2386,13 @@ Prohibida la copia, redistribucion y uso comercial.`);
           case 'scan_subnet': {
             const sub = subnet || await new Promise(r => {
               exec("ip route | grep src | awk '{print $NF}' | head -1", (err, out) => {
-                const ip = out.trim();
+                const ip = (out || '').trim();
                 r(ip && /^\d+\.\d+\.\d+/.test(ip) ? ip.split('.').slice(0, 3).join('.') : '192.168.1');
               });
             });
+            if (!/^\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(sub)) {
+              return { error: `Subnet inválida: "${sub}". Formato esperado: 192.168.1` };
+            }
             const promises = Array.from({ length: 254 }, (_, i) => new Promise(r => {
               exec(`ping -c 1 -W 1 ${sub}.${i + 1} 2>/dev/null`, err => r(err ? null : `${sub}.${i + 1}`));
             }));
@@ -2484,7 +2487,9 @@ Prohibida la copia, redistribucion y uso comercial.`);
 
           case 'wol': {
             if (!mac) return { error: 'mac es requerido (formato AA:BB:CC:DD:EE:FF)' };
-            const macBytes = mac.replace(/[:\-]/g, '').match(/../g).map(h => parseInt(h, 16));
+            const macClean = mac.replace(/[:\-]/g, '');
+            if (!/^[0-9a-fA-F]{12}$/.test(macClean)) return { error: `MAC inválida: "${mac}". Formato: AA:BB:CC:DD:EE:FF` };
+            const macBytes = macClean.match(/../g).map(h => parseInt(h, 16));
             const magic = Buffer.alloc(102);
             magic.fill(0xff, 0, 6);
             for (let i = 0; i < 16; i++) Buffer.from(macBytes).copy(magic, 6 + i * 6);
@@ -2639,6 +2644,7 @@ Prohibida la copia, redistribucion y uso comercial.`);
 
       // ─── Rollback ───
       case 'rollback': {
+        if (!input.filepath) return { error: 'filepath es requerido para rollback' };
         if (!fs.existsSync(C.BACKUPS_DIR)) return { error: 'No hay backups todavía.' };
         const safeName = input.filepath.replace(/[/\\:]/g, '_');
         const allBackups = fs.readdirSync(C.BACKUPS_DIR)

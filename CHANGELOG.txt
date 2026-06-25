@@ -3,6 +3,26 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.35.0 (2026-06-25) — Hardening: seguridad, estabilidad y proactividad
+────────────────────────────────────────────────────────────────────────────────
+
+SEGURIDAD:
+- Fix command injection en scan_subnet: input validado con regex estricto
+- Fix crash en wol: MAC address validada antes del regex match
+- Fix crash en rollback: null guard para input.filepath
+
+ROUTER NEXUS (0 tokens):
+- Nuevos regex patterns: weather/pronóstico, áreas/zonas, integraciones, input helpers
+- Queries comunes que antes caían al LLM router ahora resueltas gratis por regex
+
+PROACTIVIDAD:
+- Background device health scan (cada 4h, zero LLM): baterías <15%, unavailable
+- Log persistente en /data/device_health_log.json
+- Alerta Telegram automática si hay problemas significativos
+
+IMPACTO TOKENS: $0.00/día extra (scan es puro código). Ahorro ~$0.01-0.02/día regex.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.34.9 (2026-06-25) — Weather + Input Helpers + Automation Analytics (102 tools)
 ────────────────────────────────────────────────────────────────────────────────
 
