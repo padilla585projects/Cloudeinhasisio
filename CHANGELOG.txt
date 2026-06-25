@@ -3,6 +3,26 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.35.2 (2026-06-25) — Quick actions + smart contextual suggestions
+────────────────────────────────────────────────────────────────────────────────
+
+UI/UX:
+- Entity quick toggle: luces y persianas en la tarjeta de estado se pueden
+  encender/apagar con un botón circular directo, sin escribir nada.
+  Backend: POST /api/quick-action con whitelist de dominios seguros
+  (light, switch, cover, fan, input_boolean) y acciones permitidas.
+- Toggle visual: feedback instantáneo en el botón (color accent cuando on).
+
+INTELIGENCIA:
+- Sugerencias contextuales mejoradas: ahora detectan:
+  · Nadie en casa + luces encendidas → aviso inteligente
+  · Baterías bajas → sugerencia proactiva
+  · Climatización activa sin presencia → aviso de desperdicio
+- Covers en /api/status ahora incluyen entity_id (necesario para quick actions)
+
+IMPACTO TOKENS: $0.00/día extra (quick-action es una llamada directa a HA API)
+
+────────────────────────────────────────────────────────────────────────────────
 v3.35.1 (2026-06-25) — UX: Quick dashboard, smart notifications, toast alerts
 ────────────────────────────────────────────────────────────────────────────────
 

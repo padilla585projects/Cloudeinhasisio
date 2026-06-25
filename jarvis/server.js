@@ -651,6 +651,7 @@ app.get('/api/status', async (req, res) => {
 
     // Cortinas/persianas
     const covers = states.filter(e => e.entity_id.startsWith('cover.')).map(c => ({
+      entity_id: c.entity_id,
       name: c.attributes.friendly_name || c.entity_id,
       state: c.state,
       position: c.attributes.current_position ?? null
@@ -734,6 +735,22 @@ app.get('/api/suggestions', async (req, res) => {
     if (lightsOn > 5) suggestions.push(`💡 Hay ${lightsOn} luces encendidas, ¿apago las innecesarias?`);
     if (unavailable > 10) suggestions.push(`⚠️ ${unavailable} dispositivos no responden, ¿lo reviso?`);
     if (thoughts.length > 0) suggestions.push(`💭 Tengo ${thoughts.length} sugerencia${thoughts.length > 1 ? 's' : ''} pendiente${thoughts.length > 1 ? 's' : ''} para ti`);
+
+    // Presence-aware suggestions
+    const persons = states.filter(e => e.entity_id.startsWith('person.'));
+    const nobodyHome = persons.length > 0 && persons.every(p => p.state !== 'home');
+    if (nobodyHome && lightsOn > 0) suggestions.unshift(`🏠 No hay nadie en casa pero hay ${lightsOn} luces encendidas`);
+
+    // Low battery warnings
+    const lowBatteries = states.filter(e =>
+      (e.attributes?.device_class === 'battery' || e.entity_id.includes('battery')) &&
+      !isNaN(parseFloat(e.state)) && parseFloat(e.state) < 15
+    );
+    if (lowBatteries.length > 0) suggestions.push(`🔋 ${lowBatteries.length} dispositivo${lowBatteries.length > 1 ? 's' : ''} con batería baja`);
+
+    // Climate optimization
+    const climates = states.filter(e => e.entity_id.startsWith('climate.') && e.state !== 'off');
+    if (climates.length > 0 && nobodyHome) suggestions.push('❄️ La climatización sigue encendida sin nadie en casa');
 
     res.json({ suggestions: suggestions.slice(0, 6), hour });
   } catch (e) {
@@ -1341,6 +1358,25 @@ app.get('/api/agent_network/status', (req, res) => {
 
 
 // Modo ahorro
+// ── Quick toggle actions (from status card, zero LLM cost) ──────────────────
+app.post('/api/quick-action', async (req, res) => {
+  const { entity_id, action } = req.body || {};
+  if (!entity_id || typeof entity_id !== 'string') return res.status(400).json({ error: 'entity_id requerido' });
+  // Only allow safe toggle actions on lights, switches, covers, fans
+  const domain = entity_id.split('.')[0];
+  const allowed = { light: ['toggle','turn_on','turn_off'], switch: ['toggle','turn_on','turn_off'], cover: ['toggle','open_cover','close_cover','stop_cover'], fan: ['toggle','turn_on','turn_off'], input_boolean: ['toggle','turn_on','turn_off'] };
+  if (!allowed[domain]) return res.status(400).json({ error: `Dominio no permitido para quick-action: ${domain}` });
+  const svc = action || 'toggle';
+  if (!allowed[domain].includes(svc)) return res.status(400).json({ error: `Acción no permitida: ${svc}` });
+  try {
+    const result = await haPost(`/services/${domain === 'cover' ? 'cover' : domain}/${svc}`, { entity_id });
+    console.log(`[quick-action] ${svc} → ${entity_id}`);
+    res.json({ ok: true, entity_id, action: svc });
+  } catch (e) {
+    res.json({ ok: false, error: e.message });
+  }
+});
+
 app.get('/api/notifications', (req, res) => {
   const limit = parseInt(req.query.limit) || 20;
   res.json({ notifications: getRecentNotifications(limit) });

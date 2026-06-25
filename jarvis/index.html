@@ -646,6 +646,15 @@
   .notif-icon { font-size: 18px; flex-shrink: 0; }
   .notif-body { flex: 1; line-height: 1.4; }
   .notif-close { background: none; border: none; color: var(--text3); cursor: pointer; font-size: 14px; padding: 0 0 0 4px; }
+  /* ── Quick action toggle buttons ──────────────────────── */
+  .qa-toggle {
+    background: none; border: 1px solid var(--border); border-radius: 50%;
+    width: 22px; height: 22px; font-size: 10px; cursor: pointer;
+    color: var(--text3); transition: all 0.2s; margin-left: auto; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .qa-toggle:hover { border-color: var(--accent); color: var(--accent); }
+  .qa-toggle.qa-on { background: var(--accent); border-color: var(--accent); color: #000; }
   /* ── Status card (panel visual /estado) ────────────────── */
   .status-card {
     background: var(--bg2); border: 1px solid var(--border);
@@ -1337,6 +1346,7 @@
             return `<div class="status-detail-row ${l.state === 'on' ? 'on' : 'off'}">
               <span class="status-detail-icon">${l.state === 'on' ? '💡' : '○'}</span>
               <span class="status-detail-name">${l.name}</span>${bri}
+              <button class="qa-toggle ${l.state === 'on' ? 'qa-on' : ''}" onclick="quickToggle('${l.entity_id}',this,event)" title="Toggle">${l.state === 'on' ? '●' : '○'}</button>
             </div>`;
           }).join('');
           sections.push(`<div class="status-section"><div class="status-section-title">Luces</div>${rows}</div>`);
@@ -1374,6 +1384,7 @@
             return `<div class="status-detail-row">
               <span class="status-detail-icon">${c.state === 'open' ? '🪟' : '▬'}</span>
               <span class="status-detail-name">${c.name}</span>${pos}
+              <button class="qa-toggle ${c.state === 'open' ? 'qa-on' : ''}" onclick="quickToggle('${c.entity_id}',this,event)" title="Toggle">${c.state === 'open' ? '▼' : '▲'}</button>
             </div>`;
           }).join('');
           sections.push(`<div class="status-section"><div class="status-section-title">Persianas</div>${rows}</div>`);
@@ -3037,6 +3048,26 @@
     };
     es.onerror = () => { es.close(); setTimeout(connectPushEvents, 5000); };
   }
+
+  // ── Quick toggle from status card ─────────────────────────────────────────
+  window.quickToggle = async function(entityId, btn, ev) {
+    ev.stopPropagation();
+    btn.style.opacity = '0.4';
+    try {
+      const r = await fetch('api/quick-action', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entity_id: entityId, action: 'toggle' })
+      });
+      const d = await r.json();
+      if (d.ok) {
+        const isOn = btn.classList.toggle('qa-on');
+        btn.textContent = entityId.startsWith('cover.') ? (isOn ? '▼' : '▲') : (isOn ? '●' : '○');
+        const row = btn.closest('.status-detail-row');
+        if (row) { row.classList.toggle('on', isOn); row.classList.toggle('off', !isOn); }
+      }
+    } catch {}
+    btn.style.opacity = '1';
+  };
 
   // ── Toast notifications from background processes ─────────────────────────
   function showNotificationToast(event) {
