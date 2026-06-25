@@ -3,6 +3,38 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.34.8 (2026-06-25) — Vision AI + Integration Repair + Multi-Room + Areas
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVAS TOOLS (4):
+- camera_analyze: captura snapshot de cámara HA, lo envía a GPT-4o-mini Vision,
+  devuelve descripción de lo que ve (personas, vehículos, actividad sospechosa).
+  Acepta pregunta específica ("¿hay alguien en la puerta?").
+  Asignada a: ha_control, seguridad.
+
+- integration_repair: diagnostica y repara integraciones de HA.
+  Acciones: list (todas las config entries con estado), reload (recarga por
+  entry_id o dominio), diagnose (análisis de por qué falla con conteo de
+  entidades unavailable), stale (integraciones sin entidades activas).
+  Asignada a: ha_control, diagnostico.
+
+- multi_room_audio: gestión de audio multi-habitación.
+  Acciones: list_speakers (todos los media_player.*), play (reproduce en
+  varios altavoces), announce (anuncia por Alexa o TTS), volume (ajusta
+  por habitación), status (qué se reproduce ahora).
+  Asignada a: ha_control, multimedia.
+
+- area_manage: gestión de áreas/habitaciones de HA.
+  Acciones: list (áreas con dispositivos), create (nueva área), devices
+  (dispositivos de un área), control (encender/apagar toda un área).
+  Asignada a: ha_control.
+
+TOTAL TOOLS: 99.
+
+IMPACTO TOKENS: camera_analyze usa GPT-4o-mini Vision (~$0.001/llamada,
+solo bajo demanda del usuario). Resto: $0.00/día.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.34.7 (2026-06-25) — Smart Scheduling + Device Health Monitoring
 ────────────────────────────────────────────────────────────────────────────────
 

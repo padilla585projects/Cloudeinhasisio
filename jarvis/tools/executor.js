@@ -4880,6 +4880,223 @@ ${dots}`;
         }
       }
 
+      // ─── Camera vision analysis ───
+      case 'camera_analyze': {
+        if (!input.entity_id || !input.entity_id.startsWith('camera.'))
+          return { error: 'Requiere entity_id de cámara (camera.*)' };
+        try {
+          const snapshotUrl = `${C.HA_URL}/api/camera_proxy/${input.entity_id}`;
+          const imgRes = await fetch(snapshotUrl, { headers: { Authorization: `Bearer ${C.HA_TOKEN}` } });
+          if (!imgRes.ok) return { error: `No se pudo obtener snapshot: ${imgRes.status}` };
+          const imgBuffer = await imgRes.buffer();
+          const b64 = imgBuffer.toString('base64');
+          const mimeType = imgRes.headers.get('content-type') || 'image/jpeg';
+          const question = input.question || 'Describe detalladamente lo que ves en esta imagen de cámara de seguridad. Identifica personas, vehículos, animales, objetos y cualquier actividad relevante.';
+          const visionMessages = [{
+            role: 'user',
+            content: [
+              { type: 'image_url', image_url: { url: `data:${mimeType};base64,${b64}`, detail: 'auto' } },
+              { type: 'text', text: question }
+            ]
+          }];
+          const { callOpenAI } = require('../utils/llm');
+          const result = await callOpenAI(C.BG_MODEL || 'gpt-4o-mini', 'Eres un sistema de análisis de cámaras de seguridad. Responde en español, sé conciso y preciso.', visionMessages, null, 500);
+          return { camera: input.entity_id, analysis: result.text, timestamp: new Date().toISOString() };
+        } catch (e) {
+          return { error: `Error analizando cámara: ${e.message}` };
+        }
+      }
+
+      // ─── Integration repair ───
+      case 'integration_repair': {
+        switch (input.action) {
+          case 'list': {
+            const entries = await haGet('/api/config/config_entries/entry').catch(() => []);
+            if (!Array.isArray(entries)) return { error: 'No se pudieron obtener config entries', raw: entries };
+            const summary = entries.map(e => ({
+              entry_id: e.entry_id, domain: e.domain, title: e.title,
+              state: e.state, disabled_by: e.disabled_by || null,
+              source: e.source
+            }));
+            const byState = {};
+            for (const e of summary) {
+              byState[e.state || 'loaded'] = (byState[e.state || 'loaded'] || 0) + 1;
+            }
+            return { total: entries.length, by_state: byState, entries: summary.slice(0, 40) };
+          }
+          case 'reload': {
+            if (input.entry_id) {
+              const r = await haPost('/api/config/config_entries/entry/' + input.entry_id + '/reload', {}).catch(e => ({ error: e.message }));
+              return { action: 'reload', entry_id: input.entry_id, result: r };
+            } else if (input.domain) {
+              const r = await haPost('/api/services/homeassistant/reload_config_entry', { domain: input.domain }).catch(e => ({ error: e.message }));
+              return { action: 'reload_domain', domain: input.domain, result: r || 'sent' };
+            }
+            return { error: 'Requiere entry_id o domain para reload' };
+          }
+          case 'diagnose': {
+            const entries = await haGet('/api/config/config_entries/entry').catch(() => []);
+            const target = input.entry_id
+              ? entries.find(e => e.entry_id === input.entry_id)
+              : input.domain ? entries.find(e => e.domain === input.domain) : null;
+            if (!target) return { error: 'Integración no encontrada' };
+            const allStates = await haGet('/api/states');
+            const relatedEntities = allStates.filter(e => {
+              const platform = e.attributes?.platform || '';
+              return platform === target.domain || e.entity_id.includes(target.domain);
+            });
+            const unavailable = relatedEntities.filter(e => e.state === 'unavailable' || e.state === 'unknown');
+            return {
+              integration: target.title, domain: target.domain, state: target.state,
+              entry_id: target.entry_id, disabled: target.disabled_by || false,
+              total_entities: relatedEntities.length, unavailable: unavailable.length,
+              unavailable_entities: unavailable.slice(0, 10).map(e => e.entity_id),
+              diagnosis: unavailable.length === relatedEntities.length && relatedEntities.length > 0
+                ? 'CRÍTICO: Todas las entidades caídas — integración no está cargando'
+                : unavailable.length > 0
+                ? `${unavailable.length}/${relatedEntities.length} entidades caídas — posible problema parcial`
+                : 'OK: Todas las entidades activas'
+            };
+          }
+          case 'stale': {
+            const entries = await haGet('/api/config/config_entries/entry').catch(() => []);
+            const allStates = await haGet('/api/states');
+            const staleIntegrations = [];
+            for (const entry of entries) {
+              const related = allStates.filter(e => (e.attributes?.platform || '') === entry.domain);
+              if (related.length === 0 && entry.state !== 'not_loaded') {
+                staleIntegrations.push({ entry_id: entry.entry_id, domain: entry.domain, title: entry.title, state: entry.state });
+              }
+            }
+            return { stale_count: staleIntegrations.length, stale_integrations: staleIntegrations.slice(0, 20) };
+          }
+          default:
+            return { error: `Acción integration_repair desconocida: ${input.action}` };
+        }
+      }
+
+      // ─── Multi-room audio ───
+      case 'multi_room_audio': {
+        switch (input.action) {
+          case 'list_speakers': {
+            const allStates = await haGet('/api/states');
+            const speakers = allStates.filter(e => e.entity_id.startsWith('media_player.'));
+            return {
+              total: speakers.length,
+              speakers: speakers.map(s => ({
+                entity_id: s.entity_id, state: s.state,
+                name: s.attributes.friendly_name,
+                volume: s.attributes.volume_level ? Math.round(s.attributes.volume_level * 100) : null,
+                media_title: s.attributes.media_title || null,
+                source: s.attributes.source || null
+              }))
+            };
+          }
+          case 'play': {
+            const targets = input.speakers || [];
+            const media = input.media || '';
+            if (!media) return { error: 'Requiere media (URL o query)' };
+            const results = [];
+            for (const sp of targets) {
+              try {
+                await haPost('/api/services/media_player/play_media', { entity_id: sp, media_content_id: media, media_content_type: 'music' });
+                results.push({ speaker: sp, status: 'playing' });
+              } catch (e) { results.push({ speaker: sp, status: 'error', error: e.message }); }
+            }
+            return { action: 'play', media, results };
+          }
+          case 'announce': {
+            const msg = input.message || '';
+            if (!msg) return { error: 'Requiere message para announce' };
+            const targets = input.speakers || [];
+            const results = [];
+            if (targets.length === 0) {
+              try {
+                await haPost('/api/services/notify/alexa_media', { message: msg, data: { type: 'announce' } });
+                results.push({ target: 'all_alexa', status: 'sent' });
+              } catch (e) {
+                try {
+                  await haPost('/api/services/tts/speak', { message: msg });
+                  results.push({ target: 'tts', status: 'sent' });
+                } catch (e2) { results.push({ target: 'all', status: 'error', error: e2.message }); }
+              }
+            } else {
+              for (const sp of targets) {
+                try {
+                  await haPost('/api/services/notify/alexa_media_' + sp.replace('media_player.', '').replace('echo_', ''), { message: msg, data: { type: 'announce' } });
+                  results.push({ speaker: sp, status: 'announced' });
+                } catch (e) { results.push({ speaker: sp, status: 'error', error: e.message }); }
+              }
+            }
+            return { action: 'announce', message: msg, results };
+          }
+          case 'volume': {
+            const vol = (input.volume || 50) / 100;
+            const targets = input.speakers || [];
+            const results = [];
+            for (const sp of targets) {
+              try {
+                await haPost('/api/services/media_player/volume_set', { entity_id: sp, volume_level: vol });
+                results.push({ speaker: sp, volume: input.volume });
+              } catch (e) { results.push({ speaker: sp, status: 'error', error: e.message }); }
+            }
+            return { action: 'volume_set', results };
+          }
+          case 'status': {
+            const allStates = await haGet('/api/states');
+            const playing = allStates.filter(e => e.entity_id.startsWith('media_player.') && e.state === 'playing');
+            return {
+              playing_count: playing.length,
+              playing: playing.map(p => ({
+                entity_id: p.entity_id, name: p.attributes.friendly_name,
+                title: p.attributes.media_title, artist: p.attributes.media_artist,
+                volume: p.attributes.volume_level ? Math.round(p.attributes.volume_level * 100) : null,
+                source: p.attributes.source
+              }))
+            };
+          }
+          default:
+            return { error: `Acción multi_room_audio desconocida: ${input.action}` };
+        }
+      }
+
+      // ─── Area management ───
+      case 'area_manage': {
+        switch (input.action) {
+          case 'list': {
+            const areasRaw = await haGet('/api/config/area_registry/list').catch(() => []);
+            const areas = Array.isArray(areasRaw) ? areasRaw : (areasRaw?.data || []);
+            return { total: areas.length, areas: areas.map(a => ({ area_id: a.area_id, name: a.name, aliases: a.aliases, picture: a.picture })) };
+          }
+          case 'create': {
+            if (!input.name) return { error: 'Requiere name para crear área' };
+            const r = await haPost('/api/config/area_registry/create', { name: input.name }).catch(e => ({ error: e.message }));
+            return { action: 'create', name: input.name, result: r };
+          }
+          case 'devices': {
+            if (!input.area_id) return { error: 'Requiere area_id' };
+            const devicesRaw = await haGet('/api/config/device_registry/list').catch(() => []);
+            const devices = Array.isArray(devicesRaw) ? devicesRaw : (devicesRaw?.data || []);
+            const areaDevices = devices.filter(d => d.area_id === input.area_id);
+            return {
+              area_id: input.area_id,
+              device_count: areaDevices.length,
+              devices: areaDevices.map(d => ({ id: d.id, name: d.name_by_user || d.name, manufacturer: d.manufacturer, model: d.model }))
+            };
+          }
+          case 'control': {
+            if (!input.area_id || !input.command) return { error: 'Requiere area_id y command (turn_on/turn_off/toggle)' };
+            const service = input.command === 'turn_on' ? 'homeassistant/turn_on' : input.command === 'turn_off' ? 'homeassistant/turn_off' : 'homeassistant/toggle';
+            try {
+              await haPost(`/api/services/${service}`, { area_id: input.area_id });
+              return { action: input.command, area_id: input.area_id, result: 'OK' };
+            } catch (e) { return { error: e.message }; }
+          }
+          default:
+            return { error: `Acción area_manage desconocida: ${input.action}` };
+        }
+      }
+
       // ─── Smart scheduling ───
       case 'smart_schedule': {
         const duration = input.duration_hours || 2;

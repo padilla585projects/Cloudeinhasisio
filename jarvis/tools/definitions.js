@@ -1283,6 +1283,60 @@ const tools = [
     }
   },
   {
+    name: 'camera_analyze',
+    description: 'Captura snapshot de una cámara HA y lo analiza con IA de visión (GPT-4o). Describe qué se ve: personas, vehículos, animales, objetos, actividad sospechosa. Ideal para seguridad, monitorización y alertas proactivas.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        entity_id: { type: 'string', description: 'Entity_id de la cámara (ej: camera.salon, camera.entrada)' },
+        question: { type: 'string', description: 'Pregunta específica sobre la imagen (ej: "¿hay alguien en la puerta?"). Si no se especifica, describe lo que ve.' }
+      },
+      required: ['entity_id']
+    }
+  },
+  {
+    name: 'integration_repair',
+    description: 'Diagnostica y repara integraciones de HA. Acciones: list (lista todas las config entries con estado), reload (recarga una integración por entry_id o dominio), diagnose (analiza por qué una integración no funciona), stale (encuentra integraciones sin entidades activas).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['list', 'reload', 'diagnose', 'stale'], description: 'Tipo de operación' },
+        entry_id: { type: 'string', description: 'Config entry ID (para reload/diagnose)' },
+        domain: { type: 'string', description: 'Dominio de integración (ej: mqtt, zha, esphome)' }
+      },
+      required: ['action']
+    }
+  },
+  {
+    name: 'multi_room_audio',
+    description: 'Gestión de audio multi-habitación con altavoces Alexa/HA. Acciones: list_speakers (lista todos los media_player.*), play (reproduce en uno o varios), announce (anuncia mensaje en altavoces seleccionados), volume (ajusta volumen por habitación), status (estado de reproducción actual).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['list_speakers', 'play', 'announce', 'volume', 'status'], description: 'Tipo de acción' },
+        speakers: { type: 'array', items: { type: 'string' }, description: 'Lista de entity_ids de altavoces (si vacío, todos)' },
+        message: { type: 'string', description: 'Mensaje para announce' },
+        media: { type: 'string', description: 'URL o query de media para play' },
+        volume: { type: 'number', description: 'Nivel de volumen 0-100' }
+      },
+      required: ['action']
+    }
+  },
+  {
+    name: 'area_manage',
+    description: 'Gestiona áreas/habitaciones de HA. Acciones: list (lista todas las áreas con sus dispositivos), create (crea nueva área), devices (lista dispositivos de un área), control (controla todos los dispositivos de un área: encender/apagar luces, etc.).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['list', 'create', 'devices', 'control'], description: 'Tipo de acción' },
+        area_id: { type: 'string', description: 'ID del área (para devices/control)' },
+        name: { type: 'string', description: 'Nombre del área (para create)' },
+        command: { type: 'string', description: 'Comando para control: turn_on, turn_off, toggle' }
+      },
+      required: ['action']
+    }
+  },
+  {
     name: 'smart_schedule',
     description: 'Genera horarios inteligentes para dispositivos de alto consumo combinando: precios PVPC (horas baratas), patrones de presencia (cuándo está Adrián en casa), y previsión meteorológica. Ideal para: lavadora, calentador, carga de EV, bomba de piscina, riego. Acciones: recommend (sugiere mejor horario para un dispositivo), pvpc_windows (muestra las horas más baratas de hoy/mañana), weekly (plan semanal optimizado).',
     input_schema: {

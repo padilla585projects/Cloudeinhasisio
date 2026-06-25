@@ -32,7 +32,8 @@ const EXPERTS = {
             'backup_restore', 'notify_all', 'energy_query',
             'zha_matter_manage', 'system_info',
             'climate_optimize', 'presence_predict', 'anomaly_detect',
-            'smart_schedule', 'device_health']
+            'smart_schedule', 'device_health',
+            'camera_analyze', 'integration_repair', 'multi_room_audio', 'area_manage']
   },
 
   diagnostico: {
@@ -44,7 +45,8 @@ const EXPERTS = {
             'read_file', 'learn', 'ha_supervisor', 'network', 'get_notifications',
             'get_repairs', 'scan_installation', 'ha_knowledge', 'rollback', 'validate_yaml',
             'score_installation', 'esphome_manage', 'backup_restore',
-            'zha_matter_manage', 'system_info', 'anomaly_detect', 'device_health']
+            'zha_matter_manage', 'system_info', 'anomaly_detect', 'device_health',
+            'integration_repair']
   },
 
   automatizacion: {
@@ -98,7 +100,8 @@ const EXPERTS = {
     label: 'Multimedia',
     tools: ['call_service', 'speak', 'alexa_bidirectional', 'get_entities',
             'get_entity_state', 'generate_image', 'image_edit', 'telegram_send_image',
-            'web_search', 'fetch_url', 'save_memory', 'read_file', 'notify_all']
+            'web_search', 'fetch_url', 'save_memory', 'read_file', 'notify_all',
+            'multi_room_audio']
   },
 
   energia: {
@@ -120,7 +123,7 @@ const EXPERTS = {
             'telegram_send', 'telegram_send_image', 'telegram_get_updates',
             'get_automations', 'create_automation', 'reload_config', 'get_system_logs',
             'learn', 'network', 'save_memory', 'manage_users', 'notify_all',
-            'presence_predict', 'anomaly_detect']
+            'presence_predict', 'anomaly_detect', 'camera_analyze']
   },
 
   red: {
