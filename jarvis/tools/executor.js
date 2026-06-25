@@ -4453,6 +4453,102 @@ ${dots}`;
         };
       }
 
+      // ─── ESPHome management ───
+      case 'esphome_manage': {
+        const espSlug = '5c53de3b_esphome';
+        const espApi = async (endpoint, method = 'GET', body) => {
+          const opts = {
+            method,
+            headers: { Authorization: `Bearer ${C.HA_TOKEN}` }
+          };
+          if (body) {
+            opts.headers['Content-Type'] = 'application/json';
+            opts.body = JSON.stringify(body);
+          }
+          const r = await fetch(`http://supervisor/addons/${espSlug}/api/${endpoint}`, opts);
+          const text = await r.text();
+          if (!r.ok) return { error: `ESPHome API ${r.status}: ${text.slice(0, 500)}` };
+          try { return JSON.parse(text); } catch { return { raw: text.slice(0, 3000) }; }
+        };
+        const espSvGet = async (endpoint) => {
+          const r = await fetch(`http://supervisor/addons/${espSlug}${endpoint}`, {
+            headers: { Authorization: `Bearer ${C.HA_TOKEN}` }
+          });
+          const text = await r.text();
+          try { return JSON.parse(text); } catch { return { raw: text }; }
+        };
+
+        switch (input.action) {
+          case 'addon_info': {
+            const info = await espSvGet('/info');
+            const d = info.data || info;
+            return { name: d.name, version: d.version, state: d.state, update_available: d.update_available, url: d.url };
+          }
+          case 'list': {
+            const configDir = '/config/esphome';
+            if (!fs.existsSync(configDir)) return { error: 'Directorio /config/esphome no encontrado. ¿Está ESPHome instalado?' };
+            const files = fs.readdirSync(configDir).filter(f => f.endsWith('.yaml') && !f.startsWith('.') && f !== 'secrets.yaml');
+            const devices = files.map(f => {
+              const name = f.replace('.yaml', '');
+              try {
+                const content = fs.readFileSync(path.join(configDir, f), 'utf8');
+                const platformMatch = content.match(/^(esp32|esp8266|rp2040|bk72xx|rtl87xx):/m);
+                return { name, file: f, platform: platformMatch ? platformMatch[1] : 'unknown' };
+              } catch { return { name, file: f }; }
+            });
+            return { devices, total: devices.length };
+          }
+          case 'config': {
+            if (!input.device) return { error: 'device requerido' };
+            const filePath = `/config/esphome/${input.device}.yaml`;
+            if (!fs.existsSync(filePath)) return { error: `No existe: ${filePath}` };
+            const content = fs.readFileSync(filePath, 'utf8');
+            return { device: input.device, config: content.slice(0, 5000) };
+          }
+          case 'validate': {
+            if (!input.device) return { error: 'device requerido' };
+            const filePath = `/config/esphome/${input.device}.yaml`;
+            if (!fs.existsSync(filePath)) return { error: `No existe: ${filePath}` };
+            const content = fs.readFileSync(filePath, 'utf8');
+            try {
+              yaml.load(content);
+              return { valid: true, device: input.device };
+            } catch (e) {
+              return { valid: false, error: e.message };
+            }
+          }
+          case 'compile': {
+            if (!input.device) return { error: 'device requerido' };
+            const r = await espApi(`${input.device}/compile`, 'POST');
+            return r.error ? r : { success: true, message: `Compilación de ${input.device} iniciada. Puede tardar 1-3 minutos.` };
+          }
+          case 'install': {
+            if (!input.device) return { error: 'device requerido' };
+            const r = await espApi(`${input.device}/install?mode=ota`, 'POST');
+            return r.error ? r : { success: true, message: `Instalación OTA de ${input.device} iniciada.` };
+          }
+          case 'logs': {
+            if (!input.device) return { error: 'device requerido' };
+            const r = await espApi(`${input.device}/logs`);
+            return r;
+          }
+          case 'restart': {
+            const svPost = async (endpoint) => {
+              const r2 = await fetch(`http://supervisor/addons/${espSlug}${endpoint}`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${C.HA_TOKEN}` }
+              });
+              const text = await r2.text();
+              try { return JSON.parse(text); } catch { return { raw: text }; }
+            };
+            const r = await svPost('/restart');
+            return r.result === 'ok' ? { success: true, message: 'ESPHome add-on reiniciándose' } : r;
+          }
+          default:
+            return { error: `Acción ESPHome desconocida: ${input.action}. Usa: list, config, compile, install, logs, restart, addon_info, validate` };
+        }
+      }
+
       default:
         return { error: `Tool desconocida: ${name}` };
     }

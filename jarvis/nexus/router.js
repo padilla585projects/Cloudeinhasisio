@@ -61,6 +61,8 @@ async function nexusRoute(message) {
     return { expert: 'diagnostico', source: 'regex', confidence: 0.85 };
   if (/zigbee|z2m|zigbee2mqtt|coordinador|pareado|pairing/.test(text))
     return { expert: 'diagnostico', source: 'regex', confidence: 0.85 };
+  if (/esphome|esp32|esp8266|flashe(a|ar)|compil(a|ar).*firmware|sensor.*diy/.test(text))
+    return { expert: 'ha_control', source: 'regex', confidence: 0.85 };
   if (/est[aá] (en casa|fuera|llegad[oa]|salid[oa])|persona.*detectad|presencia.*hogar/.test(text))
     return { expert: 'seguridad', source: 'regex', confidence: 0.8 };
   if (/lee|escribe|lista|archivo|fichero|directorio|config|yaml|json/.test(text) && text.length < 150)

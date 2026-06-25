@@ -27,7 +27,8 @@ const EXPERTS = {
             'save_memory', 'get_memory', 'learn', 'web_search', 'ha_knowledge',
             'scan_installation', 'check_config', 'speak', 'telegram_send', 'rollback',
             'show_house_status', 'generate_image', 'generate_image_gemini', 'dev_workspace',
-            'edit_script', 'delete_script', 'mqtt_publish', 'zigbee_manage']
+            'edit_script', 'delete_script', 'mqtt_publish', 'zigbee_manage',
+            'score_installation', 'render_floorplan', 'manage_users', 'esphome_manage']
   },
 
   diagnostico: {
@@ -37,7 +38,8 @@ const EXPERTS = {
     tools: ['get_entities', 'search_entities', 'get_entity_state', 'get_history', 'get_logbook',
             'get_system_logs', 'get_error_log', 'check_config', 'web_search', 'web_search_native', 'fetch_url',
             'read_file', 'learn', 'ha_supervisor', 'network', 'get_notifications',
-            'get_repairs', 'scan_installation', 'ha_knowledge', 'rollback', 'validate_yaml']
+            'get_repairs', 'scan_installation', 'ha_knowledge', 'rollback', 'validate_yaml',
+            'score_installation', 'esphome_manage']
   },
 
   automatizacion: {
@@ -58,7 +60,8 @@ const EXPERTS = {
     modules: ['base', 'ha_config_engineering', 'filesystem', 'inamovible'],
     label: 'Archivos',
     tools: ['read_file', 'write_file', 'append_file', 'list_directory', 'patch_file',
-            'rollback', 'validate_yaml', 'check_config', 'reload_config', 'fetch_url', 'web_search']
+            'rollback', 'validate_yaml', 'check_config', 'reload_config', 'fetch_url', 'web_search',
+            'local_file']
   },
 
   emergencia: {
@@ -80,7 +83,8 @@ const EXPERTS = {
             'analyze_github_repos', 'web_search', 'web_search_native', 'fetch_url', 'ha_supervisor',
             'validate_yaml', 'update_ui', 'nexus_manage', 'create_custom_tool',
             'run_custom_tool', 'house_3d_map', 'learn', 'knowledge_db',
-            'generate_image', 'generate_image_gemini', 'dev_workspace']
+            'generate_image', 'generate_image_gemini', 'dev_workspace',
+            'render_floorplan', 'local_file', 'esphome_manage']
   },
 
   multimedia: {
@@ -109,7 +113,7 @@ const EXPERTS = {
     tools: ['get_entities', 'get_entity_state', 'call_service', 'get_history', 'get_logbook',
             'telegram_send', 'telegram_send_image', 'telegram_get_updates',
             'get_automations', 'create_automation', 'reload_config', 'get_system_logs',
-            'learn', 'network', 'save_memory']
+            'learn', 'network', 'save_memory', 'manage_users']
   },
 
   red: {
@@ -118,7 +122,8 @@ const EXPERTS = {
     label: 'Red e Infra',
     tools: ['network', 'proxmox_api', 'agent_chat', 'agent_communicate', 'web_search',
             'fetch_url', 'read_file', 'write_file', 'exec_command', 'get_system_logs',
-            'ha_supervisor', 'learn', 'knowledge_db', 'mqtt_publish', 'zigbee_manage']
+            'ha_supervisor', 'learn', 'knowledge_db', 'mqtt_publish', 'zigbee_manage',
+            'esphome_manage']
   },
 
   aprendizaje: {

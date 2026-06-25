@@ -1154,6 +1154,20 @@ const tools = [
     }
   },
 
+  // ─── ESPHome management ───
+  {
+    name: 'esphome_manage',
+    description: 'Gestiona dispositivos ESPHome: listar, ver config, compilar, flashear, logs, reiniciar. Requiere el add-on ESPHome instalado.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['list', 'config', 'compile', 'install', 'logs', 'restart', 'addon_info', 'validate'], description: 'list: dispositivos. config: ver YAML de un dispositivo. compile: compilar firmware. install: flashear OTA. logs: ver logs. restart: reiniciar add-on. addon_info: info del add-on. validate: validar config.' },
+        device: { type: 'string', description: 'Nombre del dispositivo (sin extensión .yaml). Ej: salon_sensor, cocina_led' }
+      },
+      required: ['action']
+    }
+  },
+
   // ─── Panel visual ───
   {
     name: 'show_house_status',

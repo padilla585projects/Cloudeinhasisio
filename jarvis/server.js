@@ -83,11 +83,56 @@ console.log(`[init] Memoria: ${state.userMemory.length} notas | Historial: ${sta
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function saveHistory() {
-  // Más mensajes por turno ahora (assistant+tool_calls+tool_results), subir límite
   const histLimit = state.saverMode ? 30 : 60;
   if (state.conversationHistory.length > histLimit)
     state.conversationHistory = state.conversationHistory.slice(-histLimit);
   saveJSON(C.HISTORY_FILE, state.conversationHistory);
+}
+
+async function summarizeOldHistory() {
+  const SUMMARIZE_THRESHOLD = 40;
+  const SUMMARIZE_BATCH = 20;
+  if (state.conversationHistory.length < SUMMARIZE_THRESHOLD) return;
+  if (state._summarizing) return;
+  state._summarizing = true;
+  try {
+    const hasSummary = state.conversationHistory[0]?._summary;
+    const startIdx = hasSummary ? 1 : 0;
+    const oldMsgs = state.conversationHistory.slice(startIdx, startIdx + SUMMARIZE_BATCH);
+    if (oldMsgs.length < 10) return;
+
+    const prevSummary = hasSummary ? state.conversationHistory[0].content : '';
+    const digest = oldMsgs.map(m => {
+      if (m.role === 'tool') return null;
+      if (m.role === 'assistant' && m.tool_calls) return `[Jarvis usó: ${m.tool_calls.map(tc => tc.function?.name || '?').join(', ')}]`;
+      const text = typeof m.content === 'string' ? m.content : (Array.isArray(m.content) ? m.content.filter(c => c.type === 'text').map(c => c.text).join(' ') : '');
+      if (!text) return null;
+      return `${m.role === 'user' ? 'Adrián' : 'Jarvis'}: ${text.slice(0, 300)}`;
+    }).filter(Boolean).join('\n');
+
+    const prompt = prevSummary
+      ? `Resumen anterior:\n${prevSummary}\n\nNuevos mensajes:\n${digest}\n\nActualiza el resumen incluyendo lo nuevo. Máx 200 palabras. Solo hechos: qué pidió el usuario, qué hizo Jarvis, qué tools usó, resultados clave. Español.`
+      : `Mensajes:\n${digest}\n\nResume esta conversación en máx 150 palabras. Solo hechos: qué pidió el usuario, qué hizo Jarvis, qué tools usó, resultados clave. Español.`;
+
+    const result = await callLLM(C.BG_MODEL, 'Eres un resumidor conciso. Solo hechos, sin opiniones.', [{ role: 'user', content: prompt }], [], 300);
+
+    if (result.text) {
+      const summaryMsg = { role: 'user', content: `[RESUMEN AUTOMÁTICO DE CONVERSACIÓN ANTERIOR — no es un mensaje real del usuario]\n${result.text}`, _summary: true };
+      const ackMsg = { role: 'assistant', content: 'Entendido, tengo el contexto de la conversación anterior.', _summary: true };
+      if (hasSummary) {
+        const oldAck = state.conversationHistory[1]?._summary ? 2 : 1;
+        state.conversationHistory.splice(0, oldAck + SUMMARIZE_BATCH, summaryMsg, ackMsg);
+      } else {
+        state.conversationHistory.splice(0, SUMMARIZE_BATCH, summaryMsg, ackMsg);
+      }
+      saveHistory();
+      console.log(`[summarize] ${SUMMARIZE_BATCH} msgs → resumen (${result.text.length} chars). Historial: ${state.conversationHistory.length} msgs`);
+    }
+  } catch (e) {
+    console.log(`[summarize] Error: ${e.message}`);
+  } finally {
+    state._summarizing = false;
+  }
 }
 
 function pushToAll(event) {
@@ -515,6 +560,7 @@ app.post('/api/chat', async (req, res) => {
         state.conversationHistory.push({ role: 'assistant', content: finalText });
       }
       saveHistory();
+      summarizeOldHistory().catch(() => {});
       const hadCorrection = finalText.toLowerCase().includes('perdona') || finalText.toLowerCase().includes('tienes raz');
       nexusEvolutionTick(nexusExpertName, true, hadCorrection);
     }

@@ -3,6 +3,40 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.34.1 (2026-06-25) — Memoria larga + ESPHome + tools huérfanas
+────────────────────────────────────────────────────────────────────────────────
+
+INTELIGENCIA:
+- Conversation summarization: cuando el historial supera 40 mensajes, los más
+  antiguos se comprimen en un resumen automático usando BG_MODEL (gpt-4o-mini).
+  Esto preserva contexto de largo plazo sin inflar tokens. Coste: ~$0.0001/resumen.
+- El resumen se almacena como par user/assistant al inicio del historial,
+  compatible con todos los modelos (OpenAI, Anthropic, DeepSeek).
+
+NUEVA TOOL:
+- esphome_manage: gestión completa de ESPHome desde Jarvis.
+  Acciones: list, config, validate, compile, install (OTA), logs, restart, addon_info.
+  Lee directamente /config/esphome/*.yaml y usa la API del add-on ESPHome.
+  Asignada a: ha_control, diagnostico, red, dev.
+
+TOOLS HUÉRFANAS CORREGIDAS:
+- score_installation → ha_control, diagnostico
+- render_floorplan → ha_control, dev
+- manage_users → ha_control, seguridad
+- local_file → archivo, dev
+- Antes estas 4 tools estaban definidas pero ningún experto las tenía asignadas.
+
+ROUTER:
+- Regex para ESPHome: "esphome", "esp32", "esp8266", "flashear", "compilar firmware"
+  rutan automáticamente al experto ha_control.
+
+IMPACTO TOKENS:
+- Summarization: +~100 tokens in / +150 out por resumen (BG_MODEL, solo cuando
+  historial >40 msgs). Ahorra mucho más al comprimir 20 msgs → 1 resumen.
+- esphome_manage: 0 tokens extra (solo se carga si el experto la necesita).
+- Tools huérfanas: 0 impacto (ya estaban definidas, ahora solo asignadas).
+
+────────────────────────────────────────────────────────────────────────────────
 v3.34.0 (2026-06-25) — Superinteligencia: optimización masiva + tools nuevas
 ────────────────────────────────────────────────────────────────────────────────
 
