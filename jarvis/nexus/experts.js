@@ -9,7 +9,7 @@ const { MODEL, BG_MODEL, CLAUDE_MODEL, DEEPSEEK_MODEL, DEEPSEEK_R1_MODEL } = req
 const EXPERTS = {
   rapido: {
     model: BG_MODEL, maxTokens: 2048, maxIter: 6,
-    modules: ['base', 'autonomy', 'optimization'],
+    modules: ['base'],
     label: 'Rápido',
     tools: ['get_entities', 'search_entities', 'get_entity_state', 'call_service',
             'save_memory', 'get_memory', 'speak', 'web_search', 'fetch_url',
@@ -18,7 +18,7 @@ const EXPERTS = {
 
   ha_control: {
     model: MODEL, maxTokens: 4096, maxIter: 8,
-    modules: ['base', 'philosophy', 'ha_control', 'ha_internals', 'ha_config_engineering', 'autonomy', 'optimization', 'filesystem', 'inamovible'],
+    modules: ['base', 'philosophy', 'ha_control', 'ha_internals', 'ha_config_engineering', 'filesystem', 'inamovible'],
     label: 'Control HA',
     tools: ['get_entities', 'search_entities', 'get_entity_state', 'call_service',
             'get_history', 'get_logbook', 'get_automations', 'create_automation',
@@ -26,12 +26,13 @@ const EXPERTS = {
             'read_file', 'write_file', 'patch_file', 'validate_yaml', 'list_directory',
             'save_memory', 'get_memory', 'learn', 'web_search', 'ha_knowledge',
             'scan_installation', 'check_config', 'speak', 'telegram_send', 'rollback',
-            'show_house_status', 'generate_image', 'generate_image_gemini', 'dev_workspace']
+            'show_house_status', 'generate_image', 'generate_image_gemini', 'dev_workspace',
+            'edit_script', 'delete_script', 'mqtt_publish', 'zigbee_manage']
   },
 
   diagnostico: {
     model: MODEL, maxTokens: 4096, maxIter: 10,
-    modules: ['base', 'perseverance', 'ha_control', 'ha_internals', 'ha_config_engineering', 'diagnostico', 'optimization', 'filesystem', 'inamovible'],
+    modules: ['base', 'perseverance', 'ha_control', 'ha_internals', 'ha_config_engineering', 'diagnostico', 'filesystem', 'inamovible'],
     label: 'Diagnóstico',
     tools: ['get_entities', 'search_entities', 'get_entity_state', 'get_history', 'get_logbook',
             'get_system_logs', 'get_error_log', 'check_config', 'web_search', 'web_search_native', 'fetch_url',
@@ -41,7 +42,7 @@ const EXPERTS = {
 
   automatizacion: {
     model: MODEL, maxTokens: 4096, maxIter: 8,
-    modules: ['base', 'philosophy', 'natural_automation', 'automation', 'ha_internals', 'ha_config_engineering', 'ha_control', 'optimization', 'filesystem', 'inamovible'],
+    modules: ['base', 'philosophy', 'natural_automation', 'automation', 'ha_internals', 'ha_config_engineering', 'ha_control', 'filesystem', 'inamovible'],
     label: 'Automatización',
     tools: ['get_automations', 'create_automation', 'edit_automation', 'delete_automation',
             'simulate_automation', 'reload_config', 'check_config',
@@ -49,12 +50,12 @@ const EXPERTS = {
             'get_installed_frontend', 'search_hacs_resources', 'install_hacs_resource',
             'read_file', 'write_file', 'append_file', 'patch_file', 'rollback',
             'validate_yaml', 'list_directory', 'save_memory', 'learn', 'ha_knowledge',
-            'dev_workspace']
+            'dev_workspace', 'edit_script', 'delete_script']
   },
 
   archivo: {
     model: MODEL, maxTokens: 3072, maxIter: 6,
-    modules: ['base', 'ha_config_engineering', 'filesystem', 'autonomy', 'optimization', 'inamovible'],
+    modules: ['base', 'ha_config_engineering', 'filesystem', 'inamovible'],
     label: 'Archivos',
     tools: ['read_file', 'write_file', 'append_file', 'list_directory', 'patch_file',
             'rollback', 'validate_yaml', 'check_config', 'reload_config', 'fetch_url', 'web_search']
@@ -62,7 +63,7 @@ const EXPERTS = {
 
   emergencia: {
     model: MODEL, maxTokens: 6144, maxIter: 12,
-    modules: ['base', 'perseverance', 'emergency', 'ha_config_engineering', 'diagnostico', 'ha_internals', 'ha_control', 'optimization', 'filesystem', 'inamovible'],
+    modules: ['base', 'perseverance', 'emergency', 'ha_config_engineering', 'diagnostico', 'ha_internals', 'ha_control', 'filesystem', 'inamovible'],
     label: 'Emergencia',
     tools: ['get_entities', 'get_entity_state', 'call_service', 'get_system_logs',
             'get_error_log', 'read_file', 'write_file', 'reload_config', 'check_config',
@@ -72,7 +73,7 @@ const EXPERTS = {
 
   dev: {
     model: CLAUDE_MODEL, maxTokens: 3500, maxIter: 5,
-    modules: ['base', 'philosophy', 'dev', 'autonomy', 'inamovible'],
+    modules: ['base', 'philosophy', 'dev', 'inamovible'],
     label: 'Desarrollo',
     tools: ['read_file', 'write_file', 'append_file', 'list_directory', 'patch_file',
             'rollback', 'exec_command', 'update_self', 'create_addon', 'github_push',
@@ -84,7 +85,7 @@ const EXPERTS = {
 
   multimedia: {
     model: MODEL, maxTokens: 2048, maxIter: 6,
-    modules: ['base', 'autonomy', 'multimedia', 'ha_control', 'optimization', 'filesystem', 'inamovible'],
+    modules: ['base', 'multimedia', 'ha_control', 'filesystem', 'inamovible'],
     label: 'Multimedia',
     tools: ['call_service', 'speak', 'alexa_bidirectional', 'get_entities',
             'get_entity_state', 'generate_image', 'image_edit', 'telegram_send_image',
@@ -93,7 +94,7 @@ const EXPERTS = {
 
   energia: {
     model: MODEL, maxTokens: 4096, maxIter: 8,
-    modules: ['base', 'autonomy', 'energia', 'ha_control', 'optimization', 'filesystem', 'inamovible'],
+    modules: ['base', 'energia', 'ha_control', 'filesystem', 'inamovible'],
     label: 'Energía',
     tools: ['get_entities', 'get_entity_state', 'get_history', 'get_logbook', 'call_service',
             'template_render', 'create_automation', 'analyze_patterns',
@@ -103,7 +104,7 @@ const EXPERTS = {
 
   seguridad: {
     model: MODEL, maxTokens: 4096, maxIter: 8,
-    modules: ['base', 'autonomy', 'seguridad_casa', 'ha_control', 'diagnostico', 'optimization', 'filesystem', 'inamovible'],
+    modules: ['base', 'seguridad_casa', 'ha_control', 'diagnostico', 'filesystem', 'inamovible'],
     label: 'Seguridad',
     tools: ['get_entities', 'get_entity_state', 'call_service', 'get_history', 'get_logbook',
             'telegram_send', 'telegram_send_image', 'telegram_get_updates',
@@ -113,16 +114,16 @@ const EXPERTS = {
 
   red: {
     model: MODEL, maxTokens: 4096, maxIter: 8,
-    modules: ['base', 'perseverance', 'red_infra', 'proxmox', 'diagnostico', 'optimization', 'filesystem', 'inamovible'],
+    modules: ['base', 'perseverance', 'red_infra', 'proxmox', 'diagnostico', 'filesystem', 'inamovible'],
     label: 'Red e Infra',
     tools: ['network', 'proxmox_api', 'agent_chat', 'agent_communicate', 'web_search',
             'fetch_url', 'read_file', 'write_file', 'exec_command', 'get_system_logs',
-            'ha_supervisor', 'learn', 'knowledge_db']
+            'ha_supervisor', 'learn', 'knowledge_db', 'mqtt_publish', 'zigbee_manage']
   },
 
   aprendizaje: {
     model: MODEL, maxTokens: 4096, maxIter: 8,
-    modules: ['base', 'autonomy', 'aprendizaje', 'ha_control', 'optimization', 'filesystem', 'inamovible'],
+    modules: ['base', 'aprendizaje', 'ha_control', 'filesystem', 'inamovible'],
     label: 'Aprendizaje',
     tools: ['get_memory', 'save_memory', 'delete_memory', 'learn', 'knowledge_db',
             'analyze_patterns', 'proactive_thought', 'get_entities', 'web_search',
@@ -133,7 +134,7 @@ const EXPERTS = {
 
   analisis: {
     model: DEEPSEEK_MODEL, maxTokens: 4096, maxIter: 8,
-    modules: ['base', 'autonomy', 'aprendizaje', 'optimization'],
+    modules: ['base', 'aprendizaje'],
     label: 'Análisis (DeepSeek V3)',
     // Núcleo de investigación: busca, lee, sintetiza. No modifica HA.
     tools: ['web_search', 'web_search_native', 'fetch_url', 'knowledge_db',
@@ -145,10 +146,8 @@ const EXPERTS = {
 
   razonamiento: {
     model: DEEPSEEK_R1_MODEL, maxTokens: 16000, maxIter: 3,
-    modules: ['base', 'perseverance', 'diagnostico', 'ha_internals', 'ha_control', 'optimization'],
+    modules: ['base_r1'],
     label: 'Razonamiento (DeepSeek R1)',
-    // R1 no soporta function calling — razona con el contexto que recibe.
-    // El sistema le inyecta contexto de la casa antes de la llamada.
     tools: []
   }
 };

@@ -450,6 +450,20 @@ async function executeTool(name, input) {
 
       // ─── Memoria y aprendizaje ───
       case 'save_memory': {
+        // Dedup: si ya existe una nota muy similar (>80% overlap), actualizarla en vez de duplicar
+        const newNote = input.note.toLowerCase().trim();
+        const dupIdx = state.userMemory.findIndex(m => {
+          const existing = m.note.toLowerCase().trim();
+          if (existing === newNote) return true;
+          const shorter = existing.length < newNote.length ? existing : newNote;
+          const longer = existing.length < newNote.length ? newNote : existing;
+          return shorter.length > 20 && longer.includes(shorter);
+        });
+        if (dupIdx >= 0) {
+          state.userMemory[dupIdx] = { note: input.note, category: input.category, savedAt: new Date().toISOString() };
+          saveJSON(C.MEMORY_FILE, state.userMemory);
+          return { success: true, action: 'updated_existing', total: state.userMemory.length };
+        }
         state.userMemory.push({ note: input.note, category: input.category, savedAt: new Date().toISOString() });
         // Cap: máximo 500 notas — elimina las más antiguas si se supera
         const MEMORY_CAP = 500;
@@ -2664,7 +2678,7 @@ Prohibida la copia, redistribucion y uso comercial.`);
           if (snapshots.length < 10) return { error: `Solo hay ${snapshots.length} snapshots. Necesito al menos 10 para analizar.` };
           // analyzePatterns is defined in server.js — call it if available
           try {
-            const { analyzePatterns } = require('../utils/patterns');
+            const { analyzePatterns } = require('../background/patterns');
             analyzePatterns().catch(() => {});
           } catch {
             // If patterns module not available, just note it
@@ -3965,6 +3979,143 @@ ${dots}`;
         try { await haPost('/services/automation/reload', {}); } catch {}
 
         return { success: true, message: `Automatización "${deletedName}" eliminada. El resto del archivo quedó intacto.`, deleted: deletedName };
+      }
+
+      // ─── edit_script ───
+      case 'edit_script': {
+        const scriptFile = '/config/scripts.yaml';
+        const raw = fs.readFileSync(scriptFile, 'utf8');
+        // Backup
+        const backupDir = path.join(C.DATA_DIR, 'backups');
+        if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
+        fs.writeFileSync(path.join(backupDir, 'scripts.yaml.bak'), raw);
+
+        const scriptId = input.script_id;
+        // Buscar el bloque del script por su clave raíz
+        const lines = raw.split('\n');
+        let startIdx = -1, endIdx = lines.length;
+        for (let i = 0; i < lines.length; i++) {
+          const match = lines[i].match(/^(\w[\w_]*):/);
+          if (match && match[1] === scriptId) {
+            startIdx = i;
+          } else if (match && startIdx >= 0 && i > startIdx) {
+            endIdx = i;
+            break;
+          }
+        }
+        if (startIdx < 0) return { error: `Script "${scriptId}" no encontrado en scripts.yaml` };
+
+        // Construir nuevo contenido
+        const before = lines.slice(0, startIdx).join('\n');
+        const after = lines.slice(endIdx).join('\n');
+        const newBlock = `${scriptId}:\n${input.yaml_content.split('\n').map(l => l.startsWith('  ') ? l : '  ' + l).join('\n')}`;
+        const newContent = [before, newBlock, after].filter(Boolean).join('\n');
+
+        fs.writeFileSync(scriptFile, newContent, 'utf8');
+        await haPost('/services/script/reload', {}).catch(() => {});
+        return { success: true, message: `Script "${scriptId}" editado y recargado. Backup guardado.` };
+      }
+
+      // ─── delete_script ───
+      case 'delete_script': {
+        const scriptFile2 = '/config/scripts.yaml';
+        const raw2 = fs.readFileSync(scriptFile2, 'utf8');
+        const backupDir2 = path.join(C.DATA_DIR, 'backups');
+        if (!fs.existsSync(backupDir2)) fs.mkdirSync(backupDir2, { recursive: true });
+        fs.writeFileSync(path.join(backupDir2, 'scripts.yaml.bak'), raw2);
+
+        const lines2 = raw2.split('\n');
+        let start2 = -1, end2 = lines2.length;
+        for (let i = 0; i < lines2.length; i++) {
+          const match = lines2[i].match(/^(\w[\w_]*):/);
+          if (match && match[1] === input.script_id) {
+            start2 = i;
+          } else if (match && start2 >= 0 && i > start2) {
+            end2 = i;
+            break;
+          }
+        }
+        if (start2 < 0) return { error: `Script "${input.script_id}" no encontrado` };
+
+        lines2.splice(start2, end2 - start2);
+        fs.writeFileSync(scriptFile2, lines2.join('\n'), 'utf8');
+        await haPost('/services/script/reload', {}).catch(() => {});
+        return { success: true, message: `Script "${input.script_id}" eliminado. Backup guardado.` };
+      }
+
+      // ─── mqtt_publish ───
+      case 'mqtt_publish': {
+        const mqttResult = await haPost('/services/mqtt/publish', {
+          topic: input.topic,
+          payload: input.payload,
+          retain: input.retain || false
+        });
+        return { success: true, topic: input.topic, payload: input.payload };
+      }
+
+      // ─── zigbee_manage ───
+      case 'zigbee_manage': {
+        const z2mBase = 'zigbee2mqtt/bridge';
+        switch (input.action) {
+          case 'permit_join':
+            await haPost('/services/mqtt/publish', {
+              topic: `${z2mBase}/request/permit_join`,
+              payload: JSON.stringify({ value: true, time: input.duration || 120 })
+            });
+            return { success: true, message: `Emparejamiento abierto ${input.duration || 120}s` };
+          case 'devices': {
+            const devStates = await haGet('/states');
+            const z2mDevices = devStates.filter(e => e.entity_id.includes('zigbee2mqtt') || (e.attributes && e.attributes.device && typeof e.attributes.device === 'object'));
+            return { devices: z2mDevices.slice(0, 50).map(d => ({ entity_id: d.entity_id, state: d.state, name: d.attributes?.friendly_name })) };
+          }
+          case 'network_map':
+            await haPost('/services/mqtt/publish', {
+              topic: `${z2mBase}/request/networkmap`,
+              payload: JSON.stringify({ type: 'raw', routes: true })
+            });
+            return { success: true, message: 'Mapa de red solicitado. Resultado llegará por MQTT en unos segundos.' };
+          case 'rename':
+            if (!input.device || !input.new_name) return { error: 'Requiere device y new_name' };
+            await haPost('/services/mqtt/publish', {
+              topic: `${z2mBase}/request/device/rename`,
+              payload: JSON.stringify({ from: input.device, to: input.new_name })
+            });
+            return { success: true, message: `Renombrado: ${input.device} → ${input.new_name}` };
+          case 'remove':
+            if (!input.device) return { error: 'Requiere device' };
+            await haPost('/services/mqtt/publish', {
+              topic: `${z2mBase}/request/device/remove`,
+              payload: JSON.stringify({ id: input.device, force: false })
+            });
+            return { success: true, message: `Eliminación solicitada: ${input.device}` };
+          case 'ota_check':
+            await haPost('/services/mqtt/publish', {
+              topic: `${z2mBase}/request/device/ota_update/check`,
+              payload: input.device ? JSON.stringify({ id: input.device }) : ''
+            });
+            return { success: true, message: 'OTA check solicitado' };
+          case 'ota_update':
+            if (!input.device) return { error: 'Requiere device' };
+            await haPost('/services/mqtt/publish', {
+              topic: `${z2mBase}/request/device/ota_update/update`,
+              payload: JSON.stringify({ id: input.device })
+            });
+            return { success: true, message: `OTA update lanzado para ${input.device}` };
+          case 'bridge_info':
+            await haPost('/services/mqtt/publish', {
+              topic: `${z2mBase}/request/config`,
+              payload: ''
+            });
+            return { success: true, message: 'Info del bridge solicitada' };
+          case 'restart':
+            await haPost('/services/mqtt/publish', {
+              topic: `${z2mBase}/request/restart`,
+              payload: ''
+            });
+            return { success: true, message: 'Zigbee2MQTT reiniciándose' };
+          default:
+            return { error: `Acción zigbee desconocida: ${input.action}` };
+        }
       }
 
       // ─── template_render ───

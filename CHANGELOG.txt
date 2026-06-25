@@ -3,6 +3,51 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.34.0 (2026-06-25) — Superinteligencia: optimización masiva + tools nuevas
+────────────────────────────────────────────────────────────────────────────────
+
+ESTABILIDAD:
+- Abort on disconnect: si el usuario cierra el tab, Jarvis deja de ejecutar tools
+  y quemar tokens (req.on('close') + clientDisconnected flag en el loop agéntico)
+- Header X-Accel-Buffering: no para SSE a través de nginx/ingress de HA
+- sendEvent() ahora es seguro ante desconexiones (try/catch)
+
+INTELIGENCIA:
+- Tool results persistidos en historial: Jarvis ahora recuerda qué tools ejecutó
+  entre turnos (antes solo guardaba el texto final, perdiendo todo el contexto)
+- Memoria inteligente: selección por relevancia (keywords del mensaje actual)
+  en vez de las últimas 50 notas a ciegas. 20 notas: 10 recientes + 10 relevantes
+- Deduplicación de memoria: notas similares se actualizan en vez de duplicarse
+- Pattern analysis arreglado: require path corregido (utils/ → background/)
+  para que el análisis de patrones funcione cuando se invoca
+
+OPTIMIZACIÓN DE TOKENS (ahorro estimado ~30-40% por request):
+- Módulos base+perseverance+philosophy comprimidos: de ~2,500 tokens a ~800
+- Módulos autonomy y optimization vaciados (contenido integrado en base)
+- Eliminados de todos los expertos (14 expertos × ~300 tokens = ~4,200 tokens/sesión)
+- Expert razonamiento (R1): de 6 módulos pesados a 1 módulo mínimo dedicado
+  (R1 no usa tools → 4,487 tokens de módulos eran puro desperdicio)
+
+TOOLS NUEVAS (4):
+- edit_script: edita scripts en scripts.yaml por ID (backup auto + reload)
+- delete_script: elimina scripts de scripts.yaml (backup auto + reload)
+- mqtt_publish: publica mensajes MQTT via HA (Zigbee2MQTT, Tasmota, ESPHome)
+- zigbee_manage: gestión completa de Zigbee2MQTT (9 acciones: permit_join,
+  devices, network_map, rename, remove, ota_check/update, bridge_info, restart)
+
+LLM LAYER:
+- Retry con backoff exponencial en las 3 APIs (OpenAI, Anthropic, DeepSeek)
+  para errores 429/503/502/ECONNRESET/ETIMEDOUT (máx 2 reintentos)
+- Anthropic prompt caching mejorado: split semántico (busca 'CONTEXTO ACTUAL')
+  en vez de 60% por carácter → mayor tasa de cache hits
+
+UI:
+- Botón cancelar: durante streaming, el botón enviar se convierte en stop (rojo)
+- Responsive: @media queries para móvil (768px, 480px)
+- Sidebar interactivo: click en luces para toggle
+- 3D head: pausa animación cuando el tab está oculto (ahorro GPU)
+
+────────────────────────────────────────────────────────────────────────────────
 v3.33.31 (2026-06-25) — Fix crash: backticks sin escapar en modules.js
 ────────────────────────────────────────────────────────────────────────────────
 

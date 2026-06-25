@@ -98,10 +98,27 @@ function buildDynamicContext() {
   if (state.houseContext)   ctx += `\nINSTALACIÓN:\n${state.houseContext}`;
 
   if (state.userMemory.length > 0) {
-    const memSlice = state.userMemory.slice(-50); // máx 50 entradas en contexto
-    ctx += `\nMEMORIA DEL USUARIO (${memSlice.length}/${state.userMemory.length}):\n`;
-    for (let i = 0; i < memSlice.length; i++)
-      ctx += `[${state.userMemory.length - memSlice.length + i}] (${memSlice[i].category}) ${memSlice[i].note}\n`;
+    // Selección inteligente: recientes (10) + relevantes al mensaje actual (10)
+    const MAX_CONTEXT = 20;
+    const recent = state.userMemory.slice(-10);
+    // Buscar notas relevantes al último mensaje del usuario
+    const lastUserMsg = (state.conversationHistory.filter(m => m.role === 'user').pop()?.content || '').toLowerCase();
+    const words = lastUserMsg.split(/\s+/).filter(w => w.length > 3);
+    let relevant = [];
+    if (words.length > 0) {
+      const scored = state.userMemory.map((m, idx) => {
+        const text = (m.note + ' ' + (m.category || '')).toLowerCase();
+        const score = words.reduce((s, w) => s + (text.includes(w) ? 1 : 0), 0);
+        return { ...m, idx, score };
+      }).filter(m => m.score > 0 && !recent.includes(state.userMemory[m.idx]));
+      scored.sort((a, b) => b.score - a.score);
+      relevant = scored.slice(0, MAX_CONTEXT - recent.length);
+    }
+    const memSlice = [...relevant, ...recent];
+    if (memSlice.length > 0) {
+      ctx += `\nMEMORIA (${memSlice.length} seleccionadas / ${state.userMemory.length} total):\n`;
+      for (const m of memSlice) ctx += `(${m.category || '?'}) ${m.note}\n`;
+    }
   }
 
   const distilledRules = loadJSON(path.join(DATA_DIR, 'distilled_rules.json'), []);

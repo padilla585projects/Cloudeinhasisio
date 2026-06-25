@@ -193,6 +193,23 @@ function convertToolsToAnthropic(openAITools) {
 
 // ── Llamada a OpenAI ──────────────────────────────────────────────────────────
 
+// ── Retry con backoff exponencial para errores transitorios ──────────────────
+async function withRetry(fn, maxRetries = 2) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const msg = err.message || '';
+      const isRetryable = msg.includes('429') || msg.includes('503') || msg.includes('502')
+        || msg.includes('ECONNRESET') || msg.includes('ETIMEDOUT') || msg.includes('abort');
+      if (!isRetryable || attempt === maxRetries) throw err;
+      const delay = Math.min(1000 * Math.pow(2, attempt) + Math.random() * 500, 8000);
+      console.log(`[llm] Retry ${attempt + 1}/${maxRetries} tras ${Math.round(delay)}ms: ${msg.slice(0, 80)}`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+}
+
 async function callOpenAI(model, system, messages, aiTools, maxTokens) {
   if (!OPENAI_API_KEY) {
     const e = new Error('⚠️ OpenAI API Key no configurada. Ve a Ajustes del add-on → openai_api_key.');
@@ -204,27 +221,27 @@ async function callOpenAI(model, system, messages, aiTools, maxTokens) {
   const body = { model, max_tokens: maxTokens, messages: msgs };
   if (aiTools && aiTools.length > 0) body.tools = aiTools;
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 60000);
-  let response;
-  try {
-    response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENAI_API_KEY}` },
-      body: JSON.stringify(body),
-      signal: controller.signal
-    });
-  } finally {
-    clearTimeout(timeoutId);
-  }
-
-  if (!response.ok) {
-    const err = await response.text();
-    const sanitized = err.slice(0, 300).replace(/sk-[a-zA-Z0-9]+/g, '[KEY_REDACTED]');
-    throw new Error(`OpenAI error ${response.status}: ${sanitized}`);
-  }
-
-  const data = await response.json();
+  const data = await withRetry(async () => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
+    let response;
+    try {
+      response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENAI_API_KEY}` },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
+    if (!response.ok) {
+      const err = await response.text();
+      const sanitizedErr = err.slice(0, 300).replace(/sk-[a-zA-Z0-9]+/g, '[KEY_REDACTED]');
+      throw new Error(`OpenAI error ${response.status}: ${sanitizedErr}`);
+    }
+    return response.json();
+  });
   const choice = data.choices[0];
   const message = choice.message;
   const usage = data.usage || {};
@@ -250,13 +267,18 @@ async function callAnthropic(model, system, messages, aiTools, maxTokens) {
   const anthropicMsgs = convertMessagesToAnthropic(messages);
   const anthropicTools = convertToolsToAnthropic(aiTools);
 
-  // Sistema como array de bloques para prompt caching (L0 marcado como cacheable)
+  // Split semántico para prompt caching: buscar delimitador entre parte estática y dinámica
   const systemBlocks = [];
   if (system) {
-    // Dividir: la primera mitad (identidad + dominio) es cacheable; la segunda (contexto dinámico) no
-    const midpoint = Math.floor(system.length * 0.6);
-    const staticPart = system.slice(0, midpoint);
-    const dynamicPart = system.slice(midpoint);
+    const dynamicMarkers = ['CONTEXTO ACTUAL:', 'ESTADO EN TIEMPO REAL:', 'MEMORIA'];
+    let splitIdx = -1;
+    for (const marker of dynamicMarkers) {
+      const idx = system.indexOf(marker);
+      if (idx > 0) { splitIdx = idx; break; }
+    }
+    if (splitIdx < 0) splitIdx = Math.floor(system.length * 0.6);
+    const staticPart = system.slice(0, splitIdx);
+    const dynamicPart = system.slice(splitIdx);
     if (staticPart) systemBlocks.push({ type: 'text', text: staticPart, cache_control: { type: 'ephemeral' } });
     if (dynamicPart) systemBlocks.push({ type: 'text', text: dynamicPart });
   }
@@ -269,32 +291,32 @@ async function callAnthropic(model, system, messages, aiTools, maxTokens) {
   };
   if (anthropicTools.length > 0) body.tools = anthropicTools;
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 90000);
-  let response;
-  try {
-    response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'prompt-caching-2024-07-31'
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal
-    });
-  } finally {
-    clearTimeout(timeoutId);
-  }
-
-  if (!response.ok) {
-    const err = await response.text();
-    const sanitized = err.slice(0, 300).replace(/sk-ant-[a-zA-Z0-9\-]+/g, '[KEY_REDACTED]');
-    throw new Error(`Anthropic error ${response.status}: ${sanitized}`);
-  }
-
-  const data = await response.json();
+  const data = await withRetry(async () => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 90000);
+    let response;
+    try {
+      response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'anthropic-beta': 'prompt-caching-2024-07-31'
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
+    if (!response.ok) {
+      const err = await response.text();
+      const sanitizedErr = err.slice(0, 300).replace(/sk-ant-[a-zA-Z0-9\-]+/g, '[KEY_REDACTED]');
+      throw new Error(`Anthropic error ${response.status}: ${sanitizedErr}`);
+    }
+    return response.json();
+  });
 
   // Convertir respuesta Anthropic → formato OpenAI (para que server.js no cambie)
   let text = '';
@@ -347,27 +369,27 @@ async function callDeepSeek(model, system, messages, aiTools, maxTokens) {
   // deepseek-reasoner NO soporta function calling
   if (!isReasoner && aiTools && aiTools.length > 0) body.tools = aiTools;
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 120000);
-  let response;
-  try {
-    response = await fetch(`${DEEPSEEK_URL}/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${DEEPSEEK_API_KEY}` },
-      body: JSON.stringify(body),
-      signal: controller.signal
-    });
-  } finally {
-    clearTimeout(timeoutId);
-  }
-
-  if (!response.ok) {
-    const err = await response.text();
-    const sanitized = err.slice(0, 300).replace(/[a-zA-Z0-9_\-]{30,}/g, '[REDACTED]');
-    throw new Error(`DeepSeek error ${response.status}: ${sanitized}`);
-  }
-
-  const data = await response.json();
+  const data = await withRetry(async () => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000);
+    let response;
+    try {
+      response = await fetch(`${DEEPSEEK_URL}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${DEEPSEEK_API_KEY}` },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
+    if (!response.ok) {
+      const err = await response.text();
+      const sanitizedErr = err.slice(0, 300).replace(/[a-zA-Z0-9_\-]{30,}/g, '[REDACTED]');
+      throw new Error(`DeepSeek error ${response.status}: ${sanitizedErr}`);
+    }
+    return response.json();
+  });
   const choice = data.choices[0];
   const message = choice.message;
 

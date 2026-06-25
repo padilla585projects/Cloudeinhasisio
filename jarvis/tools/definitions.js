@@ -1014,6 +1014,62 @@ const tools = [
     }
   },
 
+  // ─── Scripts ───
+  {
+    name: 'edit_script',
+    description: 'Edita un script existente en /config/scripts.yaml buscándolo por su ID (clave raíz). Reemplaza el bloque completo con el nuevo YAML. Usa formato action: (service call), NUNCA type: (device action). Hace backup automático.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        script_id: { type: 'string', description: 'ID del script (clave raíz en scripts.yaml, ej: luz_escalera)' },
+        yaml_content: { type: 'string', description: 'Nuevo YAML del script (solo el contenido bajo la clave, sin la clave raíz)' }
+      },
+      required: ['script_id', 'yaml_content']
+    }
+  },
+  {
+    name: 'delete_script',
+    description: 'Elimina un script de /config/scripts.yaml por su ID. Hace backup automático antes de borrar y recarga scripts.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        script_id: { type: 'string', description: 'ID del script a eliminar (clave raíz en scripts.yaml)' }
+      },
+      required: ['script_id']
+    }
+  },
+
+  // ─── MQTT ───
+  {
+    name: 'mqtt_publish',
+    description: 'Publica un mensaje MQTT via HA. Útil para Zigbee2MQTT, Tasmota, ESPHome y cualquier dispositivo MQTT.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        topic: { type: 'string', description: 'Topic MQTT (ej: zigbee2mqtt/bridge/config/permit_join, cmnd/tasmota/POWER)' },
+        payload: { type: 'string', description: 'Payload del mensaje (texto o JSON stringified)' },
+        retain: { type: 'boolean', description: 'Si el mensaje debe ser retenido (default: false)' }
+      },
+      required: ['topic', 'payload']
+    }
+  },
+
+  // ─── Zigbee2MQTT ───
+  {
+    name: 'zigbee_manage',
+    description: 'Gestiona Zigbee2MQTT: emparejar dispositivos, renombrar, ver mapa de red, estado del bridge, OTA updates.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['permit_join', 'devices', 'network_map', 'rename', 'remove', 'ota_check', 'ota_update', 'bridge_info', 'restart'], description: 'Acción a realizar' },
+        device: { type: 'string', description: 'Nombre o IEEE del dispositivo (para rename, remove, ota_update)' },
+        new_name: { type: 'string', description: 'Nuevo nombre (solo para rename)' },
+        duration: { type: 'number', description: 'Duración en segundos para permit_join (default: 120)' }
+      },
+      required: ['action']
+    }
+  },
+
   // ─── Renderizar template Jinja2 ───
   {
     name: 'template_render',

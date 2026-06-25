@@ -83,7 +83,8 @@ console.log(`[init] Memoria: ${state.userMemory.length} notas | Historial: ${sta
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function saveHistory() {
-  const histLimit = state.saverMode ? 10 : 20;
+  // Más mensajes por turno ahora (assistant+tool_calls+tool_results), subir límite
+  const histLimit = state.saverMode ? 30 : 60;
   if (state.conversationHistory.length > histLimit)
     state.conversationHistory = state.conversationHistory.slice(-histLimit);
   saveJSON(C.HISTORY_FILE, state.conversationHistory);
@@ -244,8 +245,15 @@ app.post('/api/chat', async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
 
-  const sendEvent = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+  let clientDisconnected = false;
+  req.on('close', () => { clientDisconnected = true; });
+
+  const sendEvent = (data) => {
+    if (clientDisconnected) return;
+    try { res.write(`data: ${JSON.stringify(data)}\n\n`); } catch {}
+  };
   state.currentSendEvent = sendEvent;
 
   try {
@@ -366,6 +374,10 @@ app.post('/api/chat', async (req, res) => {
     const systemPrompt = nexusAssemblePrompt(nexusExpertName);
 
     while (iterations < MAX_ITERATIONS) {
+      if (clientDisconnected) {
+        console.log(`[jarvis] Cliente desconectado en iter=${iterations}. Abortando loop.`);
+        break;
+      }
       iterations++;
       let result;
       try {
@@ -469,7 +481,39 @@ app.post('/api/chat', async (req, res) => {
     }
 
     if (finalText) {
-      state.conversationHistory.push({ role: 'assistant', content: finalText });
+      // Persistir mensajes del loop (assistant + tool_results) para continuidad entre turnos
+      // Solo guardar los mensajes nuevos (los que no estaban en el historial original)
+      const originalLen = state.conversationHistory.length;
+      const newMessages = currentMessages.slice(originalLen);
+      // Filtrar: guardar assistant messages con tool_calls y tool results, pero compactar
+      for (const msg of newMessages) {
+        if (msg.role === 'assistant') {
+          // Compactar: si tiene tool_calls, guardar solo name+id (no los args completos)
+          if (msg.tool_calls) {
+            const compactMsg = { role: 'assistant', content: msg.content || null,
+              tool_calls: msg.tool_calls.map(tc => ({
+                id: tc.id, type: 'function',
+                function: { name: tc.function.name, arguments: '{}' }
+              }))
+            };
+            state.conversationHistory.push(compactMsg);
+          } else if (msg.content) {
+            state.conversationHistory.push({ role: 'assistant', content: msg.content });
+          }
+        } else if (msg.role === 'tool') {
+          // Compactar tool results a max 500 chars para no inflar historial
+          const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+          state.conversationHistory.push({
+            role: 'tool', tool_call_id: msg.tool_call_id,
+            content: content.length > 500 ? content.slice(0, 500) + '...[truncado]' : content
+          });
+        }
+      }
+      // Asegurar que el texto final queda como último mensaje assistant
+      const lastHist = state.conversationHistory[state.conversationHistory.length - 1];
+      if (!lastHist || lastHist.role !== 'assistant' || lastHist.content !== finalText) {
+        state.conversationHistory.push({ role: 'assistant', content: finalText });
+      }
       saveHistory();
       const hadCorrection = finalText.toLowerCase().includes('perdona') || finalText.toLowerCase().includes('tienes raz');
       nexusEvolutionTick(nexusExpertName, true, hadCorrection);
