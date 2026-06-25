@@ -4880,6 +4880,273 @@ ${dots}`;
         }
       }
 
+      // ─── Climate optimization ───
+      case 'climate_optimize': {
+        const period = input.period_hours || 48;
+        const endT = new Date().toISOString();
+        const startT = new Date(Date.now() - period * 3600000).toISOString();
+        switch (input.action) {
+          case 'analyze': {
+            const climates = await haGet(`/api/states`).then(s => s.filter(e => e.entity_id.startsWith('climate.')));
+            const temps = await haGet(`/api/states`).then(s => s.filter(e => e.entity_id.includes('temperature') && e.state !== 'unavailable' && e.state !== 'unknown'));
+            const persons = await haGet(`/api/states`).then(s => s.filter(e => e.entity_id.startsWith('person.')));
+            const windows = await haGet(`/api/states`).then(s => s.filter(e => e.entity_id.includes('window') || e.entity_id.includes('ventana')));
+            const analysis = { hvac_devices: [], temperatures: [], presence: [], windows_open: [], waste_alerts: [] };
+            for (const c of climates) {
+              const dev = { entity_id: c.entity_id, state: c.state, current_temp: c.attributes.current_temperature, target_temp: c.attributes.temperature, mode: c.attributes.hvac_action || c.state };
+              analysis.hvac_devices.push(dev);
+              const anyoneHome = persons.some(p => p.state === 'home');
+              if (c.state !== 'off' && !anyoneHome) analysis.waste_alerts.push(`${c.entity_id} encendido sin nadie en casa`);
+              const openWin = windows.filter(w => w.state === 'on');
+              if (c.state !== 'off' && openWin.length > 0) analysis.waste_alerts.push(`${c.entity_id} encendido con ventana(s) abierta(s): ${openWin.map(w => w.entity_id).join(', ')}`);
+            }
+            for (const t of temps.slice(0, 20)) {
+              analysis.temperatures.push({ entity_id: t.entity_id, value: parseFloat(t.state), unit: t.attributes.unit_of_measurement || '°C' });
+            }
+            for (const p of persons) analysis.presence.push({ entity_id: p.entity_id, state: p.state });
+            for (const w of windows.filter(ww => ww.state === 'on')) analysis.windows_open.push(w.entity_id);
+            return analysis;
+          }
+          case 'suggest': {
+            const climates = await haGet(`/api/states`).then(s => s.filter(e => e.entity_id.startsWith('climate.')));
+            const persons = await haGet(`/api/states`).then(s => s.filter(e => e.entity_id.startsWith('person.')));
+            const suggestions = [];
+            if (climates.length > 0) {
+              suggestions.push({ type: 'away_mode', desc: 'Apagar/reducir HVAC cuando no hay nadie en casa', trigger: 'person.* → not_home', action: 'climate.set_hvac_mode → off o set_temperature -3°C' });
+              suggestions.push({ type: 'night_setback', desc: 'Reducir temperatura de noche (22→18°C)', trigger: 'time 23:00', action: 'climate.set_temperature 18' });
+              suggestions.push({ type: 'morning_preheat', desc: 'Pre-calentar 30min antes de despertar', trigger: 'time 06:30', action: 'climate.set_temperature 21' });
+              suggestions.push({ type: 'window_guard', desc: 'Apagar HVAC si se abre ventana', trigger: 'binary_sensor.*window* → on', action: 'climate.turn_off' });
+              suggestions.push({ type: 'arrival_comfort', desc: 'Activar climatización al llegar a casa', trigger: 'person.adrian → home', action: 'climate.set_hvac_mode + set_temperature según hora' });
+            }
+            return { suggestions, climate_entities: climates.map(c => c.entity_id), persons: persons.map(p => `${p.entity_id}: ${p.state}`) };
+          }
+          case 'schedule': {
+            const histUrl = `/api/history/period/${startT}?end_time=${endT}&filter_entity_id=person.adrian&minimal_response`;
+            const personHist = await haGet(histUrl).catch(() => []);
+            const climateStates = await haGet(`/api/states`).then(s => s.filter(e => e.entity_id.startsWith('climate.')));
+            const schedule = { optimal_hours: [], current_climate: climateStates.map(c => ({ id: c.entity_id, mode: c.state, target: c.attributes.temperature })) };
+            schedule.recommendation = 'Analizar patrones de presencia vs uso HVAC para crear horarios óptimos que pre-acondicionen antes de llegada y reduzcan en ausencia.';
+            return schedule;
+          }
+          case 'efficiency': {
+            const energySensors = await haGet(`/api/states`).then(s => s.filter(e => (e.entity_id.includes('energy') || e.entity_id.includes('power') || e.entity_id.includes('consumo')) && !isNaN(parseFloat(e.state))));
+            const climates = await haGet(`/api/states`).then(s => s.filter(e => e.entity_id.startsWith('climate.')));
+            const temps = await haGet(`/api/states`).then(s => s.filter(e => e.entity_id.includes('temperature') && !isNaN(parseFloat(e.state))));
+            const avgTemp = temps.length ? (temps.reduce((a, t) => a + parseFloat(t.state), 0) / temps.length).toFixed(1) : 'N/A';
+            return {
+              climate_devices: climates.map(c => ({ id: c.entity_id, state: c.state, target: c.attributes.temperature, current: c.attributes.current_temperature })),
+              avg_indoor_temp: avgTemp,
+              energy_sensors: energySensors.slice(0, 10).map(e => ({ id: e.entity_id, value: e.state, unit: e.attributes.unit_of_measurement })),
+              tip: 'Cada grado menos en calefacción ahorra ~7%. Modo eco en ausencia ahorra 15-30%.'
+            };
+          }
+          default:
+            return { error: `Acción climate_optimize desconocida: ${input.action}` };
+        }
+      }
+
+      // ─── Presence prediction ───
+      case 'presence_predict': {
+        const person = input.person || 'person.adrian';
+        const days = input.days || 7;
+        const endT = new Date().toISOString();
+        const startT = new Date(Date.now() - days * 86400000).toISOString();
+        switch (input.action) {
+          case 'analyze': {
+            const histUrl = `/api/history/period/${startT}?end_time=${endT}&filter_entity_id=${person}&minimal_response`;
+            const hist = await haGet(histUrl).catch(() => []);
+            const transitions = [];
+            if (hist && hist[0]) {
+              for (let i = 1; i < hist[0].length; i++) {
+                const prev = hist[0][i - 1];
+                const curr = hist[0][i];
+                if (prev.state !== curr.state) {
+                  transitions.push({ from: prev.state, to: curr.state, time: curr.last_changed });
+                }
+              }
+            }
+            const arrivals = transitions.filter(t => t.to === 'home').map(t => { const d = new Date(t.time); return { weekday: d.toLocaleDateString('es', { weekday: 'long' }), hour: d.getHours(), minute: d.getMinutes() }; });
+            const departures = transitions.filter(t => t.from === 'home').map(t => { const d = new Date(t.time); return { weekday: d.toLocaleDateString('es', { weekday: 'long' }), hour: d.getHours(), minute: d.getMinutes() }; });
+            const avgArrival = arrivals.length ? (arrivals.reduce((a, t) => a + t.hour * 60 + t.minute, 0) / arrivals.length) : null;
+            const avgDeparture = departures.length ? (departures.reduce((a, t) => a + t.hour * 60 + t.minute, 0) / departures.length) : null;
+            return {
+              person, period_days: days,
+              total_transitions: transitions.length,
+              arrivals_count: arrivals.length,
+              departures_count: departures.length,
+              avg_arrival: avgArrival ? `${Math.floor(avgArrival / 60)}:${String(Math.round(avgArrival % 60)).padStart(2, '0')}` : 'N/A',
+              avg_departure: avgDeparture ? `${Math.floor(avgDeparture / 60)}:${String(Math.round(avgDeparture % 60)).padStart(2, '0')}` : 'N/A',
+              recent_arrivals: arrivals.slice(-5),
+              recent_departures: departures.slice(-5)
+            };
+          }
+          case 'predict': {
+            const currentState = await haGet(`/api/states/${person}`).catch(() => null);
+            const histUrl = `/api/history/period/${startT}?end_time=${endT}&filter_entity_id=${person}&minimal_response`;
+            const hist = await haGet(histUrl).catch(() => []);
+            const now = new Date();
+            const currentHour = now.getHours();
+            const todayDay = now.toLocaleDateString('es', { weekday: 'long' });
+            const sameDayTransitions = [];
+            if (hist && hist[0]) {
+              for (let i = 1; i < hist[0].length; i++) {
+                const d = new Date(hist[0][i].last_changed);
+                if (d.toLocaleDateString('es', { weekday: 'long' }) === todayDay && hist[0][i].state !== hist[0][i - 1].state) {
+                  sameDayTransitions.push({ to: hist[0][i].state, hour: d.getHours(), minute: d.getMinutes() });
+                }
+              }
+            }
+            const futureEvents = sameDayTransitions.filter(t => t.hour > currentHour);
+            return {
+              person, current_state: currentState ? currentState.state : 'unknown',
+              today: todayDay, current_hour: currentHour,
+              prediction: futureEvents.length ? `Basado en ${days} días de historial, los ${todayDay} suele: ${futureEvents.map(e => `${e.to === 'home' ? 'llegar' : 'salir'} ~${e.hour}:${String(e.minute).padStart(2, '0')}`).join(', ')}` : 'Datos insuficientes para predecir',
+              historical_same_day: sameDayTransitions.slice(-8)
+            };
+          }
+          case 'occupancy': {
+            const motionSensors = await haGet(`/api/states`).then(s => s.filter(e => (e.entity_id.includes('motion') || e.entity_id.includes('occupancy') || e.entity_id.includes('movimiento') || e.entity_id.includes('presencia')) && e.entity_id.startsWith('binary_sensor.')));
+            const persons = await haGet(`/api/states`).then(s => s.filter(e => e.entity_id.startsWith('person.')));
+            const rooms = {};
+            for (const sensor of motionSensors) {
+              const room = sensor.attributes.friendly_name || sensor.entity_id.replace('binary_sensor.', '').replace(/_occupancy|_motion|_movimiento/g, '');
+              const lastChanged = sensor.last_changed ? new Date(sensor.last_changed) : null;
+              const minAgo = lastChanged ? Math.round((Date.now() - lastChanged.getTime()) / 60000) : null;
+              rooms[room] = { sensor: sensor.entity_id, state: sensor.state, occupied: sensor.state === 'on', last_activity_min_ago: minAgo };
+            }
+            return { rooms, persons: persons.map(p => ({ id: p.entity_id, state: p.state })), timestamp: new Date().toISOString() };
+          }
+          case 'routines': {
+            const histUrl = `/api/history/period/${startT}?end_time=${endT}&filter_entity_id=${person}&minimal_response`;
+            const hist = await haGet(histUrl).catch(() => []);
+            const dailyPatterns = {};
+            if (hist && hist[0]) {
+              for (let i = 1; i < hist[0].length; i++) {
+                if (hist[0][i].state !== hist[0][i - 1].state) {
+                  const d = new Date(hist[0][i].last_changed);
+                  const day = d.toLocaleDateString('es', { weekday: 'long' });
+                  if (!dailyPatterns[day]) dailyPatterns[day] = [];
+                  dailyPatterns[day].push({ to: hist[0][i].state, hour: d.getHours(), minute: d.getMinutes() });
+                }
+              }
+            }
+            const routines = {};
+            for (const [day, events] of Object.entries(dailyPatterns)) {
+              const firstLeave = events.find(e => e.to === 'not_home');
+              const firstArrive = events.find(e => e.to === 'home');
+              routines[day] = {
+                first_departure: firstLeave ? `${firstLeave.hour}:${String(firstLeave.minute).padStart(2, '0')}` : 'no salió',
+                first_arrival: firstArrive ? `${firstArrive.hour}:${String(firstArrive.minute).padStart(2, '0')}` : 'no llegó',
+                total_transitions: events.length
+              };
+            }
+            return { person, period_days: days, routines };
+          }
+          default:
+            return { error: `Acción presence_predict desconocida: ${input.action}` };
+        }
+      }
+
+      // ─── Anomaly detection ───
+      case 'anomaly_detect': {
+        const threshold = input.threshold || 2.0;
+        switch (input.action) {
+          case 'scan': {
+            const allStates = await haGet(`/api/states`);
+            const anomalies = [];
+            const unavailable = allStates.filter(e => e.state === 'unavailable' || e.state === 'unknown');
+            for (const e of unavailable) {
+              const lastChanged = e.last_changed ? new Date(e.last_changed) : null;
+              const minDown = lastChanged ? Math.round((Date.now() - lastChanged.getTime()) / 60000) : null;
+              if (minDown && minDown > 5) {
+                anomalies.push({ entity_id: e.entity_id, type: 'device_down', state: e.state, down_minutes: minDown, severity: minDown > 60 ? 'high' : 'medium' });
+              }
+            }
+            const numericSensors = allStates.filter(e => e.entity_id.startsWith('sensor.') && !isNaN(parseFloat(e.state)));
+            for (const s of numericSensors) {
+              const val = parseFloat(s.state);
+              if (s.entity_id.includes('temperature') && (val > 50 || val < -10)) {
+                anomalies.push({ entity_id: s.entity_id, type: 'value_out_of_range', value: val, severity: 'high', hypothesis: val > 50 ? 'Sensor averiado o cerca de fuente de calor' : 'Sensor exterior o averiado' });
+              }
+              if (s.entity_id.includes('humidity') && (val > 95 || val < 5)) {
+                anomalies.push({ entity_id: s.entity_id, type: 'value_out_of_range', value: val, severity: 'medium', hypothesis: 'Sensor de humedad con lectura extrema — posible avería o condensación' });
+              }
+              if (s.entity_id.includes('battery') && val < 10) {
+                anomalies.push({ entity_id: s.entity_id, type: 'low_battery', value: val, severity: 'high', hypothesis: 'Batería casi agotada — dispositivo dejará de funcionar pronto' });
+              }
+            }
+            const stuckSensors = numericSensors.filter(s => {
+              const lastChanged = s.last_changed ? new Date(s.last_changed) : null;
+              return lastChanged && (Date.now() - lastChanged.getTime()) > 24 * 3600000;
+            });
+            for (const s of stuckSensors) {
+              anomalies.push({ entity_id: s.entity_id, type: 'stuck_sensor', value: s.state, hours_unchanged: Math.round((Date.now() - new Date(s.last_changed).getTime()) / 3600000), severity: 'medium', hypothesis: 'Sensor sin cambiar en 24h+ — posible batería baja, desconexión o sensor roto' });
+            }
+            return { anomalies_found: anomalies.length, anomalies: anomalies.slice(0, 30), scan_time: new Date().toISOString() };
+          }
+          case 'baseline': {
+            if (!input.entity_id) return { error: 'Requiere entity_id para calcular línea base' };
+            const endT = new Date().toISOString();
+            const startT = new Date(Date.now() - 7 * 86400000).toISOString();
+            const histUrl = `/api/history/period/${startT}?end_time=${endT}&filter_entity_id=${input.entity_id}&minimal_response`;
+            const hist = await haGet(histUrl).catch(() => []);
+            if (!hist || !hist[0] || hist[0].length < 2) return { error: 'Historial insuficiente para calcular línea base' };
+            const values = hist[0].map(h => parseFloat(h.state)).filter(v => !isNaN(v));
+            if (values.length < 5) return { error: 'Menos de 5 valores numéricos en el historial' };
+            const mean = values.reduce((a, v) => a + v, 0) / values.length;
+            const variance = values.reduce((a, v) => a + Math.pow(v - mean, 2), 0) / values.length;
+            const stddev = Math.sqrt(variance);
+            return {
+              entity_id: input.entity_id, period: '7 days', samples: values.length,
+              mean: mean.toFixed(2), stddev: stddev.toFixed(2),
+              min: Math.min(...values).toFixed(2), max: Math.max(...values).toFixed(2),
+              anomaly_threshold_low: (mean - threshold * stddev).toFixed(2),
+              anomaly_threshold_high: (mean + threshold * stddev).toFixed(2)
+            };
+          }
+          case 'check': {
+            if (!input.entity_id) return { error: 'Requiere entity_id para comprobar' };
+            const current = await haGet(`/api/states/${input.entity_id}`).catch(() => null);
+            if (!current) return { error: `No se encontró ${input.entity_id}` };
+            const endT = new Date().toISOString();
+            const startT = new Date(Date.now() - 7 * 86400000).toISOString();
+            const histUrl = `/api/history/period/${startT}?end_time=${endT}&filter_entity_id=${input.entity_id}&minimal_response`;
+            const hist = await haGet(histUrl).catch(() => []);
+            const values = (hist && hist[0]) ? hist[0].map(h => parseFloat(h.state)).filter(v => !isNaN(v)) : [];
+            const currentVal = parseFloat(current.state);
+            if (isNaN(currentVal) || values.length < 5) {
+              return { entity_id: input.entity_id, state: current.state, is_anomaly: current.state === 'unavailable', note: 'Sensor no numérico o historial insuficiente' };
+            }
+            const mean = values.reduce((a, v) => a + v, 0) / values.length;
+            const stddev = Math.sqrt(values.reduce((a, v) => a + Math.pow(v - mean, 2), 0) / values.length);
+            const zScore = stddev > 0 ? Math.abs((currentVal - mean) / stddev) : 0;
+            const isAnomaly = zScore > threshold;
+            return {
+              entity_id: input.entity_id, current_value: currentVal, mean: mean.toFixed(2), stddev: stddev.toFixed(2),
+              z_score: zScore.toFixed(2), threshold, is_anomaly: isAnomaly,
+              hypothesis: isAnomaly ? (currentVal > mean ? 'Valor inusualmente alto — posible avería o evento atípico' : 'Valor inusualmente bajo — posible fallo del sensor o condición anómala') : 'Dentro del rango normal'
+            };
+          }
+          case 'report': {
+            const allStates = await haGet(`/api/states`);
+            const total = allStates.length;
+            const unavailable = allStates.filter(e => e.state === 'unavailable').length;
+            const unknown = allStates.filter(e => e.state === 'unknown').length;
+            const batteryLow = allStates.filter(e => e.entity_id.includes('battery') && !isNaN(parseFloat(e.state)) && parseFloat(e.state) < 20);
+            const healthy = total - unavailable - unknown;
+            const healthScore = total > 0 ? Math.round((healthy / total) * 100) : 0;
+            return {
+              health_score: healthScore, total_entities: total,
+              healthy, unavailable, unknown,
+              batteries_low: batteryLow.map(b => ({ id: b.entity_id, level: b.state + '%' })),
+              summary: `Salud del sistema: ${healthScore}%. ${unavailable} dispositivos caídos, ${unknown} desconocidos, ${batteryLow.length} baterías bajas.`
+            };
+          }
+          default:
+            return { error: `Acción anomaly_detect desconocida: ${input.action}` };
+        }
+      }
+
       default:
         return { error: `Tool desconocida: ${name}` };
     }

@@ -18,7 +18,7 @@ const EXPERTS = {
 
   ha_control: {
     model: MODEL, maxTokens: 4096, maxIter: 8,
-    modules: ['base', 'philosophy', 'ha_control', 'ha_internals', 'ha_config_engineering', 'filesystem', 'inamovible'],
+    modules: ['base', 'philosophy', 'ha_control', 'ha_internals', 'ha_config_engineering', 'clima', 'presencia', 'filesystem', 'inamovible'],
     label: 'Control HA',
     tools: ['get_entities', 'search_entities', 'get_entity_state', 'call_service',
             'get_history', 'get_logbook', 'get_automations', 'create_automation',
@@ -30,19 +30,20 @@ const EXPERTS = {
             'edit_script', 'delete_script', 'mqtt_publish', 'zigbee_manage',
             'score_installation', 'render_floorplan', 'manage_users', 'esphome_manage',
             'backup_restore', 'notify_all', 'energy_query',
-            'zha_matter_manage', 'system_info']
+            'zha_matter_manage', 'system_info',
+            'climate_optimize', 'presence_predict', 'anomaly_detect']
   },
 
   diagnostico: {
     model: MODEL, maxTokens: 4096, maxIter: 10,
-    modules: ['base', 'perseverance', 'ha_control', 'ha_internals', 'ha_config_engineering', 'diagnostico', 'filesystem', 'inamovible'],
+    modules: ['base', 'perseverance', 'ha_control', 'ha_internals', 'ha_config_engineering', 'diagnostico', 'anomalias', 'filesystem', 'inamovible'],
     label: 'Diagnóstico',
     tools: ['get_entities', 'search_entities', 'get_entity_state', 'get_history', 'get_logbook',
             'get_system_logs', 'get_error_log', 'check_config', 'web_search', 'web_search_native', 'fetch_url',
             'read_file', 'learn', 'ha_supervisor', 'network', 'get_notifications',
             'get_repairs', 'scan_installation', 'ha_knowledge', 'rollback', 'validate_yaml',
             'score_installation', 'esphome_manage', 'backup_restore',
-            'zha_matter_manage', 'system_info']
+            'zha_matter_manage', 'system_info', 'anomaly_detect']
   },
 
   automatizacion: {
@@ -101,22 +102,23 @@ const EXPERTS = {
 
   energia: {
     model: MODEL, maxTokens: 4096, maxIter: 8,
-    modules: ['base', 'energia', 'ha_control', 'filesystem', 'inamovible'],
+    modules: ['base', 'energia', 'clima', 'ha_control', 'filesystem', 'inamovible'],
     label: 'Energía',
     tools: ['get_entities', 'get_entity_state', 'get_history', 'get_logbook', 'call_service',
             'template_render', 'create_automation', 'analyze_patterns',
             'save_memory', 'learn', 'web_search', 'ha_knowledge',
-            'knowledge_db', 'read_file', 'energy_query']
+            'knowledge_db', 'read_file', 'energy_query', 'climate_optimize']
   },
 
   seguridad: {
     model: MODEL, maxTokens: 4096, maxIter: 8,
-    modules: ['base', 'seguridad_casa', 'ha_control', 'diagnostico', 'filesystem', 'inamovible'],
+    modules: ['base', 'seguridad_casa', 'presencia', 'ha_control', 'diagnostico', 'filesystem', 'inamovible'],
     label: 'Seguridad',
     tools: ['get_entities', 'get_entity_state', 'call_service', 'get_history', 'get_logbook',
             'telegram_send', 'telegram_send_image', 'telegram_get_updates',
             'get_automations', 'create_automation', 'reload_config', 'get_system_logs',
-            'learn', 'network', 'save_memory', 'manage_users', 'notify_all']
+            'learn', 'network', 'save_memory', 'manage_users', 'notify_all',
+            'presence_predict', 'anomaly_detect']
   },
 
   red: {

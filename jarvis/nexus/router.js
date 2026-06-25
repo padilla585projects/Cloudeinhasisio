@@ -67,6 +67,12 @@ async function nexusRoute(message) {
     return { expert: 'ha_control', source: 'regex', confidence: 0.85 };
   if (/est[aá] (en casa|fuera|llegad[oa]|salid[oa])|persona.*detectad|presencia.*hogar/.test(text))
     return { expert: 'seguridad', source: 'regex', confidence: 0.8 };
+  if (/climatiza|calefacci[oó]n|aire acondicionado|hvac|termostato|pre.?calent|pre.?enfri|confort t[eé]rmic|temperatura ideal|ahorro.*calef|eficiencia.*clim/.test(text))
+    return { expert: 'energia', source: 'regex', confidence: 0.85 };
+  if (/anomal[ií]a|sensor.*roto|dispositivo.*ca[ií]do|bater[ií]a baja|salud.*sistema|estado.*dispositivos|qu[eé].*falla|health.*check|l[ií]nea base/.test(text))
+    return { expert: 'diagnostico', source: 'regex', confidence: 0.85 };
+  if (/predic|cu[aá]ndo.*llego|cu[aá]ndo.*vuelv|hora.*llegar|rutina.*diaria|patr[oó]n.*presencia|ocupaci[oó]n|habitaci[oó]n.*ocupada/.test(text))
+    return { expert: 'seguridad', source: 'regex', confidence: 0.8 };
   if (/lee|escribe|lista|archivo|fichero|directorio|config|yaml|json/.test(text) && text.length < 150)
     return { expert: 'archivo', source: 'regex', confidence: 0.8 };
   if (/\brazona\b|an[aá]lisis profundo|piensa.*fondo|explica.*detalle.*por qu[eé]|r1\b|deepseek.?r1|cadena de pensamiento/.test(text))

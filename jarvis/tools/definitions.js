@@ -1253,6 +1253,47 @@ const tools = [
       properties: {},
       required: []
     }
+  },
+
+  // ─── Inteligencia: clima, presencia, anomalías ───
+  {
+    name: 'climate_optimize',
+    description: 'Analiza y optimiza la climatización del hogar. Acciones: analyze (analiza uso actual y desperdicio HVAC), suggest (genera sugerencias de automatizaciones de ahorro), schedule (propone horarios óptimos basados en ocupación y PVPC), efficiency (calcula eficiencia: gasto vs confort).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['analyze', 'suggest', 'schedule', 'efficiency'], description: 'Tipo de análisis' },
+        zone: { type: 'string', description: 'Zona/habitación a analizar (opcional, sin especificar = toda la casa)' },
+        period_hours: { type: 'number', description: 'Horas de historial a analizar (default: 48)' }
+      },
+      required: ['action']
+    }
+  },
+  {
+    name: 'presence_predict',
+    description: 'Analiza patrones de presencia y predice comportamiento. Acciones: analyze (analiza historial de person.*/device_tracker.* para detectar rutinas), predict (predice próxima llegada/salida basándose en patrones), occupancy (mapa de ocupación actual por habitación usando sensores de movimiento), routines (detecta rutinas diarias/semanales).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['analyze', 'predict', 'occupancy', 'routines'], description: 'Tipo de análisis' },
+        person: { type: 'string', description: 'Entity_id de la persona (default: person.adrian)' },
+        days: { type: 'number', description: 'Días de historial a analizar (default: 7)' }
+      },
+      required: ['action']
+    }
+  },
+  {
+    name: 'anomaly_detect',
+    description: 'Detecta anomalías en dispositivos y sensores comparando con línea base histórica. Acciones: scan (escanea todos los dispositivos buscando anomalías), baseline (calcula línea base de un sensor/dispositivo), check (comprueba un dispositivo específico contra su línea base), report (genera informe de salud de la instalación).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['scan', 'baseline', 'check', 'report'], description: 'Tipo de análisis' },
+        entity_id: { type: 'string', description: 'Entity_id a analizar (para baseline/check)' },
+        threshold: { type: 'number', description: 'Factor de desviación para considerar anomalía (default: 2.0 = 2 sigma)' }
+      },
+      required: ['action']
+    }
   }
 ];
 

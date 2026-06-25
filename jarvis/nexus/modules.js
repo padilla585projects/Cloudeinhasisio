@@ -964,6 +964,111 @@ FLUJO DE 1 PASO (la diferencia real)
 Si algo falla o hay ambigüedad real (3+ entidades igualmente válidas) → preguntar SOLO ESO,
 no todo. Ejemplo: "¿Qué sala? Tengo salón, dormitorio y cocina con luces."`,
 
+  clima: `CLIMATIZACIÓN INTELIGENTE — HVAC, calefacción, aire acondicionado, persianas térmicas:
+
+PRINCIPIOS DE CONFORT TÉRMICO:
+- Temperatura ideal: 20-22°C invierno, 24-26°C verano (ajustar según preferencias de Adrián)
+- Humedad ideal: 40-60%. Por debajo → sequedad. Por encima → moho/condensación.
+- Inercia térmica: los edificios tardan en calentarse/enfriarse. PRE-ACONDICIONAR 30-60min antes.
+- Zonificación: no climatizar toda la casa igual. Solo las zonas ocupadas.
+
+ESTRATEGIA DE OPTIMIZACIÓN HVAC:
+1. ANALIZAR: get_history de climate.* y sensor.*temperature* → patrones de uso y temperatura
+2. DETECTAR DESPERDICIO: ¿calefacción encendida sin nadie? ¿AC a 18°C? ¿ventanas abiertas con AC?
+3. PROPONER AUTOMATIZACIONES:
+   - Apagar HVAC cuando no hay nadie (person.* → not_home)
+   - Reducir temperatura de noche (setback nocturno: 18°C dormir vs 21°C día)
+   - Pre-calentar/enfriar antes de llegada (basado en presencia + hora)
+   - Cerrar persianas en verano (sun.sun elevation > X → cover.close_cover)
+   - Abrir persianas en invierno (aprovechar ganancia solar pasiva)
+
+ENTIDADES TÍPICAS:
+- climate.* → termostatos, AC, calefacción (set_temperature, set_hvac_mode)
+- sensor.*temperature* → sensores de temperatura ambiente
+- sensor.*humidity* → sensores de humedad
+- cover.* → persianas motorizadas (open/close/set_position para control solar)
+- binary_sensor.*window* → contacto ventana (apagar HVAC si ventana abierta)
+- weather.* → previsión meteorológica para anticipar necesidades
+
+MODOS HVAC: heat, cool, heat_cool, auto, off, fan_only, dry
+SERVICIOS: climate.set_temperature, climate.set_hvac_mode, climate.set_preset_mode
+
+AHORRO ENERGÉTICO:
+- Cada grado menos en calefacción = ~7% ahorro
+- Modo eco/away cuando no hay nadie = 15-30% ahorro
+- Persianas como aislamiento: cerradas de noche en invierno, cerradas de día en verano
+- Horarios PVPC: precalentar en horas valle, mantener en horas punta
+
+ANOMALÍAS A DETECTAR:
+- HVAC encendido + ventana abierta → apagar HVAC o avisar
+- Temperatura no sube tras 1h de calefacción → posible avería
+- Consumo HVAC anormalmente alto → filtros sucios, fugas, mal aislamiento
+- Sensor de temperatura estancado → batería baja o sensor roto`,
+
+  presencia: `PRESENCIA E INTELIGENCIA DE OCUPACIÓN:
+
+FUENTES DE PRESENCIA EN HA:
+- person.* → estado home/not_home/zone (fuente principal)
+- device_tracker.* → tracking por red WiFi, Bluetooth, GPS
+- binary_sensor.*motion*/*occupancy* → sensores de movimiento Zigbee/PIR
+- binary_sensor.*door* → sensores de puerta (inferir entrada/salida)
+- media_player.* → si reproduciendo → alguien está ahí
+
+LÓGICA DE OCUPACIÓN POR HABITACIÓN:
+No basta con person.home — hay que saber DÓNDE en la casa está Adrián.
+Combinar señales: movimiento + puerta + dispositivos activos = presencia en habitación.
+Sin movimiento en 30min + puerta cerrada = habitación vacía.
+
+PATRONES A DETECTAR:
+- Hora habitual de llegada/salida → automatizar pre-acondicionamiento
+- Rutina nocturna: última actividad en salón → se va a dormitorio → apagar salón
+- Patrones de fin de semana vs días laborables (horarios diferentes)
+- Ausencias largas: vacaciones, viajes (modo away extendido)
+
+AUTOMATIZACIONES INTELIGENTES:
+- Llegada: detectar person.home → encender luces según hora + climatización
+- Salida: detectar not_home → apagar todo, HVAC en modo eco, cerrar persianas
+- Noche: sin movimiento en zonas comunes + hora > 23:00 → modo nocturno
+- Mañana: primer movimiento del día → encender calefacción, subir persianas
+
+PREDICCIÓN:
+- Si Adrián sale de casa siempre a las 8:00 → pre-calentar coche / apagar calefacción a las 7:55
+- Si llega siempre a las 18:30 → pre-acondicionar a las 18:00
+- Análisis de get_history en person.* para calcular tiempos medios
+
+ZONAS HA:
+- Las zonas se definen en HA (trabajo, gimnasio, supermercado, etc.)
+- person.* cambia a zone.nombre cuando está en una zona definida
+- Se pueden crear automatizaciones basadas en entrar/salir de zonas`,
+
+  anomalias: `DETECCIÓN DE ANOMALÍAS — línea base y alertas inteligentes:
+
+FILOSOFÍA: Un sistema "sin rival" no espera a que algo se rompa. DETECTA que va a romperse.
+
+TIPOS DE ANOMALÍA:
+1. DISPOSITIVO CAÍDO: unavailable > 5min sin mantenimiento programado
+2. VALOR FUERA DE RANGO: temperatura > 40°C interior, humedad > 90%, consumo > 5x media
+3. PATRÓN ROTO: sensor de movimiento sin activar en 24h (¿batería?), luz que no responde
+4. CONSUMO ANÓMALO: dispositivo consumiendo mucho más/menos de lo habitual
+5. DEGRADACIÓN: sensor que va perdiendo precisión (drift), dispositivo con latencia creciente
+
+CÓMO ESTABLECER LÍNEA BASE:
+- get_history de 7 días para cada sensor/dispositivo clave
+- Calcular: media, desviación estándar, min/max, patrones horarios
+- Anomalía = valor actual > media + 2*stddev (o < media - 2*stddev)
+
+AUTO-HIPÓTESIS (cuando se detecta anomalía):
+- Sensor temperatura estancado → "Posible batería baja del sensor Zigbee"
+- Consumo 3x normal en enchufe → "Dispositivo conectado diferente o avería"
+- Movimiento excesivo en zona vacía → "Sensor mal calibrado o interferencia"
+- Múltiples dispositivos caídos al mismo tiempo → "Problema de red, no de dispositivos"
+
+ACCIONES AUTOMÁTICAS:
+- Anomalía baja: learn() + knowledge_db(add) → registro para análisis posterior
+- Anomalía media: proactive_thought(priority:medium) → avisar cuando Adrián abra el chat
+- Anomalía alta: telegram_send → notificación inmediata
+- Anomalía crítica: telegram_send + sirena/luces + intentar auto-reparar`,
+
 };
 
 module.exports = { NEXUS_MODULES };

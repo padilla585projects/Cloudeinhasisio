@@ -3,6 +3,50 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.34.6 (2026-06-25) — Intelligence: Climate + Presence + Anomaly Detection
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVOS MÓDULOS NEXUS (3):
+- clima: conocimiento de HVAC, confort térmico, estrategias de ahorro, persianas
+  térmicas, detección de desperdicio (HVAC+ventana abierta, calefacción sin nadie).
+  Asignado a: ha_control, energia.
+
+- presencia: inteligencia de ocupación, fuentes de presencia, patrones de rutina,
+  predicción de llegada/salida, automatizaciones inteligentes por habitación.
+  Asignado a: ha_control, seguridad.
+
+- anomalias: detección de anomalías, línea base estadística, auto-hipótesis,
+  tipos de anomalía (device_down, value_out_of_range, stuck_sensor, low_battery).
+  Asignado a: diagnostico.
+
+NUEVAS TOOLS (3):
+- climate_optimize: analiza uso HVAC, detecta desperdicio (AC+ventana, calefacción
+  sin nadie), sugiere automatizaciones de ahorro, calcula eficiencia.
+  Acciones: analyze, suggest, schedule, efficiency.
+  Asignada a: ha_control, energia.
+
+- presence_predict: analiza historial de person.*/device_tracker.*, predice
+  llegadas/salidas, mapa de ocupación por habitación, detecta rutinas diarias.
+  Acciones: analyze, predict, occupancy, routines.
+  Asignada a: ha_control, seguridad.
+
+- anomaly_detect: escanea toda la instalación buscando anomalías (dispositivos
+  caídos >5min, valores fuera de rango, sensores estancados 24h+, baterías bajas),
+  calcula línea base estadística (7 días, media±2σ), genera auto-hipótesis.
+  Acciones: scan, baseline, check, report.
+  Asignada a: ha_control, diagnostico, seguridad.
+
+ROUTER:
+- Nuevos regex: climatización/HVAC/termostato → energia, anomalía/sensor roto/
+  health check → diagnostico, predicción/rutina/ocupación → seguridad.
+
+TOTAL TOOLS: 93 (era 90).
+
+IMPACTO TOKENS: $0.00/día base — las tools solo se invocan bajo demanda del
+usuario. Los módulos NEXUS se inyectan solo cuando el experto activo los incluye
+(no se cargan todos a la vez).
+
+────────────────────────────────────────────────────────────────────────────────
 v3.34.5 (2026-06-25) — Settings Panel + History Browser + Drag-Drop Upload
 ────────────────────────────────────────────────────────────────────────────────
 
