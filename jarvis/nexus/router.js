@@ -1,5 +1,5 @@
 'use strict';
-const { callOpenAI } = require('../utils/llm');
+const { callLLM } = require('../utils/llm');
 const { BG_MODEL } = require('../utils/constants');
 const { tools } = require('../tools/definitions');
 const state = require('../utils/state');
@@ -107,7 +107,7 @@ async function nexusRoute(message) {
   // CAPA 2: LLM barato (~10 tokens de output)
   try {
     const allNames = Object.keys(nexusGetAllExperts()).join('|');
-    const result = await callOpenAI(
+    const result = await callLLM(
       BG_MODEL,
       `Clasifica en UNA palabra: ${allNames}. Solo la palabra.`,
       [{ role: 'user', content: text.slice(0, 300) }],

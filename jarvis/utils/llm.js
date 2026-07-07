@@ -6,41 +6,48 @@ const state = require('./state');
 // Precios reales por modelo (USD / token)
 // cache_read / cache_write: coste de tokens de prompt caching (Anthropic)
 const MODEL_PRICES = {
-  'gpt-4.1-mini':       { in: 0.40 / 1e6, out: 1.60 / 1e6, cache_read: 0.10 / 1e6,  cache_write: 0 },
-  'gpt-4o-mini':        { in: 0.15 / 1e6, out: 0.60 / 1e6, cache_read: 0.075 / 1e6, cache_write: 0 },
-  'gpt-4.1':            { in: 2.00 / 1e6, out: 8.00 / 1e6, cache_read: 0.50 / 1e6,  cache_write: 0 },
-  'gpt-4o':             { in: 2.50 / 1e6, out: 10.00 / 1e6, cache_read: 0.625 / 1e6, cache_write: 0 },
-  'claude-sonnet-4-5':  { in: 3.00 / 1e6, out: 15.00 / 1e6, cache_read: 0.30 / 1e6,  cache_write: 3.75 / 1e6 },
-  'claude-sonnet-4-6':  { in: 3.00 / 1e6, out: 15.00 / 1e6, cache_read: 0.30 / 1e6,  cache_write: 3.75 / 1e6 },
-  'claude-opus-4-7':    { in: 15.00 / 1e6, out: 75.00 / 1e6, cache_read: 1.50 / 1e6, cache_write: 18.75 / 1e6 },
-  'deepseek-chat':      { in: 0.27 / 1e6, out: 1.10 / 1e6, cache_read: 0, cache_write: 0 },
-  'deepseek-reasoner':  { in: 0.55 / 1e6, out: 2.19 / 1e6, cache_read: 0, cache_write: 0 },
+  'deepseek-v4-flash':  { in: 0.14 / 1e6,   out: 0.28 / 1e6,  cache_read: 0.0028 / 1e6,   cache_write: 0 },
+  'deepseek-v4-pro':    { in: 0.435 / 1e6,  out: 0.87 / 1e6,  cache_read: 0.003625 / 1e6, cache_write: 0 },
+  'deepseek-chat':      { in: 0.27 / 1e6,   out: 1.10 / 1e6,  cache_read: 0, cache_write: 0 },
+  'deepseek-reasoner':  { in: 0.55 / 1e6,   out: 2.19 / 1e6,  cache_read: 0, cache_write: 0 },
+  'gpt-4.1-mini':       { in: 0.40 / 1e6,   out: 1.60 / 1e6,  cache_read: 0.10 / 1e6,    cache_write: 0 },
+  'gpt-4o-mini':        { in: 0.15 / 1e6,   out: 0.60 / 1e6,  cache_read: 0.075 / 1e6,   cache_write: 0 },
+  'gpt-4.1':            { in: 2.00 / 1e6,   out: 8.00 / 1e6,  cache_read: 0.50 / 1e6,    cache_write: 0 },
+  'gpt-4o':             { in: 2.50 / 1e6,   out: 10.00 / 1e6, cache_read: 0.625 / 1e6,   cache_write: 0 },
+  'claude-sonnet-4-5':  { in: 3.00 / 1e6,   out: 15.00 / 1e6, cache_read: 0.30 / 1e6,    cache_write: 3.75 / 1e6 },
+  'claude-sonnet-4-6':  { in: 3.00 / 1e6,   out: 15.00 / 1e6, cache_read: 0.30 / 1e6,    cache_write: 3.75 / 1e6 },
 };
 
 function trackUsage(model, usage) {
   if (!usage) return;
-  const in_tok  = usage.prompt_tokens || usage.input_tokens || 0;
   const out_tok = usage.completion_tokens || usage.output_tokens || 0;
-  const cache_r = usage.cache_read_input_tokens || 0;
+  const cache_r = usage.cache_read_input_tokens || usage.prompt_cache_hit_tokens || 0;
   const cache_c = usage.cache_creation_input_tokens || 0;
+  // DeepSeek V4: prompt_tokens = cache_hit + cache_miss; use cache_miss as non-cached input
+  // Others: prompt_tokens/input_tokens is already non-cached input
+  let in_tok;
+  if (usage.prompt_cache_miss_tokens !== undefined) {
+    in_tok = usage.prompt_cache_miss_tokens;
+  } else {
+    in_tok = usage.prompt_tokens || usage.input_tokens || 0;
+  }
+  const total_in = usage.prompt_tokens || usage.input_tokens || in_tok + cache_r + cache_c;
   state.apiUsage.calls++;
-  state.apiUsage.inputTokens  += in_tok;
+  state.apiUsage.inputTokens  += total_in;
   state.apiUsage.outputTokens += out_tok;
   state.apiUsage.cacheReadTokens      += cache_r;
   state.apiUsage.cacheCreationTokens  += cache_c;
-  // Acumular coste real por modelo
-  const prices = MODEL_PRICES[model] || MODEL_PRICES['gpt-4.1-mini'];
+  const prices = MODEL_PRICES[model] || MODEL_PRICES['deepseek-v4-pro'];
   state.apiUsage.costUSD = (state.apiUsage.costUSD || 0)
     + in_tok  * prices.in
     + out_tok * prices.out
     + cache_r * (prices.cache_read  || 0)
     + cache_c * (prices.cache_write || 0);
-  // Auto-saverMode: si el gasto supera el límite diario, activar ahorro automático
   const dailyLimit = parseFloat(process.env.DAILY_COST_LIMIT || '1.5');
   if (!state.saverMode && state.apiUsage.costUSD > dailyLimit) {
     state.saverMode = true;
     state._saverAutoActivated = true;
-    console.warn(`[cost-guard] ⚠️ Gasto $${state.apiUsage.costUSD.toFixed(2)} > límite $${dailyLimit}/día → Modo ahorro ACTIVADO automáticamente`);
+    console.warn(`[cost-guard] Gasto $${state.apiUsage.costUSD.toFixed(2)} > limite $${dailyLimit}/dia -> Modo ahorro ACTIVADO`);
   }
 }
 
@@ -354,19 +361,29 @@ async function callAnthropic(model, system, messages, aiTools, maxTokens) {
 
 // ── DeepSeek (V3 + R1) ────────────────────────────────────────────────────────
 
-async function callDeepSeek(model, system, messages, aiTools, maxTokens) {
+async function callDeepSeek(model, system, messages, aiTools, maxTokens, options = {}) {
   if (!DEEPSEEK_API_KEY) {
-    const e = new Error('⚠️ DeepSeek API Key no configurada. Ve a Ajustes del add-on → deepseek_api_key.');
+    const e = new Error('DeepSeek API Key no configurada. Ve a Ajustes del add-on -> deepseek_api_key.');
     e.noApiKey = true;
     throw e;
   }
 
+  const isV4 = model.startsWith('deepseek-v4-');
+  const isPro = model === 'deepseek-v4-pro' || model === 'deepseek-reasoner';
   const isReasoner = model === 'deepseek-reasoner';
+  const thinkingMode = isV4 ? (options.thinking !== false) : isReasoner;
+  const reasoningEffort = options.thinking === 'max' ? 'max' : 'high';
+
   const sanitized = sanitizeMessagesForOpenAI(messages);
   const msgs = system ? [{ role: 'system', content: system }, ...sanitized] : [...sanitized];
 
   const body = { model, max_tokens: maxTokens, messages: msgs };
-  // deepseek-reasoner NO soporta function calling
+  if (isV4 && thinkingMode) {
+    body.thinking = { type: 'enabled' };
+    body.reasoning_effort = reasoningEffort;
+  } else if (isV4 && !thinkingMode) {
+    body.thinking = { type: 'disabled' };
+  }
   if (!isReasoner && aiTools && aiTools.length > 0) body.tools = aiTools;
 
   const data = await withRetry(async () => {
@@ -393,10 +410,9 @@ async function callDeepSeek(model, system, messages, aiTools, maxTokens) {
   const choice = data.choices[0];
   const message = choice.message;
 
-  // R1 expone su cadena de razonamiento — la logueamos para debug
   if (message.reasoning_content) {
     const preview = message.reasoning_content.slice(0, 300).replace(/\n/g, ' ');
-    console.log(`[deepseek-r1] 🧠 ${preview}...`);
+    console.log(`[deepseek] reasoning: ${preview}...`);
   }
 
   const text = message.content || '';
@@ -408,48 +424,50 @@ async function callDeepSeek(model, system, messages, aiTools, maxTokens) {
 
   const usage = data.usage || {};
   trackUsage(model, usage);
+  const resultMessage = {
+    role: 'assistant',
+    content: text || null,
+    ...(toolCalls.length > 0 ? { tool_calls: message.tool_calls } : {})
+  };
+  if (message.reasoning_content && thinkingMode && toolCalls.length > 0) {
+    resultMessage.reasoning_content = message.reasoning_content;
+  }
   return {
     text,
     toolCalls,
     finishReason: choice.finish_reason || 'stop',
-    message: {
-      role: 'assistant',
-      content: text || null,
-      ...(toolCalls.length > 0 ? { tool_calls: message.tool_calls } : {})
-    },
+    message: resultMessage,
     usage
   };
 }
 
 // ── Wrapper unificado ─────────────────────────────────────────────────────────
 
-async function callLLM(model, system, messages, tools, maxTokens) {
+async function callLLM(model, system, messages, tools, maxTokens, options = {}) {
   if (model && model.startsWith('claude-')) {
     if (!ANTHROPIC_API_KEY) {
-      console.log('[llm] Anthropic no configurado → fallback gpt-4.1-mini');
-      return callOpenAI(OPENAI_MODEL_FALLBACK, system, messages, tools, maxTokens);
+      console.log('[llm] Anthropic no configurado -> fallback deepseek-v4-pro');
+      return callDeepSeek('deepseek-v4-pro', system, messages, tools, maxTokens, options);
     }
     try {
       return await callAnthropic(model, system, messages, tools, maxTokens);
     } catch (e) {
-      // Sin créditos, rate-limit o clave inválida → fallback a OpenAI
       const isCreditsErr = e.message && (
         e.message.includes('credit') || e.message.includes('balance') ||
         e.message.includes('quota') || e.message.includes('rate_limit') ||
         e.message.includes('invalid_api_key') || e.message.includes('401')
       );
       if (isCreditsErr) {
-        console.log(`[llm] Anthropic no disponible (${e.message.slice(0,80)}) → fallback gpt-4.1-mini`);
-        return callOpenAI(OPENAI_MODEL_FALLBACK, system, messages, tools, maxTokens);
+        console.log(`[llm] Anthropic no disponible (${e.message.slice(0,80)}) -> fallback deepseek-v4-pro`);
+        return callDeepSeek('deepseek-v4-pro', system, messages, tools, maxTokens, options);
       }
       throw e;
     }
   }
-  if (model && model.startsWith('deepseek-'))  return callDeepSeek(model, system, messages, tools, maxTokens);
+  if (model && model.startsWith('deepseek-'))  return callDeepSeek(model, system, messages, tools, maxTokens, options);
   return callOpenAI(model, system, messages, tools, maxTokens);
 }
 
-// Modelo de fallback cuando Anthropic no está disponible
 const OPENAI_MODEL_FALLBACK = require('./constants').MODEL;
 
 // ── Whisper STT ───────────────────────────────────────────────────────────────

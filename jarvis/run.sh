@@ -70,18 +70,19 @@ if bashio::config.has_value 'agent_net_invite'; then
   export AGENT_NET_INVITE="$(bashio::config 'agent_net_invite')"
 fi
 
-bashio::log.info "Iniciando Jarvis AI Agent v3.35.2..."
-bashio::log.info "Modelos cloud: gpt-4o-mini (bg) + gpt-4.1-mini (principal) + claude-sonnet-4-5 (dev)"
-bashio::log.info "☁️ Núcleos activos:"
-bashio::log.info "  · OpenAI: gpt-4.1-mini (principal) + gpt-4o-mini (rápido)"
-if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
-  bashio::log.info "  · Anthropic: claude-sonnet-4-5 (dev)"
-fi
+bashio::log.info "Iniciando Jarvis AI Agent v3.36.0..."
+bashio::log.info "Modelos cloud: DeepSeek V4 Flash (bg) + V4 Pro (principal/dev)"
+bashio::log.info "Nucleos activos:"
 if [ -n "${DEEPSEEK_API_KEY:-}" ]; then
-  bashio::log.info "  · DeepSeek: deepseek-chat (análisis) + deepseek-reasoner R1 (razonamiento)"
+  bashio::log.info "  · DeepSeek V4: flash (bg/rapido) + pro (principal/dev/razonamiento)"
+else
+  bashio::log.info "  · DeepSeek: NO CONFIGURADO (configurar deepseek_api_key)"
+fi
+if [ -n "${OPENAI_API_KEY:-}" ]; then
+  bashio::log.info "  · OpenAI: disponible (fallback + Whisper STT)"
 fi
 if [ -n "${GEMINI_API_KEY:-}" ]; then
-  bashio::log.info "  · Google: Gemini Imagen 3 (generación de imágenes)"
+  bashio::log.info "  · Google: Gemini Imagen 3 (generacion de imagenes)"
 fi
 if [ -n "${SERPER_API_KEY:-}" ]; then
   bashio::log.info "Busqueda: Google (Serper)"

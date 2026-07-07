@@ -16,6 +16,9 @@ const { callLLM, callOpenAI, callWhisper, callImageEdit, sanitizeMessagesForOpen
 const { updateLiveContext, buildDynamicContext } = require('./utils/context');
 const { tools, openAITools } = require('./tools/definitions');
 const { executeTool }        = require('./tools/executor');
+
+let mcpClient;
+try { mcpClient = require('./utils/mcp-client'); } catch { mcpClient = null; }
 const { nexusRoute, nexusAssemblePrompt, nexusGetAllExperts, nexusPickExpert, nexusGetToolsForExpert, nexusLogLayerStats } = require('./nexus/router');
 const { nexusEvolutionTick, nexusWatchers, nexusGetScore } = require('./nexus/health');
 const { EXPERTS } = require('./nexus/experts');
@@ -48,6 +51,14 @@ try {
 state.openAITools = openAITools;
 state.executeTool = executeTool;
 initNotifications();
+
+if (mcpClient) {
+  const mcpTools = mcpClient.getMcpOpenAiTools();
+  if (mcpTools.length > 0) {
+    state.openAITools = [...openAITools, ...mcpTools];
+    console.log(`[boot] MCP tools merged: ${mcpTools.length} external tools available`);
+  }
+}
 
 // ── Asegurar que /data existe ─────────────────────────────────────────────────
 if (!fs.existsSync(C.DATA_DIR)) fs.mkdirSync(C.DATA_DIR, { recursive: true });
@@ -441,8 +452,18 @@ async function handleChat(req, res, messages, files) {
     const layerInfo = nexusLogLayerStats(nexusExpertName);
     console.log(`[nexus] ${nexusExpert.label} | model=${activeModel} | health=${nexusGetScore(nexusExpertName)} | tools=${layerInfo.tools}/${layerInfo.toolsTotal}`);
 
-    // Bloque B: tool scoping — solo las tools del experto activo
+    // Bloque B: tool scoping — solo las tools del experto activo + MCP tools
     const scopedTools = nexusGetToolsForExpert(nexusExpertName);
+    if (mcpClient && mcpClient.getMcpOpenAiTools().length > 0) {
+      scopedTools.push(...mcpClient.getMcpOpenAiTools());
+    }
+
+    // Thinking mode: experto puede definir thinking: true | false | 'max'
+    const expertThinking = nexusExpert.thinking;
+    const llmOptions = {};
+    if (expertThinking !== undefined) {
+      llmOptions.thinking = expertThinking;
+    }
 
     let currentMessages = [...state.conversationHistory];
     let finalText = '';
@@ -461,8 +482,7 @@ async function handleChat(req, res, messages, files) {
       iterations++;
       let result;
       try {
-        // Bloque B: callLLM enruta a OpenAI o Anthropic según el modelo del experto
-        result = await callLLM(activeModel, systemPrompt, currentMessages, scopedTools, activeMaxTokens);
+        result = await callLLM(activeModel, systemPrompt, currentMessages, scopedTools, activeMaxTokens, llmOptions);
       } catch (err) {
         console.log(`[jarvis] Error API iter=${iterations}: ${err.message}`);
         if (err.message.includes('429') || err.message.includes('503')) {
@@ -474,7 +494,7 @@ async function handleChat(req, res, messages, files) {
           stripImagesFromHistory();
           currentMessages = sanitizeMessagesForOpenAI([...state.conversationHistory], true);
           try {
-            result = await callLLM(activeModel, systemPrompt, currentMessages, scopedTools, activeMaxTokens);
+            result = await callLLM(activeModel, systemPrompt, currentMessages, scopedTools, activeMaxTokens, llmOptions);
           } catch (err2) {
             sendEvent({ type: 'error', error: `Error API: ${err2.message}` });
             break;
@@ -1644,10 +1664,17 @@ async function proactiveDeviceHealthScan() {
 const PORT = 3000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Jarvis AI Agent v${state.JARVIS_VERSION} corriendo en puerto ${PORT}`);
-  console.log(`Modelo: ${C.MODEL} | Config: ${C.HA_CONFIG} | Data: ${C.DATA_DIR}`);
-  console.log(`API Key: ${C.ANTHROPIC_API_KEY ? 'configurada (' + C.ANTHROPIC_API_KEY.slice(0, 10) + '...)' : '⚠️ NO CONFIGURADA'}`);
-  console.log(`HA Token: ${C.HA_TOKEN ? 'presente' : '⚠️ NO DISPONIBLE'}`);
+  console.log(`Modelo: ${C.MODEL} (DeepSeek V4) | Config: ${C.HA_CONFIG} | Data: ${C.DATA_DIR}`);
+  console.log(`API Key: ${C.DEEPSEEK_API_KEY ? 'configurada' : 'NO CONFIGURADA'}`);
+  console.log(`HA Token: ${C.HA_TOKEN ? 'presente' : 'NO DISPONIBLE'}`);
   console.log(`[boot] Servidor listo. Iniciando tareas de background...`);
+
+  // Inicializar MCP servers
+  if (mcpClient) {
+    setTimeout(async () => {
+      try { await mcpClient.initMcpServers(); } catch (e) { console.log(`[boot] MCP init: ${e.message}`); }
+    }, 8000);
+  }
 
   setTimeout(async () => {
     try {

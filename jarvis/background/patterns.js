@@ -1,6 +1,6 @@
 'use strict';
 const path = require('path');
-const { callOpenAI } = require('../utils/llm');
+const { callLLM } = require('../utils/llm');
 const { loadJSON, saveJSON } = require('../utils/persistence');
 const { haGet } = require('../utils/ha-api');
 const C = require('../utils/constants');
@@ -111,7 +111,7 @@ async function analyzePatterns() {
 
     let patResult;
     try {
-      patResult = await callOpenAI(C.BG_MODEL, 'Eres Jarvis analizando patrones de vida del hogar. Detecta rutinas de los habitantes. Si encuentras un patrón claro y accionable (se podría automatizar), usa proactive_thought para sugerir la automatización. Si detectas algo que memorizar, usa save_memory. Solo patrones CLAROS con >60% de consistencia. Español. Breve.', [{ role: 'user', content: summary }], patternTools, 600);
+      patResult = await callLLM(C.BG_MODEL, 'Eres Jarvis analizando patrones de vida del hogar. Detecta rutinas de los habitantes. Si encuentras un patrón claro y accionable (se podría automatizar), usa proactive_thought para sugerir la automatización. Si detectas algo que memorizar, usa save_memory. Solo patrones CLAROS con >60% de consistencia. Español. Breve.', [{ role: 'user', content: summary }], patternTools, 600);
     } catch (err) {
       console.log(`[patterns] Error API: ${err.message}`);
       return;

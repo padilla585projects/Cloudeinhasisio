@@ -1,6 +1,6 @@
 'use strict';
 
-// ── Definiciones de tools del agente (63 tools) ──────────────────────────────
+// ── Definiciones de tools del agente ──────────────────────────────────────
 // Este archivo es puro datos — solo exporta el array tools[].
 // Los tool calls reales están en tools/executor.js
 

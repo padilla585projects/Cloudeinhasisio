@@ -3,6 +3,65 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.36.0 (2026-07-01) — DeepSeek V4 migration + MCP client
+────────────────────────────────────────────────────────────────────────────────
+
+MODELOS — Migracion completa a DeepSeek V4:
+- deepseek-chat → deepseek-v4-flash: -48% input, -75% output
+- deepseek-reasoner → deepseek-v4-pro: -21% input, -60% output
+- gpt-4.1-mini (principal) → deepseek-v4-pro: -46% output
+- gpt-4o-mini (background) → deepseek-v4-flash: -53% output
+- claude-sonnet-4-5 (dev) → deepseek-v4-pro: -85% input, -94% output
+- Ahorro estimado: ~70% del coste diario (de ~$0.30-0.35 a ~$0.09-0.12)
+- Modelos antiguos (deepseek-chat, deepseek-reasoner) se deprecan 2026-07-24
+
+THINKING MODE:
+- V4 Flash: non-thinking por defecto (rapido, barato)
+- V4 Pro: thinking mode activado por defecto (razonamiento profundo)
+- reasoning_effort controlable por experto: true | false | 'max'
+- reasoning_content se pasa al historial en tool calls (requerido por V4)
+- Expertos con thinking=false: rapido, archivo, multimedia (ahorro)
+- Expertos con thinking=true: ha_control, diagnostico, emergencia, etc.
+- Experto dev con thinking='max' (maximo razonamiento para codigo)
+
+CONTEXT CACHING V4:
+- Cache automatico en disco (no requiere cambios de codigo)
+- Cache hit: $0.0028/M (flash), $0.0036/M (pro) — casi gratis
+- trackUsage actualizado: prompt_cache_hit_tokens + prompt_cache_miss_tokens
+- Coste real ahora refleja cache hits (no prompt_tokens total)
+
+MCP CLIENT:
+- Nuevo modulo utils/mcp-client.js — cliente MCP (stdio transport)
+- Config en /data/mcp_servers.json
+- Formato: { "server_name": { "command": "...", "args": [...], "env": {} } }
+- MCP tools conectadas automaticamente al catalogo de Jarvis
+- Routing en executor.js default case: tools con prefijo "server__tool"
+- API endpoints: GET /api/mcp/servers (lista servidores)
+- MCP tools aparecen en getScopedTools de todos los expertos
+
+FIX POST-MIGRACION (llamadas directas a callOpenAI bypasseaban el router):
+- background/knowledge.js (knowledgeExpansionLoop, distillLearnings)
+- background/patterns.js (analyzePatterns)
+- background/selfcheck.js (autoRepair, bootLearnHA)
+- nexus/router.js (fallback de clasificacion Capa 2)
+  → estos 6 puntos llamaban a callOpenAI(C.BG_MODEL, ...) directamente.
+  callOpenAI() siempre postea a api.openai.com sin mirar el nombre del modelo,
+  y BG_MODEL ahora es 'deepseek-v4-flash' → habria roto self-repair,
+  auto-aprendizaje HA, expansion de knowledge base, destilado de learnings,
+  analisis de patrones y el fallback de routing de NEXUS.
+  Fix: cambiadas a callLLM(), que enruta correctamente segun prefijo de modelo.
+- tools/executor.js (camera_analyze): este caso usa vision (imagenes base64),
+  que DeepSeek V4 no soporta via este path. Se desacopla de C.BG_MODEL y se
+  fija a 'gpt-4o-mini' explicito (via callOpenAI, sigue siendo vision-capable).
+
+IMPACTO TOKENS:
+- Migracion: ahorro ~70% (todos los modelos ahora DeepSeek V4)
+- MCP: $0.00/dia extra (las tools MCP son on-demand)
+- Context caching: ahorro adicional variable segun ratio de cache hit
+- Fixes post-migracion: $0.00/dia extra (mismos modelos/frecuencias, solo
+  corrige el routing para que no fallen las llamadas tras el cambio de modelo)
+
+────────────────────────────────────────────────────────────────────────────────
 v3.35.2 (2026-06-25) — Quick actions + smart contextual suggestions
 ────────────────────────────────────────────────────────────────────────────────
 

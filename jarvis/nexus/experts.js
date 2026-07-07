@@ -9,8 +9,9 @@ const { MODEL, BG_MODEL, CLAUDE_MODEL, DEEPSEEK_MODEL, DEEPSEEK_R1_MODEL } = req
 const EXPERTS = {
   rapido: {
     model: BG_MODEL, maxTokens: 2048, maxIter: 6,
+    thinking: false,
     modules: ['base'],
-    label: 'Rápido',
+    label: 'Rapido',
     tools: ['get_entities', 'search_entities', 'get_entity_state', 'call_service',
             'save_memory', 'get_memory', 'speak', 'web_search', 'fetch_url',
             'list_directory', 'read_file', 'show_house_status']
@@ -18,6 +19,7 @@ const EXPERTS = {
 
   ha_control: {
     model: MODEL, maxTokens: 4096, maxIter: 8,
+    thinking: true,
     modules: ['base', 'philosophy', 'ha_control', 'ha_internals', 'ha_config_engineering', 'clima', 'presencia', 'filesystem', 'inamovible'],
     label: 'Control HA',
     tools: ['get_entities', 'search_entities', 'get_entity_state', 'call_service',
@@ -39,8 +41,9 @@ const EXPERTS = {
 
   diagnostico: {
     model: MODEL, maxTokens: 4096, maxIter: 10,
+    thinking: true,
     modules: ['base', 'perseverance', 'ha_control', 'ha_internals', 'ha_config_engineering', 'diagnostico', 'anomalias', 'filesystem', 'inamovible'],
-    label: 'Diagnóstico',
+    label: 'Diagnostico',
     tools: ['get_entities', 'search_entities', 'get_entity_state', 'get_history', 'get_logbook',
             'get_system_logs', 'get_error_log', 'check_config', 'web_search', 'web_search_native', 'fetch_url',
             'read_file', 'learn', 'ha_supervisor', 'network', 'get_notifications',
@@ -52,8 +55,9 @@ const EXPERTS = {
 
   automatizacion: {
     model: MODEL, maxTokens: 4096, maxIter: 8,
+    thinking: true,
     modules: ['base', 'philosophy', 'natural_automation', 'automation', 'ha_internals', 'ha_config_engineering', 'ha_control', 'filesystem', 'inamovible'],
-    label: 'Automatización',
+    label: 'Automatizacion',
     tools: ['get_automations', 'create_automation', 'edit_automation', 'delete_automation',
             'simulate_automation', 'reload_config', 'check_config',
             'get_dashboards', 'get_dashboard_config', 'update_dashboard', 'review_dashboard',
@@ -65,6 +69,7 @@ const EXPERTS = {
 
   archivo: {
     model: MODEL, maxTokens: 3072, maxIter: 6,
+    thinking: false,
     modules: ['base', 'ha_config_engineering', 'filesystem', 'inamovible'],
     label: 'Archivos',
     tools: ['read_file', 'write_file', 'append_file', 'list_directory', 'patch_file',
@@ -74,6 +79,7 @@ const EXPERTS = {
 
   emergencia: {
     model: MODEL, maxTokens: 6144, maxIter: 12,
+    thinking: true,
     modules: ['base', 'perseverance', 'emergency', 'ha_config_engineering', 'diagnostico', 'ha_internals', 'ha_control', 'filesystem', 'inamovible'],
     label: 'Emergencia',
     tools: ['get_entities', 'get_entity_state', 'call_service', 'get_system_logs',
@@ -84,6 +90,7 @@ const EXPERTS = {
 
   dev: {
     model: CLAUDE_MODEL, maxTokens: 3500, maxIter: 5,
+    thinking: 'max',
     modules: ['base', 'philosophy', 'dev', 'inamovible'],
     label: 'Desarrollo',
     tools: ['read_file', 'write_file', 'append_file', 'list_directory', 'patch_file',
@@ -97,6 +104,7 @@ const EXPERTS = {
 
   multimedia: {
     model: MODEL, maxTokens: 2048, maxIter: 6,
+    thinking: false,
     modules: ['base', 'multimedia', 'ha_control', 'filesystem', 'inamovible'],
     label: 'Multimedia',
     tools: ['call_service', 'speak', 'alexa_bidirectional', 'get_entities',
@@ -107,8 +115,9 @@ const EXPERTS = {
 
   energia: {
     model: MODEL, maxTokens: 4096, maxIter: 8,
+    thinking: true,
     modules: ['base', 'energia', 'clima', 'ha_control', 'filesystem', 'inamovible'],
-    label: 'Energía',
+    label: 'Energia',
     tools: ['get_entities', 'get_entity_state', 'get_history', 'get_logbook', 'call_service',
             'template_render', 'create_automation', 'analyze_patterns',
             'save_memory', 'learn', 'web_search', 'ha_knowledge',
@@ -118,6 +127,7 @@ const EXPERTS = {
 
   seguridad: {
     model: MODEL, maxTokens: 4096, maxIter: 8,
+    thinking: true,
     modules: ['base', 'seguridad_casa', 'presencia', 'ha_control', 'diagnostico', 'filesystem', 'inamovible'],
     label: 'Seguridad',
     tools: ['get_entities', 'get_entity_state', 'call_service', 'get_history', 'get_logbook',
@@ -129,6 +139,7 @@ const EXPERTS = {
 
   red: {
     model: MODEL, maxTokens: 4096, maxIter: 8,
+    thinking: true,
     modules: ['base', 'perseverance', 'red_infra', 'proxmox', 'diagnostico', 'filesystem', 'inamovible'],
     label: 'Red e Infra',
     tools: ['network', 'proxmox_api', 'agent_chat', 'agent_communicate', 'web_search',
@@ -139,6 +150,7 @@ const EXPERTS = {
 
   aprendizaje: {
     model: MODEL, maxTokens: 4096, maxIter: 8,
+    thinking: true,
     modules: ['base', 'aprendizaje', 'ha_control', 'filesystem', 'inamovible'],
     label: 'Aprendizaje',
     tools: ['get_memory', 'save_memory', 'delete_memory', 'learn', 'knowledge_db',
@@ -146,13 +158,14 @@ const EXPERTS = {
             'web_search_native', 'get_history', 'scan_installation']
   },
 
-  // ── Núcleos DeepSeek ─────────────────────────────────────────────────────────
+  // ── Nucleos DeepSeek V4 ──────────────────────────────────────────────────────
 
   analisis: {
     model: DEEPSEEK_MODEL, maxTokens: 4096, maxIter: 8,
+    thinking: false,
     modules: ['base', 'aprendizaje'],
-    label: 'Análisis (DeepSeek V3)',
-    // Núcleo de investigación: busca, lee, sintetiza. No modifica HA.
+    label: 'Analisis (V4 Flash)',
+    // Nucleo de investigacion: busca, lee, sintetiza. No modifica HA.
     tools: ['web_search', 'web_search_native', 'fetch_url', 'knowledge_db',
             'get_memory', 'save_memory', 'learn', 'analyze_patterns',
             'get_entities', 'get_entity_state', 'get_history',
@@ -162,8 +175,9 @@ const EXPERTS = {
 
   razonamiento: {
     model: DEEPSEEK_R1_MODEL, maxTokens: 16000, maxIter: 3,
+    thinking: true,
     modules: ['base_r1'],
-    label: 'Razonamiento (DeepSeek R1)',
+    label: 'Razonamiento (V4 Pro)',
     tools: []
   }
 };

@@ -17,6 +17,9 @@ const { execSync, spawnSync } = require('child_process');
 const C = require('../utils/constants');
 const { scanInstallation } = require('../utils/scan');
 
+let mcpClient;
+try { mcpClient = require('../utils/mcp-client'); } catch { mcpClient = null; }
+
 // Lazy-load to avoid circular deps
 function getNexus() { return require('../nexus/modules'); }
 
@@ -5088,8 +5091,9 @@ ${dots}`;
               { type: 'text', text: question }
             ]
           }];
+          // Vision requiere un modelo multimodal OpenAI — BG_MODEL (DeepSeek) no soporta imágenes
           const { callOpenAI } = require('../utils/llm');
-          const result = await callOpenAI(C.BG_MODEL || 'gpt-4o-mini', 'Eres un sistema de análisis de cámaras de seguridad. Responde en español, sé conciso y preciso.', visionMessages, null, 500);
+          const result = await callOpenAI('gpt-4o-mini', 'Eres un sistema de análisis de cámaras de seguridad. Responde en español, sé conciso y preciso.', visionMessages, null, 500);
           return { camera: input.entity_id, analysis: result.text, timestamp: new Date().toISOString() };
         } catch (e) {
           return { error: `Error analizando cámara: ${e.message}` };
@@ -5715,6 +5719,9 @@ ${dots}`;
       }
 
       default:
+        if (mcpClient && mcpClient.isMcpTool(name)) {
+          return mcpClient.executeMcpTool(name, input);
+        }
         return { error: `Tool desconocida: ${name}` };
     }
   } catch (err) {

@@ -2,7 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const fetch = require('node-fetch');
-const { callOpenAI } = require('../utils/llm');
+const { callLLM } = require('../utils/llm');
 const { loadJSON, saveJSON, autoBackup } = require('../utils/persistence');
 const { haGet, haPost } = require('../utils/ha-api');
 const C = require('../utils/constants');
@@ -222,7 +222,7 @@ Responde ÚNICAMENTE con este JSON (sin texto extra):
 
     let repairResult;
     try {
-      repairResult = await callOpenAI(C.BG_MODEL, null, [{ role: 'user', content: repairPrompt }], null, 1024);
+      repairResult = await callLLM(C.BG_MODEL, null, [{ role: 'user', content: repairPrompt }], null, 1024);
     } catch (err) {
       console.log(`[self-repair] API error: ${err.message}`);
       return;
@@ -360,7 +360,7 @@ Genera UNA entrada de knowledge_db con:
 Solo la llamada a knowledge_db. Español.`;
 
         const knowledgeTools = state.openAITools.filter(t => t.function.name === 'knowledge_db');
-        const result = await callOpenAI(C.BG_MODEL,
+        const result = await callLLM(C.BG_MODEL,
           'Eres Jarvis, experto en Home Assistant. Extrae conocimiento práctico de documentación técnica. Responde SOLO con knowledge_db. Español.',
           [{ role: 'user', content: extractPrompt }],
           knowledgeTools, 1000
