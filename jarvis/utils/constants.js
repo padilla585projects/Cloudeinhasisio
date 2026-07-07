@@ -45,6 +45,7 @@ const ALEXA_VOICE_FILE       = path.join(DATA_DIR, 'alexa_pending.json');
 const DASHBOARD_REVIEWS_FILE = path.join(DATA_DIR, 'dashboard_reviews.json');
 const SCHEDULED_TASKS_FILE   = path.join(DATA_DIR, 'scheduled_tasks.json');
 const PENDING_TASK_FILE      = path.join(DATA_DIR, 'pending_task.json');
+const API_USAGE_FILE         = path.join(DATA_DIR, 'api_usage.json');
 
 module.exports = {
   ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, SERPER_API_KEY,
@@ -59,5 +60,5 @@ module.exports = {
   HOUSE_CONTEXT_FILE, INSTALLATION_MAP_FILE,
   BACKUPS_DIR, USERS_FILE, EMERGENCY_CONFIG_FILE,
   ALEXA_VOICE_FILE, DASHBOARD_REVIEWS_FILE,
-  SCHEDULED_TASKS_FILE, PENDING_TASK_FILE,
+  SCHEDULED_TASKS_FILE, PENDING_TASK_FILE, API_USAGE_FILE,
 };

@@ -1,6 +1,7 @@
 'use strict';
+const fs = require('fs');
 const fetch = require('node-fetch');
-const { OPENAI_API_KEY, ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, DEEPSEEK_URL } = require('./constants');
+const { OPENAI_API_KEY, ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, DEEPSEEK_URL, API_USAGE_FILE } = require('./constants');
 const state = require('./state');
 
 // Precios reales por modelo (USD / token)
@@ -49,9 +50,26 @@ function trackUsage(model, usage) {
     state._saverAutoActivated = true;
     console.warn(`[cost-guard] Gasto $${state.apiUsage.costUSD.toFixed(2)} > limite $${dailyLimit}/dia -> Modo ahorro ACTIVADO`);
   }
+  persistApiUsage();
+}
+
+// Persiste apiUsage + saverMode a disco para que sobrevivan a un reinicio del
+// proceso (self-update, auto-repair, reinicios manuales) — sin esto el
+// contador de gasto diario se resetea a 0 en cada reinicio y el límite de
+// coste ($DAILY_COST_LIMIT/día) deja de proteger nada.
+function persistApiUsage() {
+  try {
+    fs.writeFileSync(API_USAGE_FILE, JSON.stringify({
+      apiUsage: state.apiUsage,
+      saverMode: state.saverMode
+    }, null, 2));
+  } catch (e) {
+    console.log(`[cost-guard] Error guardando uso de API: ${e.message}`);
+  }
 }
 
 module.exports._trackUsage = trackUsage;
+module.exports.persistApiUsage = persistApiUsage;
 
 // ── Conversión formato Anthropic → OpenAI ────────────────────────────────────
 
@@ -546,5 +564,6 @@ module.exports = {
   sanitizeMessagesForOpenAI,
   stripImagesFromHistory,
   convertMessagesToAnthropic,
-  convertToolsToAnthropic
+  convertToolsToAnthropic,
+  persistApiUsage
 };

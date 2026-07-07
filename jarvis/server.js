@@ -12,7 +12,7 @@ const C       = require('./utils/constants');
 const { loadJSON, saveJSON, autoBackup } = require('./utils/persistence');
 const { haGet, haPost }      = require('./utils/ha-api');
 const { scanInstallation }   = require('./utils/scan');
-const { callLLM, callOpenAI, callWhisper, callImageEdit, sanitizeMessagesForOpenAI, stripImagesFromHistory } = require('./utils/llm');
+const { callLLM, callOpenAI, callWhisper, callImageEdit, sanitizeMessagesForOpenAI, stripImagesFromHistory, persistApiUsage } = require('./utils/llm');
 const { updateLiveContext, buildDynamicContext } = require('./utils/context');
 const { tools, openAITools } = require('./tools/definitions');
 const { executeTool }        = require('./tools/executor');
@@ -1421,6 +1421,7 @@ app.get('/api/config', (req, res) => {
 app.post('/api/saver', (req, res) => {
   state.saverMode = req.body.enabled !== undefined ? !!req.body.enabled : !state.saverMode;
   console.log(`[saver] Modo ahorro ${state.saverMode ? 'ACTIVADO' : 'desactivado'}`);
+  persistApiUsage();
   res.json({ saver_mode: state.saverMode, model: state.saverMode ? C.BG_MODEL : C.MODEL });
 });
 
@@ -1811,6 +1812,7 @@ app.listen(PORT, '0.0.0.0', () => {
       const prev = (state.apiUsage.costUSD || 0).toFixed(4);
       state.apiUsage = { calls: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, costUSD: 0, lastReset: new Date().toISOString() };
       if (state.saverMode) { state.saverMode = false; console.log('[cost-guard] Medianoche: saverMode desactivado, contadores reseteados'); }
+      persistApiUsage();
       console.log(`[cost-guard] Reset diario — coste ayer: $${prev}`);
       scheduleMidnightReset(); // programar siguiente reset
     }, msUntilMidnight);

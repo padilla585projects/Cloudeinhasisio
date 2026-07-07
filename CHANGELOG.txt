@@ -3,6 +3,31 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.36.1 (2026-07-07) — Cost-guard persistente (fix del safety net de gasto)
+────────────────────────────────────────────────────────────────────────────────
+
+FIX CRITICO:
+- state.apiUsage (contador de gasto diario) vivia SOLO en memoria y se
+  reseteaba a 0 en cada reinicio del proceso (self-update cada 2min,
+  auto-repair, reinicios manuales durante desarrollo). Esto anulaba el
+  limite DAILY_COST_LIMIT ($1.5/dia por defecto): si el proceso reiniciaba
+  varias veces en un dia de mucho uso, saverMode nunca llegaba a activarse
+  aunque el gasto real acumulado superara el limite.
+- Nuevo: utils/state.js restaura apiUsage + saverMode desde
+  /data/api_usage.json al arrancar, SOLO si el registro persistido es de
+  HOY (mismo dia calendario) — si es de un dia anterior, arranca en cero
+  igual que el reset de medianoche.
+- utils/llm.js: trackUsage() ahora persiste a disco en cada llamada
+  (persistApiUsage(), nueva funcion exportada). server.js llama a
+  persistApiUsage() tambien en el reset de medianoche y en el toggle
+  manual de /api/saver.
+- Resultado: el limite de gasto diario ahora es real e independiente de
+  cuantas veces reinicie el proceso durante el dia.
+
+IMPACTO TOKENS: $0.00/dia extra (solo persiste un JSON pequeño en disco en
+cada llamada LLM, no añade ninguna llamada a modelo).
+
+────────────────────────────────────────────────────────────────────────────────
 v3.36.0 (2026-07-01) — DeepSeek V4 migration + MCP client
 ────────────────────────────────────────────────────────────────────────────────
 
