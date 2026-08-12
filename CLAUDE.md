@@ -54,7 +54,7 @@ Si los archivos están en la raíz, HA no detecta actualizaciones. NUNCA mover a
     │   ├── ha-api.js        # haGet, haPost
     │   └── scan.js          # scanInstallation
     ├── tools/
-    │   ├── definitions.js   # Definición de las 67 tools (JSON schema)
+    │   ├── definitions.js   # Definición de las 96 tools (JSON schema)
     │   └── executor.js      # Switch con todos los handlers de tools
     ├── nexus/
     │   ├── experts.js       # 14 expertos con modelo, tools, módulos
@@ -174,7 +174,7 @@ default                            → callOpenAI
 
 **Router dual:** Capa 1 regex (0 tokens) → Capa 1.5 dynamic keywords → Capa 2 LLM BG_MODEL → fallback ha_control
 
-## Tools disponibles (67 total)
+## Tools disponibles (96 total)
 
 ### Dispositivos (5)
 1. `get_entities` — Lista entidades por dominio (caché 30s, máx 100)
@@ -183,107 +183,142 @@ default                            → callOpenAI
 4. `call_service` — Ejecutar servicios HA
 5. `get_history` — Historial de estados (máx 48h)
 
-### Automatizaciones (5)
+### Automatizaciones y scripts (7)
 6. `get_automations` — Lista automatizaciones
 7. `create_automation` — Escribe YAML en automations.yaml + reload
 8. `edit_automation` — Edita automatización existente por alias/id + reload
 9. `delete_automation` — Elimina automatización por alias/id + reload
-10. `reload_config` — Recarga config (automations/scripts/scenes/core/all)
+10. `edit_script` — Edita un script existente en scripts.yaml por ID
+11. `delete_script` — Elimina un script de scripts.yaml (backup + reload)
+12. `reload_config` — Recarga config (automations/scripts/scenes/core/all)
 
 ### Filesystem (6)
-11. `read_file` — Lee archivos en /config, /addons, /share, /media, /data
-12. `write_file` — Escribe en /config, /share, /data (whitelist + backup + YAML check)
-13. `append_file` — Añade al final (whitelist + backup + YAML check)
-14. `list_directory` — Lista directorio (recursivo opcional)
-15. `patch_file` — Modifica sección específica de un archivo YAML/texto
-16. `rollback` — Restaura backup de cualquier archivo (list | restore)
+13. `read_file` — Lee archivos en /config, /addons, /share, /media, /data
+14. `write_file` — Escribe en /config, /share, /data (whitelist + backup + YAML check)
+15. `append_file` — Añade al final (whitelist + backup + YAML check)
+16. `list_directory` — Lista directorio (recursivo opcional)
+17. `patch_file` — Modifica sección específica de un archivo YAML/texto
+18. `rollback` — Restaura backup de cualquier archivo (list | restore)
 
-### Internet (2)
-17. `web_search` — DuckDuckGo (defecto) o Google via Serper
-18. `fetch_url` — Obtiene contenido de una URL
+### Internet (3)
+19. `web_search` — DuckDuckGo (defecto) o Google via Serper
+20. `web_search_native` — Búsqueda web nativa de GPT-4.1 (tool integrada, lee páginas)
+21. `fetch_url` — Obtiene contenido de una URL
 
 ### Memoria y aprendizaje (5)
-19. `save_memory` — Guarda preferencias/rutinas/info (cap: 500 notas)
-20. `get_memory` — Consulta memoria
-21. `delete_memory` — Elimina nota
-22. `learn` — Registra aprendizaje (error/success/pattern/optimization)
-23. `knowledge_db` — Base de datos de conocimiento persistente (add/query/list/delete)
+22. `save_memory` — Guarda preferencias/rutinas/info (cap: 500 notas)
+23. `get_memory` — Consulta memoria
+24. `delete_memory` — Elimina nota
+25. `learn` — Registra aprendizaje (error/success/pattern/optimization)
+26. `knowledge_db` — Base de datos de conocimiento persistente (add/query/list/delete)
 
 ### Dashboards (6)
-24. `get_dashboards` — Lista todos los dashboards Lovelace
-25. `get_dashboard_config` — Lee config completa de un dashboard
-26. `update_dashboard` — Modifica dashboard (con backup auto rolling x10)
-27. `get_installed_frontend` — Detecta cards custom/HACS/temas
-28. `search_hacs_resources` — Busca herramientas en la comunidad HA
-29. `review_dashboard` — Auditoría profesional automática del dashboard
+27. `get_dashboards` — Lista todos los dashboards Lovelace
+28. `get_dashboard_config` — Lee config completa de un dashboard
+29. `update_dashboard` — Modifica dashboard (con backup auto rolling x10)
+30. `get_installed_frontend` — Detecta cards custom/HACS/temas
+31. `search_hacs_resources` — Busca herramientas en la comunidad HA
+32. `review_dashboard` — Auditoría profesional automática del dashboard
 
-### Instalación y conocimiento (6)
-30. `scan_installation` — Escanea toda la instalación de HA
-31. `score_installation` — Puntuación 0-100 de la instalación con recomendaciones
-32. `check_config` — Verifica que la config es válida
-33. `install_hacs_resource` — Descarga e instala cards/integraciones
-34. `ha_knowledge` — Consulta documentación oficial de HA
-35. `validate_yaml` — Valida YAML sin escribirlo
+### Instalación y conocimiento (7)
+33. `scan_installation` — Escanea toda la instalación de HA
+34. `score_installation` — Puntuación 0-100 de la instalación con recomendaciones
+35. `check_config` — Verifica que la config es válida
+36. `install_hacs_resource` — Descarga e instala cards/integraciones
+37. `ha_knowledge` — Consulta documentación oficial de HA
+38. `validate_yaml` — Valida YAML sin escribirlo
+39. `simulate_automation` — Simula una automatización sin ejecutarla (dry-run paso a paso)
 
 ### Template (1)
-36. `template_render` — Renderiza template Jinja2 via HA API
+40. `template_render` — Renderiza template Jinja2 via HA API
 
-### Logs (2)
-37. `get_system_logs` — Logs de core, supervisor, host, add-ons (con filtro)
-38. `get_error_log` — home-assistant.log directo
+### Logs y diagnóstico (3)
+41. `get_system_logs` — Logs de core, supervisor, host, add-ons (con filtro)
+42. `get_error_log` — home-assistant.log directo
+43. `get_logbook` — Logbook de eventos de entidades (más legible que get_history)
 
-### Telegram (3)
-39. `telegram_send` — Envía mensaje por Telegram
-40. `telegram_send_image` — Envía imagen/snapshot de cámara
-41. `telegram_get_updates` — Lee mensajes recibidos por el bot
+### Telegram y notificaciones (4)
+44. `telegram_send` — Envía mensaje por Telegram
+45. `telegram_send_image` — Envía imagen/snapshot de cámara
+46. `telegram_get_updates` — Lee mensajes recibidos por el bot
+47. `notify_all` — Notifica por Telegram + push HA + TTS a la vez
 
 ### Proxmox (1)
-42. `proxmox_api` — Gestión completa: VMs, snapshots, storage, red, estado
+48. `proxmox_api` — Gestión completa: VMs, snapshots, storage, red, estado
 
-### Generación de contenido (2)
-43. `generate_image` — DALL-E 3, guarda en /share/jarvis/images/
-44. `render_floorplan` — Plano SVG de la instalación
+### Generación de contenido (4)
+49. `generate_image` — DALL-E 3, guarda en /share/jarvis/images/
+50. `generate_image_gemini` — Genera imágenes con Google Gemini Imagen 4
+51. `image_edit` — Edita una imagen existente con DALL-E (inpainting)
+52. `render_floorplan` — Plano SVG de la instalación
 
-### Ejecución de código (1)
-45. `exec_command` — Ejecuta bash o python (whitelist de dirs)
+### Ejecución de código (2)
+53. `exec_command` — Ejecuta bash o python (whitelist de dirs)
+54. `dev_workspace` — Workspace privado para prototipar/probar código sin tocar /config
 
 ### Interfaz y UI (2)
-46. `update_ui` — Modifica la propia interfaz de Jarvis
-47. `house_3d_map` — Mapa 3D interactivo de la casa (Three.js)
+55. `update_ui` — Modifica la propia interfaz de Jarvis
+56. `house_3d_map` — Mapa 3D interactivo de la casa (Three.js)
 
-### Voz (2)
-48. `speak` — Habla por altavoces del hogar (Alexa, ha_tts Piper)
-49. `alexa_bidirectional` — Comandos bidireccionales con Alexa
+### Voz y audio (3)
+57. `speak` — Habla por altavoces del hogar (Alexa, ha_tts Piper)
+58. `alexa_bidirectional` — Comandos bidireccionales con Alexa
+59. `multi_room_audio` — Audio multi-habitación con altavoces Alexa/HA
 
 ### NEXUS y agentes (4)
-50. `nexus_manage` — Crea/edita/borra expertos y módulos NEXUS
-51. `run_custom_tool` — Ejecuta herramienta custom definida por Adrián
-52. `create_custom_tool` — Define nueva herramienta custom
-53. `agent_communicate` — Comunicación con otros agentes de la red
+60. `nexus_manage` — Crea/edita/borra expertos y módulos NEXUS
+61. `run_custom_tool` — Ejecuta herramienta custom definida por Adrián
+62. `create_custom_tool` — Define nueva herramienta custom
+63. `agent_communicate` — Comunicación con otros agentes de la red
 
-### Red local (2)
-54. `network` — arp_table, scan_subnet, ping, port_scan, http_request, wol
-55. `agent_chat` — Habla con LM Studio, LocalAI (OpenAI-compatible)
+### Red local y dispositivos IoT (4)
+64. `network` — arp_table, scan_subnet, ping, port_scan, http_request, wol
+65. `agent_chat` — Habla con LM Studio, LocalAI (OpenAI-compatible)
+66. `mqtt_publish` — Publica mensajes MQTT (Zigbee2MQTT, Tasmota, ESPHome)
+67. `zigbee_manage` — Gestiona Zigbee2MQTT: emparejar, renombrar, red, OTA
 
-### HA avanzado (7)
-56. `ha_supervisor` — Gestiona add-ons, snapshots, info del supervisor
-57. `update_self` — Auto-actualiza el propio código de Jarvis
-58. `create_addon` — Crea nuevo add-on de HA desde cero
-59. `github_push` — Sube cambios al repositorio de GitHub
-60. `analyze_github_repos` — Analiza repos del usuario en GitHub
-61. `emergency_config` — Configuración de emergencia del sistema
-62. `manage_users` — Gestiona usuarios de HA
+### HA avanzado (10)
+68. `ha_supervisor` — Gestiona add-ons, snapshots, info del supervisor
+69. `update_self` — Auto-actualiza el propio código de Jarvis
+70. `create_addon` — Crea nuevo add-on de HA desde cero
+71. `github_push` — Sube cambios al repositorio de GitHub
+72. `analyze_github_repos` — Analiza repos del usuario en GitHub
+73. `emergency_config` — Configuración de emergencia del sistema
+74. `manage_users` — Gestiona usuarios de HA
+75. `backup_restore` — Lista/crea/restaura/elimina snapshots de HA
+76. `system_info` — Info de hardware, host, red, DNS, almacenamiento
+77. `integration_repair` — Diagnostica y repara integraciones (list/reload/etc.)
 
 ### Notificaciones HA (2)
-63. `get_notifications` — Lee notificaciones del sistema HA
-64. `get_repairs` — Lee repairs/alertas de HA
+78. `get_notifications` — Lee notificaciones del sistema HA
+79. `get_repairs` — Lee repairs/alertas de HA
 
 ### Patrones y rutinas (2)
-65. `analyze_patterns` — Analiza snapshots de estado para detectar rutinas
-66. `proactive_thought` — Registra/consulta pensamientos proactivos de Jarvis
+80. `analyze_patterns` — Analiza snapshots de estado para detectar rutinas
+81. `proactive_thought` — Registra/consulta pensamientos proactivos de Jarvis
 
 ### Archivos del PC (1)
-67. `local_file` — Lee archivos del PC via File System Access API
+82. `local_file` — Lee archivos del PC via File System Access API
+
+### Dispositivos avanzados e integraciones (2)
+83. `zha_matter_manage` — Gestiona dispositivos ZHA y Matter/Thread
+84. `esphome_manage` — Gestiona dispositivos ESPHome (listar/config/flash/logs)
+
+### Energía y clima (3)
+85. `energy_query` — Consumo, producción solar y coste desde estadísticas HA
+86. `climate_optimize` — Analiza y optimiza uso de HVAC, sugiere automatizaciones
+87. `weather_forecast` — Previsión meteorológica interpretada para decisiones domóticas
+
+### Inteligencia y análisis del hogar (9)
+88. `show_house_status` — Panel visual en el chat con el estado de la casa
+89. `presence_predict` — Analiza patrones de presencia y predice comportamiento
+90. `input_manage` — Gestiona input helpers (boolean/number/text/select/datetime)
+91. `automation_analytics` — Uso/rendimiento de automatizaciones (más/menos usadas, sin usar)
+92. `camera_analyze` — Snapshot de cámara + análisis con IA de visión (GPT-4o)
+93. `area_manage` — Gestiona áreas/habitaciones de HA (list/create/devices)
+94. `smart_schedule` — Horarios inteligentes combinando PVPC + presencia + clima
+95. `device_health` — Batería, última actividad, firmware y señal de dispositivos
+96. `anomaly_detect` — Detecta anomalías comparando con línea base histórica
 
 ## UI — Funcionalidades actuales
 
