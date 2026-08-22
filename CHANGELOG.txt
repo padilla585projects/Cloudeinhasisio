@@ -3,6 +3,29 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.36.3 (2026-08-22) — Elimina la red de agentes GetawayAgentes
+────────────────────────────────────────────────────────────────────────────────
+
+ELIMINADO (a peticion, tras revisar logs de produccion):
+- background/agent_network.js: el gateway wss://getaway-gateway.alejandra-app
+  .workers.dev respondia HTTP 200 en vez de aceptar el upgrade a WebSocket.
+  Jarvis quedaba en un bucle de reconexion infinito cada 60s ("WS error:
+  Unexpected server response: 200" / "WS cerrado" / "Reconectando en 60s"),
+  llenando el log de ruido sin conseguir conectar nunca.
+- server.js: quitado el require/stub de agent_network, el arranque
+  agentNetwork.start() a los 8s de boot, y el endpoint
+  GET /api/agent_network/status.
+- config.yaml: quitadas las opciones agent_net_enabled/agent_net_url/
+  agent_net_invite (options + schema).
+- run.sh: quitado el bloque de export de variables AGENT_NET_*.
+- No afecta a las tools agent_communicate ni agent_chat (son HTTP directo
+  a un target_url/servicio, independientes de este gateway WS).
+
+IMPACTO TOKENS: $0.00/dia (era una conexion de red sin coste de LLM). Reduce
+ruido en el log de forma notable — el log analizado tenia ~27 intentos de
+reconexion en un solo archivo.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.36.2 (2026-08-22) — Fix critico: thinking mode roto en DeepSeek V4 Flash
 ────────────────────────────────────────────────────────────────────────────────
 
