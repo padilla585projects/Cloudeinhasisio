@@ -171,7 +171,19 @@ async function bootRecoverScripts() {
 async function bootSelfCheck() {
   try {
     console.log('[self-check] Leyendo mis logs previos para detectar errores...');
-    const res = await fetch('http://supervisor/addons/jarvis_ai_agent/logs', {
+    // "jarvis_ai_agent" no es el slug real del add-on instalado (los add-ons locales
+    // suelen llevar el prefijo "local_", y puede variar) — /addons/<addon>/logs no
+    // acepta "self" como slug, así que hay que resolver el slug real primero via
+    // /addons/self/info (ese sí soporta self) antes de pedir los logs.
+    const infoRes = await fetch('http://supervisor/addons/self/info', {
+      headers: { Authorization: `Bearer ${C.HA_TOKEN}` }
+    });
+    if (!infoRes.ok) { console.log(`[self-check] No pude resolver mi slug (${infoRes.status})`); return; }
+    const selfInfo = await infoRes.json();
+    const slug = selfInfo.data?.slug;
+    if (!slug) { console.log('[self-check] Slug no disponible en /addons/self/info'); return; }
+
+    const res = await fetch(`http://supervisor/addons/${slug}/logs`, {
       headers: { Authorization: `Bearer ${C.HA_TOKEN}` }
     });
     if (!res.ok) { console.log(`[self-check] Logs no disponibles (${res.status})`); return; }
