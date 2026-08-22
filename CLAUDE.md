@@ -64,7 +64,15 @@ Si los archivos están en la raíz, HA no detecta actualizaciones. NUNCA mover a
     │   ├── health.js        # Health scores por experto (0-100)
     │   └── assembler.js     # buildSystemPrompt legacy/fallback
     └── background/
-        └── agent_network.js # GetawayAgentes WebSocket (envuelto en try/catch en server.js)
+        ├── knowledge.js      # Expansión y destilado de conocimiento
+        ├── patterns.js       # Detección de rutinas/patrones del hogar
+        ├── proactive.js      # Pensamientos proactivos periódicos
+        ├── selfcheck.js      # Auto-reparación y boot self-check
+        ├── updates.js        # Chequeo de actualizaciones HA/add-ons
+        ├── netguard.js       # Monitor de red local
+        ├── infraguard.js     # Monitor de add-ons/infra vía Supervisor
+        ├── notifications.js  # Batching de notificaciones
+        └── telegram_bot.js   # Bot de Telegram
 ```
 
 ## Variables de entorno (definidas en run.sh)

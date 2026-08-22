@@ -56,21 +56,7 @@ if bashio::config.has_value 'gemini_api_key'; then
 fi
 
 
-# ── GetawayAgentes (red de agentes IA, opt-in) ───────────────────────────────
-export AGENT_NET_ENABLED="true"
-export AGENT_NET_URL="https://getaway-gateway.alejandra-app.workers.dev"
-export AGENT_NET_INVITE="getaway2026"
-if bashio::config.has_value 'agent_net_enabled'; then
-  export AGENT_NET_ENABLED="$(bashio::config 'agent_net_enabled')"
-fi
-if bashio::config.has_value 'agent_net_url'; then
-  export AGENT_NET_URL="$(bashio::config 'agent_net_url')"
-fi
-if bashio::config.has_value 'agent_net_invite'; then
-  export AGENT_NET_INVITE="$(bashio::config 'agent_net_invite')"
-fi
-
-bashio::log.info "Iniciando Jarvis AI Agent v3.36.2..."
+bashio::log.info "Iniciando Jarvis AI Agent v3.36.3..."
 bashio::log.info "Modelos cloud: DeepSeek V4 Flash (bg) + V4 Pro (principal/dev)"
 bashio::log.info "Nucleos activos:"
 if [ -n "${DEEPSEEK_API_KEY:-}" ]; then
@@ -91,11 +77,6 @@ else
 fi
 if [ -n "${PROXMOX_URL:-}" ]; then
   bashio::log.info "Proxmox: ${PROXMOX_URL} (nodo: ${PROXMOX_NODE})"
-fi
-if [ "${AGENT_NET_ENABLED}" = "true" ]; then
-  bashio::log.info "🤝 GetawayAgentes: HABILITADA (${AGENT_NET_URL})"
-else
-  bashio::log.info "GetawayAgentes: deshabilitada (poner agent_net_enabled: true para activar)"
 fi
 if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
   bashio::log.info "📱 Bot Telegram: ACTIVO (acceso remoto habilitado)"

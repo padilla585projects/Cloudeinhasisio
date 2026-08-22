@@ -32,20 +32,6 @@ const { infraGuardLoop } = require('./background/infraguard');
 const { startTelegramBot } = require('./background/telegram_bot');
 const { init: initNotifications, queueNotification, getRecentNotifications } = require('./background/notifications');
 
-// agent_network es OPCIONAL — si el archivo falta (deployment incompleto, build cache, etc.)
-// NO debe tirar abajo todo el add-on. Stub silencioso como fallback.
-let agentNetwork;
-try {
-  agentNetwork = require('./background/agent_network');
-} catch (e) {
-  console.log(`[boot] agent_network no disponible (${e.code || 'error'}: ${e.message.slice(0,80)}). Jarvis arranca SIN red de agentes.`);
-  agentNetwork = {
-    start:    async () => {},
-    stop:     () => {},
-    statusInfo: () => ({ enabled: false, reachable: false, error: 'module not loaded' }),
-    handleRemoteTask: async () => ({ summary: 'agent_network no cargado en este build' })
-  };
-}
 
 // ── Inyectar en state lo que los módulos necesitan acceder ───────────────────
 state.openAITools = openAITools;
@@ -1376,12 +1362,6 @@ app.post('/api/transcribe', async (req, res) => {
   }
 });
 
-// ── GetawayAgentes — estado de la red de agentes ────────────────────────────
-app.get('/api/agent_network/status', (req, res) => {
-  try { res.json(agentNetwork.statusInfo()); }
-  catch (e) { res.status(500).json({ error: e.message }); }
-});
-
 
 // Modo ahorro
 // ── Quick toggle actions (from status card, zero LLM cost) ──────────────────
@@ -1874,9 +1854,6 @@ app.listen(PORT, '0.0.0.0', () => {
       }
     } catch(e) { console.log('[boot-dedup] error:', e.message); }
   }, 3000);
-
-  // ── GetawayAgentes — red de agentes (opt-in via AGENT_NET_ENABLED=true) ──
-  setTimeout(() => agentNetwork.start().catch(e => console.log('[agent-net] start error:', e.message)), 8_000);
 
   // Revisión semanal de dashboard (lunes 9:00 AM)
   scheduleTask('weekly-dashboard-review', '0 9 * * 1', async () => {
