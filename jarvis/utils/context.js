@@ -19,19 +19,25 @@ function classifyUnavailable(states) {
   const huerfanas = malas.filter(e => e.attributes?.restored === true);
   const caidas    = malas.filter(e => e.attributes?.restored !== true);
 
-  // Agrupar las huérfanas por prefijo del object_id: identifica de un vistazo
-  // de qué dispositivo/integración es la basura (ezviz→c8c_lite, omv_compose...).
+  return {
+    huerfanas,
+    caidas,
+    gruposHuerfanas: agruparPorDispositivo(huerfanas),
+    gruposCaidas: agruparPorDispositivo(caidas),
+  };
+}
+
+// Agrupa por prefijo del object_id: identifica de un vistazo de qué dispositivo
+// o integración vienen (ezviz→c8c_lite, omv_compose, echo_dot...). Un listado de
+// 88 entity_id no cabe en el prompt y no dice nada; "c8c_lite(18)" sí.
+function agruparPorDispositivo(entidades) {
   const porGrupo = {};
-  for (const e of huerfanas) {
+  for (const e of entidades) {
     const obj = e.entity_id.split('.')[1] || '';
     const k = obj.split('_').slice(0, 2).join('_');
     porGrupo[k] = (porGrupo[k] || 0) + 1;
   }
-  return {
-    huerfanas,
-    caidas,
-    gruposHuerfanas: Object.entries(porGrupo).sort((a, b) => b[1] - a[1]),
-  };
+  return Object.entries(porGrupo).sort((a, b) => b[1] - a[1]);
 }
 
 // Las entradas de configuración cambian poco: consultarlas en cada ciclo de 60s
