@@ -5,6 +5,69 @@ const { loadJSON } = require('./persistence');
 const { DATA_DIR } = require('./constants');
 const state = require('./state');
 
+// ── Diagnóstico: qué está roto de verdad y qué es basura del registro ────────
+
+// Una entidad 'unavailable' con restored:true es HUÉRFANA: sigue en el registro
+// pero ninguna integración la sirve (cámara quitada de la cuenta, contenedor
+// Docker que ya no existe, interfaz veth* del NAS que cambió de nombre...).
+// No hay nada que reiniciar: es un registro zombi. Mezclarlas con los aparatos
+// realmente caídos es lo que hacía que el log repitiera "124 no disponibles"
+// eternamente sin decir nada accionable.
+function classifyUnavailable(states) {
+  const ignorar = e => e.entity_id.startsWith('automation.') || e.entity_id.startsWith('update.');
+  const malas = states.filter(e => e.state === 'unavailable' && !ignorar(e));
+  const huerfanas = malas.filter(e => e.attributes?.restored === true);
+  const caidas    = malas.filter(e => e.attributes?.restored !== true);
+
+  // Agrupar las huérfanas por prefijo del object_id: identifica de un vistazo
+  // de qué dispositivo/integración es la basura (ezviz→c8c_lite, omv_compose...).
+  const porGrupo = {};
+  for (const e of huerfanas) {
+    const obj = e.entity_id.split('.')[1] || '';
+    const k = obj.split('_').slice(0, 2).join('_');
+    porGrupo[k] = (porGrupo[k] || 0) + 1;
+  }
+  return {
+    huerfanas,
+    caidas,
+    gruposHuerfanas: Object.entries(porGrupo).sort((a, b) => b[1] - a[1]),
+  };
+}
+
+// Las entradas de configuración cambian poco: consultarlas en cada ciclo de 60s
+// sería gasto inútil. 15 min basta para enterarse de que una ha entrado en bucle
+// de reintentos.
+const CONFIG_ENTRIES_TTL = 15 * 60_000;
+let _entriesCache = { ts: 0, data: null };
+const _brokenSeen = new Set();  // avisar solo de fallos NUEVOS, no en cada ciclo
+
+async function getBrokenIntegrations() {
+  if (_entriesCache.data !== undefined && Date.now() - _entriesCache.ts < CONFIG_ENTRIES_TTL) {
+    return _entriesCache.data;
+  }
+  try {
+    const entries = await haGet('/config/config_entries/entry');
+    if (!Array.isArray(entries)) throw new Error('respuesta inesperada');
+    // setup_retry / setup_error → la integración falla de verdad y reintenta en
+    // bucle. not_loaded sin disabled_by suele ser un aparato apagado o una
+    // entrada duplicada muerta: se reporta aparte y con menos ruido.
+    const fallando  = entries.filter(e => e.state === 'setup_retry' || e.state === 'setup_error');
+    const sinCargar = entries.filter(e => e.state === 'not_loaded' && !e.disabled_by);
+    _entriesCache = { ts: Date.now(), data: { fallando, sinCargar } };
+    return _entriesCache.data;
+  } catch (err) {
+    // Un token sin permisos de admin no puede leer config_entries. No es crítico:
+    // el resto del diagnóstico sigue funcionando.
+    console.log(`[live] No pude leer config_entries: ${err.message}`);
+    _entriesCache = { ts: Date.now(), data: null };
+    return null;
+  }
+}
+
+function idEntrada(e) {
+  return `${e.domain}:${e.entry_id || e.title || ''}`;
+}
+
 // ── Contexto en tiempo real ───────────────────────────────────────────────────
 
 async function updateLiveContext() {
@@ -56,14 +119,51 @@ async function updateLiveContext() {
       ).join(' | ') + '\n';
     }
 
-    // Alertas: dispositivos no disponibles
-    const unavailable = states.filter(e =>
-      e.state === 'unavailable' &&
-      !e.entity_id.startsWith('automation.') &&
-      !e.entity_id.startsWith('update.')
-    );
-    if (unavailable.length > 0 && unavailable.length < 20) {
-      ctx += `⚠️ NO DISPONIBLES (${unavailable.length}): ${unavailable.slice(0, 10).map(e => e.attributes?.friendly_name || e.entity_id).join(', ')}\n`;
+    // Alertas: separar fallo activo de basura del registro
+    const { huerfanas, caidas, gruposHuerfanas } = classifyUnavailable(states);
+    const integraciones = await getBrokenIntegrations();
+
+    if (integraciones?.fallando?.length) {
+      ctx += `🔴 INTEGRACIONES FALLANDO (${integraciones.fallando.length}): ` +
+        integraciones.fallando.slice(0, 5).map(e =>
+          `${e.domain}${e.title ? ` "${e.title}"` : ''} → ${e.reason || e.state}`
+        ).join(' | ') + '\n';
+    }
+    if (caidas.length > 0) {
+      ctx += `⚠️ DISPOSITIVOS CAÍDOS (${caidas.length}): ` +
+        caidas.slice(0, 10).map(e => e.attributes?.friendly_name || e.entity_id).join(', ') + '\n';
+    }
+    if (huerfanas.length > 0) {
+      ctx += `🗑️ ENTIDADES HUÉRFANAS (${huerfanas.length} — registros zombis, NO es un fallo activo; ` +
+        `se limpian borrándolas del registro de entidades): ` +
+        gruposHuerfanas.slice(0, 6).map(([g, n]) => `${g}(${n})`).join(', ') + '\n';
+    }
+
+    // Avisar solo de las integraciones que ACABAN de romperse. queueNotification
+    // ya aplica cooldown por tipo, pero sin este filtro se encolaría un aviso por
+    // cada ciclo de 60s mientras la integración siga rota.
+    if (integraciones?.fallando?.length) {
+      try {
+        const { queueNotification } = require('../background/notifications');
+        for (const e of integraciones.fallando) {
+          const id = idEntrada(e);
+          if (_brokenSeen.has(id)) continue;
+          _brokenSeen.add(id);
+          queueNotification(
+            'integracion_caida',
+            `Integración caída: ${e.domain}`,
+            `${e.title || e.domain} está en ${e.state}${e.reason ? ` — ${e.reason}` : ''}`,
+            'high'
+          );
+        }
+        // Olvidar las que ya se recuperaron, para poder volver a avisar si recaen
+        const vivas = new Set(integraciones.fallando.map(idEntrada));
+        for (const id of [..._brokenSeen]) if (!vivas.has(id)) _brokenSeen.delete(id);
+      } catch (e) {
+        console.log(`[live] No pude encolar aviso de integración caída: ${e.message}`);
+      }
+    } else if (integraciones) {
+      _brokenSeen.clear();
     }
 
     // Switches encendidos
@@ -73,7 +173,16 @@ async function updateLiveContext() {
     }
 
     state.liveContext = ctx;
-    console.log(`[live] Contexto actualizado: ${persons.length} personas, ${lightsOn.length} luces on, ${unavailable.length} no disponibles`);
+    const resumen = [
+      `${persons.length} personas`,
+      `${lightsOn.length} luces on`,
+      `${caidas.length} caídos`,
+      `${huerfanas.length} huérfanas`,
+    ];
+    if (integraciones?.fallando?.length) {
+      resumen.push(`INTEGRACIONES FALLANDO: ${integraciones.fallando.map(e => e.domain).join(',')}`);
+    }
+    console.log(`[live] Contexto actualizado: ${resumen.join(', ')}`);
   } catch (err) {
     console.log(`[live] Error: ${err.message}`);
   }
