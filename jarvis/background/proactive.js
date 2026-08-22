@@ -69,12 +69,18 @@ async function autoFixMassCrash(unavailable) {
       e.entity_id.startsWith('binary_sensor.') || e.entity_id.startsWith('switch.'));
     if (zigbeeDown.length > 3) {
       try {
-        await fetch('http://supervisor/addons/45df7312_zigbee2mqtt/restart', {
+        const zRes = await fetch('http://supervisor/addons/45df7312_zigbee2mqtt/restart', {
           method: 'POST',
           headers: { Authorization: `Bearer ${C.HA_TOKEN}`, 'Content-Type': 'application/json' }
         });
-        log.push(`Zigbee2MQTT reiniciado (${zigbeeDown.length} entidades Zigbee caídas)`);
-        await new Promise(r => setTimeout(r, 8000));
+        // fetch() no lanza excepción en 4xx/5xx — hay que comprobar .ok explícitamente
+        // o el log dice "reiniciado" aunque el Supervisor haya rechazado la petición.
+        if (zRes.ok) {
+          log.push(`Zigbee2MQTT reiniciado (${zigbeeDown.length} entidades Zigbee caídas)`);
+          await new Promise(r => setTimeout(r, 8000));
+        } else {
+          log.push(`Zigbee2MQTT restart falló: Supervisor → ${zRes.status}`);
+        }
       } catch (e) { log.push(`Zigbee2MQTT restart falló: ${e.message}`); }
     }
     for (const domain of reloadDomains) {

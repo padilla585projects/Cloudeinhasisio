@@ -70,9 +70,13 @@ async function notify(msg) {
 }
 
 // Lista todos los add-ons vía Supervisor
+// NOTA: el prefijo /hassio/ es el que usa HA Core/frontend como proxy — un add-on
+// llamando directamente al socket del Supervisor debe omitirlo (/addons, no
+// /hassio/addons). Con el prefijo de más, el Supervisor devolvía 403 siempre,
+// pareciendo un problema de permisos cuando en realidad era una ruta inexistente.
 async function getAddons() {
   try {
-    const r = await supervisorGet('/hassio/addons');
+    const r = await supervisorGet('/addons');
     return r?.data?.addons || [];
   } catch (e) {
     console.log(`[infraguard] No pude consultar add-ons: ${e.message}`);
@@ -82,7 +86,7 @@ async function getAddons() {
 
 // Reinicia un add-on por slug
 async function restartAddon(slug) {
-  await supervisorPost(`/hassio/addons/${slug}/restart`);
+  await supervisorPost(`/addons/${slug}/restart`);
 }
 
 // ── Loop principal ──────────────────────────────────────────────────────────
