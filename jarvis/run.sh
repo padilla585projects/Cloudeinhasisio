@@ -70,7 +70,7 @@ if bashio::config.has_value 'agent_net_invite'; then
   export AGENT_NET_INVITE="$(bashio::config 'agent_net_invite')"
 fi
 
-bashio::log.info "Iniciando Jarvis AI Agent v3.36.1..."
+bashio::log.info "Iniciando Jarvis AI Agent v3.36.2..."
 bashio::log.info "Modelos cloud: DeepSeek V4 Flash (bg) + V4 Pro (principal/dev)"
 bashio::log.info "Nucleos activos:"
 if [ -n "${DEEPSEEK_API_KEY:-}" ]; then

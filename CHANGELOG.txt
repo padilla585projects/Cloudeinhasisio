@@ -3,6 +3,38 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.36.2 (2026-08-22) — Fix critico: thinking mode roto en DeepSeek V4 Flash
+────────────────────────────────────────────────────────────────────────────────
+
+FIX CRITICO (NEXUS routing degradado desde v3.36.0):
+- utils/llm.js callDeepSeek(): el calculo de thinkingMode aplicaba el mismo
+  default (thinking=true salvo que se pase {thinking:false}) a V4 Flash y
+  V4 Pro por igual, contradiciendo el diseño documentado en v3.36.0
+  ("V4 Flash: non-thinking por defecto, V4 Pro: thinking por defecto").
+  Cualquier llamada a callLLM(BG_MODEL, ...) que no pasara options.thinking
+  explicitamente activaba thinking mode sin querer.
+- Efecto real: nexus/router.js Capa 2 (clasificador LLM barato, max_tokens:10)
+  necesitaba cientos de tokens de razonamiento antes de poder emitir la
+  palabra final -> con 10 tokens de presupuesto la respuesta se cortaba a
+  mitad del razonamiento y volvia vacia. Resultado: la Capa 2 nunca
+  clasificaba nada y TODO lo que no caia en la escalera de regex de la
+  Capa 1 terminaba en el fallback ha_control. El sistema de 14 expertos
+  NEXUS se comportaba, en la practica, como si solo existiera ha_control.
+- Tambien afectaba al resumidor de contexto (server.js, max_tokens:300) y a
+  las llamadas de background (knowledge.js, patterns.js, selfcheck.js),
+  gastando tokens de razonamiento innecesarios en tareas triviales.
+- Fix: thinkingMode ahora usa isPro como default cuando options.thinking no
+  se especifica (Flash->false, Pro->true), y sigue respetando el override
+  explicito true/false/'max'. Ademas nexus/router.js pasa {thinking:false}
+  explicito en su llamada de clasificacion, como defensa adicional dado su
+  presupuesto de tokens minimo.
+
+IMPACTO TOKENS: reduccion de coste (menos llamadas gastando tokens de
+razonamiento innecesarios en Capa 2 del router y en el resumidor) y
+recupera la funcionalidad real de NEXUS (routing a los 14 expertos en vez
+de fallback constante a ha_control).
+
+────────────────────────────────────────────────────────────────────────────────
 v3.36.1 (2026-07-07) — Cost-guard persistente (fix del safety net de gasto)
 ────────────────────────────────────────────────────────────────────────────────
 

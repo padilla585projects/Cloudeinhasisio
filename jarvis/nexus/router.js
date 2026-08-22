@@ -112,7 +112,8 @@ async function nexusRoute(message) {
       `Clasifica en UNA palabra: ${allNames}. Solo la palabra.`,
       [{ role: 'user', content: text.slice(0, 300) }],
       [],
-      10
+      10,
+      { thinking: false }
     );
     const expert = result.text.trim().toLowerCase().split(/[\s\n]/)[0];
     if (nexusGetAllExperts()[expert]) return { expert, source: 'llm', confidence: 0.8 };

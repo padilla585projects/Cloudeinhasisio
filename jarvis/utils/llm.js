@@ -389,7 +389,11 @@ async function callDeepSeek(model, system, messages, aiTools, maxTokens, options
   const isV4 = model.startsWith('deepseek-v4-');
   const isPro = model === 'deepseek-v4-pro' || model === 'deepseek-reasoner';
   const isReasoner = model === 'deepseek-reasoner';
-  const thinkingMode = isV4 ? (options.thinking !== false) : isReasoner;
+  // Por defecto: V4 Flash sin thinking (rápido/barato), V4 Pro con thinking (razonamiento).
+  // options.thinking (true/false/'max') sobreescribe el default cuando el llamador lo especifica.
+  const thinkingMode = isV4
+    ? (options.thinking !== undefined ? options.thinking !== false : isPro)
+    : isReasoner;
   const reasoningEffort = options.thinking === 'max' ? 'max' : 'high';
 
   const sanitized = sanitizeMessagesForOpenAI(messages);
