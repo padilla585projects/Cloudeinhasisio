@@ -33,24 +33,22 @@ async function checkSelfUpdate() {
 
     const current = info.data?.version;
     const latest = info.data?.version_latest;
-    const slug = info.data?.slug;
 
     if (!current || !latest || current === latest) return;
 
     console.log(`[update] Nueva versión disponible: ${current} → ${latest}`);
 
-    if (!slug) {
-      console.log('[update] No pude determinar el slug real del add-on — abortando auto-update.');
-      return;
-    }
-
     // POST /addons/self/update no existe en la API del Supervisor ("self" solo vale
-    // para lecturas como /addons/self/info) y /addons/<addon>/update está deprecado
-    // en favor de /store/addons/<addon>/update. Se usa el slug real devuelto por
-    // /addons/self/info en vez de adivinarlo (evita 404 si el slug local difiere).
-    const updateRes = await fetch(`http://supervisor/store/addons/${slug}/update`, {
+    // para lecturas como /addons/self/info), y el intento directo contra
+    // /store/addons/<slug real, ej. "207a78ec_jarvis_ai_agent">/update devuelve 403
+    // — el Supervisor parece no dejar que un add-on se auto-actualice a sí mismo
+    // por esa vía mientras sigue corriendo. En cambio, pedirle a HA Core que llame
+    // al servicio update.install sobre la entidad "update" del add-on sí funciona
+    // (mismo mecanismo que /api/deploy-update, ya validado manualmente).
+    const updateRes = await fetch(`${C.HA_URL}/api/services/update/install`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${C.HA_TOKEN}`, 'Content-Type': 'application/json' }
+      headers: { Authorization: `Bearer ${C.HA_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entity_id: 'update.jarvis_ai_agent_actualizar' })
     });
 
     if (updateRes.ok) {
@@ -64,7 +62,8 @@ async function checkSelfUpdate() {
         });
       } catch {}
     } else {
-      console.log(`[update] Error al actualizar (slug=${slug}): ${updateRes.status}`);
+      const errText = await updateRes.text().catch(() => '');
+      console.log(`[update] Error al actualizar via update.install: ${updateRes.status} ${errText.slice(0, 150)}`);
     }
   } catch (err) {
     // Silencioso — no spamear logs si el supervisor no responde bien

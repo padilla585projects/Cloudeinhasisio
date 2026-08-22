@@ -3,6 +3,28 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.36.7 (2026-08-22) — Fix: auto-update via Supervisor store daba 403 (self-update bloqueado)
+────────────────────────────────────────────────────────────────────────────────
+
+FIX (confirmado en log de produccion — el slug real es "207a78ec_jarvis_ai_agent",
+no "local_jarvis_ai_agent" como se asumia en v3.36.4; el fix de v3.36.6 para
+resolverlo dinamicamente ya funciono, pero reveló un problema distinto):
+- "[update] Nueva versión disponible: 3.36.5 → 3.36.6" seguido de
+  "[update] Error al actualizar (slug=207a78ec_jarvis_ai_agent): 403" — con
+  el slug real ya resuelto correctamente, el POST a
+  /store/addons/<slug>/update seguia fallando, esta vez con 403 real: el
+  Supervisor no deja que un add-on se auto-actualice a si mismo por esa via
+  mientras sigue corriendo (a diferencia de actualizar OTROS add-ons).
+- Fix: background/updates.js checkSelfUpdate() ahora usa el mismo mecanismo
+  que /api/deploy-update (ya validado manualmente): pedirle a HA Core que
+  llame al servicio update.install sobre la entidad
+  update.jarvis_ai_agent_actualizar, en vez de hablar directo con el
+  Supervisor. HA Core sí tiene autoridad para disparar la actualización
+  del add-on que la pide.
+
+IMPACTO TOKENS: $0.00/dia (llamada REST a HA Core, sin LLM).
+
+────────────────────────────────────────────────────────────────────────────────
 v3.36.6 (2026-08-22) — Fix: slug de auto-referencia adivinado en varios sitios
 ────────────────────────────────────────────────────────────────────────────────
 

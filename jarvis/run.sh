@@ -56,7 +56,7 @@ if bashio::config.has_value 'gemini_api_key'; then
 fi
 
 
-bashio::log.info "Iniciando Jarvis AI Agent v3.36.6..."
+bashio::log.info "Iniciando Jarvis AI Agent v3.36.7..."
 bashio::log.info "Modelos cloud: DeepSeek V4 Flash (bg) + V4 Pro (principal/dev)"
 bashio::log.info "Nucleos activos:"
 if [ -n "${DEEPSEEK_API_KEY:-}" ]; then
