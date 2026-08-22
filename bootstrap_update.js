@@ -2,8 +2,15 @@
 /**
  * bootstrap_update.js — Actualiza Jarvis sin tocar la UI de HA
  * ─────────────────────────────────────────────────────────────
- * Funciona con el token de larga duración (no necesita SUPERVISOR_TOKEN).
- * Uso:  node bootstrap_update.js
+ * Funciona con un token de larga duración de HA (no necesita SUPERVISOR_TOKEN).
+ *
+ * El token se pasa por variable de entorno — NUNCA escrito aquí: este
+ * repositorio es público. Un token incrustado en este archivo estuvo expuesto
+ * en GitHub del 07/06/2026 al 22/08/2026.
+ *
+ * Uso:
+ *   PowerShell:  $env:HA_TOKEN = "<token>"; node bootstrap_update.js
+ *   bash:        HA_TOKEN="<token>" node bootstrap_update.js
  *
  * Workflow definitivo para futuros updates (una vez v3.33.13+ instalada):
  *   1. git push
@@ -15,9 +22,17 @@
 const http = require('http');
 const https = require('https');
 
-const HA_HOST  = '192.168.10.36';
-const HA_PORT  = 8123;
-const HA_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiI5MzYxN2MyZWU0ZmQ0ZWJmOWExNjEwMDUzMjhhN2RjOCIsImlhdCI6MTc4MDYwNjM0OSwiZXhwIjoyMDk1OTY2MzQ5fQ.VSSK0YLWpc_AEnmSJgoYyIVNbdCKrq1-3G8R-GDFl6c';
+const HA_HOST  = process.env.HA_HOST || '192.168.10.36';
+const HA_PORT  = Number(process.env.HA_PORT) || 8123;
+const HA_TOKEN = process.env.HA_TOKEN;
+
+if (!HA_TOKEN) {
+  console.error('Falta la variable de entorno HA_TOKEN.');
+  console.error('  PowerShell:  $env:HA_TOKEN = "<token>"; node bootstrap_update.js');
+  console.error('  bash:        HA_TOKEN="<token>" node bootstrap_update.js');
+  console.error('El token se crea en HA → tu perfil → Seguridad → Tokens de acceso de larga duración.');
+  process.exit(1);
+}
 
 const JARVIS_HOST  = '192.168.10.36';
 const JARVIS_PORT  = 3000;

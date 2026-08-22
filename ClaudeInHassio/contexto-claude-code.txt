@@ -7,7 +7,7 @@ Estamos construyendo un add-on para Home Assistant que añade un chat con Claude
 
 ### DATOS DEL ENTORNO
 
-- **Home Assistant** accesible via Nabu Casa: https://3pijakbxlbqvfl1pqrsziqawn8bopph6.ui.nabu.casa
+- **Home Assistant** accesible via Nabu Casa (URL fuera del repo: este repositorio es publico)
 - **GitHub repo del add-on**: https://github.com/padilla585projects/Cloudeinhasisio
 - **Carpeta del add-on en el repo**: `claude-ha-chat/`
 - **HA tiene 786 entidades**: luces (34), switches (111), sensores (287), automatizaciones (45), climate (3), cámaras (3), media_player (13), etc.
