@@ -33,13 +33,22 @@ async function checkSelfUpdate() {
 
     const current = info.data?.version;
     const latest = info.data?.version_latest;
+    const slug = info.data?.slug;
 
     if (!current || !latest || current === latest) return;
 
     console.log(`[update] Nueva versión disponible: ${current} → ${latest}`);
 
-    // Actualizar automáticamente
-    const updateRes = await fetch('http://supervisor/addons/self/update', {
+    if (!slug) {
+      console.log('[update] No pude determinar el slug real del add-on — abortando auto-update.');
+      return;
+    }
+
+    // POST /addons/self/update no existe en la API del Supervisor ("self" solo vale
+    // para lecturas como /addons/self/info) y /addons/<addon>/update está deprecado
+    // en favor de /store/addons/<addon>/update. Se usa el slug real devuelto por
+    // /addons/self/info en vez de adivinarlo (evita 404 si el slug local difiere).
+    const updateRes = await fetch(`http://supervisor/store/addons/${slug}/update`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${C.HA_TOKEN}`, 'Content-Type': 'application/json' }
     });
@@ -55,22 +64,7 @@ async function checkSelfUpdate() {
         });
       } catch {}
     } else {
-      // Fallback con slug explícito
-      const updateRes2 = await fetch('http://supervisor/addons/local_jarvis_ai_agent/update', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${C.HA_TOKEN}`, 'Content-Type': 'application/json' }
-      });
-      if (updateRes2.ok) {
-        console.log(`[update] Actualización a v${latest} iniciada (via slug).`);
-        try {
-          await haPost('/services/telegram_bot/send_message', {
-            message: `🔄 *JARVIS — AUTO-UPDATE*\n\nActualización: v${current} → v${latest}\nReiniciando...`,
-            parse_mode: 'markdown'
-          });
-        } catch {}
-      } else {
-        console.log(`[update] Error al actualizar: ${updateRes2.status}`);
-      }
+      console.log(`[update] Error al actualizar (slug=${slug}): ${updateRes.status}`);
     }
   } catch (err) {
     // Silencioso — no spamear logs si el supervisor no responde bien
