@@ -3,6 +3,32 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.36.5 (2026-08-22) — Fix: 403 de infraguard era una URL mal construida, no permisos
+────────────────────────────────────────────────────────────────────────────────
+
+FIX (confirmado en log de produccion — el 403 persistia tras reinstalar):
+- background/infraguard.js getAddons()/restartAddon() llamaban a
+  http://supervisor/hassio/addons y http://supervisor/hassio/addons/<slug>/restart.
+  El prefijo /hassio/ es el que usa HA Core/el frontend como proxy hacia el
+  Supervisor — un add-on que habla directamente contra el socket del
+  Supervisor debe omitirlo (/addons, no /hassio/addons). Con el prefijo de
+  mas el Supervisor devolvia 403 SIEMPRE, sin importar hassio_role/hassio_api,
+  pareciendo un problema de permisos cuando era una ruta inexistente. El
+  resto del codigo (scan.js, tools/executor.js) ya usaba las rutas
+  correctas sin el prefijo, por eso scan_installation/check_config
+  funcionaban bien mientras infraguard fallaba siempre.
+- Fix: quitado el prefijo /hassio/ en ambas llamadas.
+
+FIX SECUNDARIO (mismo area, hallado al revisar el codigo):
+- background/proactive.js autoFixMassCrash(): el restart de Zigbee2MQTT vía
+  fetch() directo al Supervisor no comprobaba el status de la respuesta —
+  fetch() no lanza excepcion en 4xx/5xx, asi que el log decia "Zigbee2MQTT
+  reiniciado" aunque el Supervisor hubiera rechazado la peticion. Ahora
+  comprueba response.ok antes de reportar exito.
+
+IMPACTO TOKENS: $0.00/dia (llamadas REST al Supervisor, sin LLM).
+
+────────────────────────────────────────────────────────────────────────────────
 v3.36.4 (2026-08-22) — Fix: auto-update usaba un endpoint de Supervisor inexistente
 ────────────────────────────────────────────────────────────────────────────────
 
