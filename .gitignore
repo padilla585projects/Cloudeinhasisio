@@ -1,0 +1,12 @@
+node_modules/
+npm-debug.log*
+
+# Cloudflare Workers local dev
+.wrangler/
+
+# Datos locales / persistencia (no van al repo del add-on)
+/data/
+
+# Editores / SO
+.DS_Store
+Thumbs.db

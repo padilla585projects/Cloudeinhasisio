@@ -34,6 +34,18 @@ razonamiento innecesarios en Capa 2 del router y en el resumidor) y
 recupera la funcionalidad real de NEXUS (routing a los 14 expertos en vez
 de fallback constante a ha_control).
 
+FIX SECUNDARIO (historial persistido entre turnos):
+- server.js: al compactar el historial de conversacion para guardarlo en
+  disco, los tool_calls guardaban arguments:'{}' SIEMPRE, aunque la
+  llamada real hubiera usado parametros distintos. Eso le mentia al modelo
+  sobre que parametros uso en turnos anteriores al recuperar el historial
+  en la siguiente peticion. Fix: se conservan los argumentos reales
+  (solo se sustituyen por '{}' si superan 300 caracteres, para no cortar
+  el JSON a medias y arriesgar un 400 de la API en el turno siguiente).
+
+IMPACTO TOKENS: $0.00/dia extra (mismo tamaño de historial persistido,
+solo cambia que contenido se guarda).
+
 ────────────────────────────────────────────────────────────────────────────────
 v3.36.1 (2026-07-07) — Cost-guard persistente (fix del safety net de gasto)
 ────────────────────────────────────────────────────────────────────────────────

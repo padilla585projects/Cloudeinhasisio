@@ -588,13 +588,19 @@ async function handleChat(req, res, messages, files) {
       // Filtrar: guardar assistant messages con tool_calls y tool results, pero compactar
       for (const msg of newMessages) {
         if (msg.role === 'assistant') {
-          // Compactar: si tiene tool_calls, guardar solo name+id (no los args completos)
+          // Compactar: conservar los argumentos reales (vaciarlos a '{}' le miente al
+          // modelo sobre qué parámetros usó en turnos futuros). Si son muy largos, se
+          // sustituyen por un '{}' válido en vez de cortar el string a medias — un JSON
+          // roto en el historial puede hacer que la API rechace el siguiente turno.
           if (msg.tool_calls) {
             const compactMsg = { role: 'assistant', content: msg.content || null,
-              tool_calls: msg.tool_calls.map(tc => ({
-                id: tc.id, type: 'function',
-                function: { name: tc.function.name, arguments: '{}' }
-              }))
+              tool_calls: msg.tool_calls.map(tc => {
+                const args = tc.function.arguments || '{}';
+                return {
+                  id: tc.id, type: 'function',
+                  function: { name: tc.function.name, arguments: args.length > 300 ? '{}' : args }
+                };
+              })
             };
             state.conversationHistory.push(compactMsg);
           } else if (msg.content) {
