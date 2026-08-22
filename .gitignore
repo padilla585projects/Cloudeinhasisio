@@ -10,3 +10,7 @@ npm-debug.log*
 # Editores / SO
 .DS_Store
 Thumbs.db
+
+# Worker MCP de Home Assistant: contiene la URL Nabu Casa de la instalacion.
+# El repo es PUBLICO — esto no se sube nunca.
+ha-mcp-worker/

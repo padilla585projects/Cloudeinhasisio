@@ -3,6 +3,57 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.37.0 (2026-08-22) — Diagnostico real de entidades caidas: huerfanas vs fallo activo
+────────────────────────────────────────────────────────────────────────────────
+
+CONTEXTO (hallado auditando la instalacion real via API de HA):
+- El log repetia "124 no disponibles" de forma perpetua e identica tras cada
+  reinicio, sin que ese numero sirviera para nada. Se confirmo que el conteo
+  era CORRECTO, pero que mezclaba tres cosas distintas:
+  · 88 entidades HUERFANAS (attributes.restored === true): siguen en el
+    registro pero ninguna integracion las sirve. Camaras quitadas de la cuenta
+    EZVIZ (26), y sobre todo contenedores Docker e interfaces veth* del NAS
+    OpenMediaVault (40) — las veth* cambian de nombre en cada reinicio de
+    contenedor, asi que generan basura nueva indefinidamente. No hay nada que
+    reiniciar: son registros zombis.
+  · 36 dispositivos realmente caidos.
+  · El resto, ruido normal (botones nunca pulsados, selects sin valor,
+    sensores next_timer de Alexa sin temporizador puesto).
+- Ademas habia una integracion fallando de verdad que el log NUNCA menciono:
+  upnp (router "X20") con TRES entradas duplicadas, las tres en setup_retry
+  con "Device not discovered" — el router regenero su UUID UPnP y HA fue
+  creando una entrada nueva cada vez sin borrar la anterior.
+
+CAMBIOS (utils/context.js):
+- classifyUnavailable(): separa entidades huerfanas (restored:true) de
+  dispositivos realmente caidos, y agrupa ambas por prefijo de dispositivo
+  (agruparPorDispositivo) — "c8c_lite(18), omv_compose(17)" en vez de un
+  listado de 88 entity_id que ni cabe en el prompt ni dice nada.
+- getBrokenIntegrations(): lee /config/config_entries/entry y distingue
+  setup_retry/setup_error (fallo activo, reintentando en bucle) de not_loaded
+  sin disabled_by (aparato apagado o entrada duplicada muerta). Cacheado 15
+  min: las entradas de configuracion cambian poco y consultarlas cada 60s
+  seria gasto inutil. Si el token no tiene permisos de admin, falla en
+  silencio y el resto del diagnostico sigue funcionando.
+- updateLiveContext() ahora mete en el contexto tres lineas separadas y
+  accionables (INTEGRACIONES FALLANDO / DISPOSITIVOS CAIDOS / ENTIDADES
+  HUERFANAS) en vez de la antigua "NO DISPONIBLES", que ademas se ocultaba
+  sola cuando habia mas de 20 — justo cuando mas hacia falta.
+- Aviso proactivo: cuando una integracion ENTRA en setup_retry/setup_error se
+  encola una notificacion de prioridad alta (Telegram + push). Solo se avisa
+  del fallo nuevo, no en cada ciclo de 60s; si la integracion se recupera se
+  olvida, para poder volver a avisar si recae.
+- El log pasa de "124 no disponibles" a
+  "36 caidos, 88 huerfanas, INTEGRACIONES FALLANDO: upnp,upnp,upnp".
+- classifyUnavailable y getBrokenIntegrations se exportan para poder
+  reutilizarlas y testearlas.
+
+IMPACTO TOKENS: +$0.00/dia en LLM (no hay ninguna llamada nueva a un modelo).
+Una llamada REST extra a HA cada 15 min (/config/config_entries/entry).
+De hecho REDUCE tokens del prompt: el bloque de no-disponibles pasa de poder
+listar 10 friendly_name largos a un agrupado corto de 6-8 grupos.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.36.7 (2026-08-22) — Fix: auto-update via Supervisor store daba 403 (self-update bloqueado)
 ────────────────────────────────────────────────────────────────────────────────
 

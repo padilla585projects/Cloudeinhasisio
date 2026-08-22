@@ -126,7 +126,7 @@ async function updateLiveContext() {
     }
 
     // Alertas: separar fallo activo de basura del registro
-    const { huerfanas, caidas, gruposHuerfanas } = classifyUnavailable(states);
+    const { huerfanas, caidas, gruposHuerfanas, gruposCaidas } = classifyUnavailable(states);
     const integraciones = await getBrokenIntegrations();
 
     if (integraciones?.fallando?.length) {
@@ -137,7 +137,7 @@ async function updateLiveContext() {
     }
     if (caidas.length > 0) {
       ctx += `⚠️ DISPOSITIVOS CAÍDOS (${caidas.length}): ` +
-        caidas.slice(0, 10).map(e => e.attributes?.friendly_name || e.entity_id).join(', ') + '\n';
+        gruposCaidas.slice(0, 8).map(([g, n]) => `${g}(${n})`).join(', ') + '\n';
     }
     if (huerfanas.length > 0) {
       ctx += `🗑️ ENTIDADES HUÉRFANAS (${huerfanas.length} — registros zombis, NO es un fallo activo; ` +
@@ -268,4 +268,4 @@ function buildDynamicContext() {
   return ctx;
 }
 
-module.exports = { updateLiveContext, buildDynamicContext };
+module.exports = { updateLiveContext, buildDynamicContext, classifyUnavailable, getBrokenIntegrations };
