@@ -60,4 +60,23 @@ async function supervisorPost(endpoint, body = {}) {
   try { return JSON.parse(text); } catch { return { ok: true }; }
 }
 
-module.exports = { haGet, haPost, supervisorGet, supervisorPost };
+// Resuelve el slug real del propio add-on instalado. Los add-ons instalados desde
+// un repositorio local llevan el prefijo "local_" (p.ej. "local_jarvis_ai_agent"),
+// que no coincide con el nombre declarado en config.yaml — adivinarlo a mano en
+// cada sitio del código es lo que causaba 403/404 en varias llamadas al Supervisor.
+// "self" SÍ es válido para /addons/self/info (a diferencia de otras acciones del
+// Supervisor), así que se resuelve aquí una vez y se cachea en memoria.
+let _selfSlugCache = null;
+async function getSelfSlug() {
+  if (_selfSlugCache) return _selfSlugCache;
+  try {
+    const info = await supervisorGet('/addons/self/info');
+    if (info?.data?.slug) _selfSlugCache = info.data.slug;
+    return _selfSlugCache;
+  } catch (e) {
+    console.log(`[ha-api] No pude resolver mi slug: ${e.message}`);
+    return null;
+  }
+}
+
+module.exports = { haGet, haPost, supervisorGet, supervisorPost, getSelfSlug };

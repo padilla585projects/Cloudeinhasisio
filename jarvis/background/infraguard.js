@@ -109,7 +109,11 @@ async function infraGuardLoop() {
 
     // ── 1) Crash detection vía Supervisor ─────────────────────────────────
     for (const addon of addons) {
-      if (NEVER_RESTART.has(addon.slug)) continue;
+      // Los add-ons instalados desde un repositorio local llevan el prefijo
+      // "local_" en el slug real (p.ej. "local_jarvis_ai_agent") — no coincide
+      // con el nombre exacto declarado en config.yaml. Se usa .some(includes)
+      // en vez de comparación exacta para no fallar el guardarraíl "no suicidarse".
+      if ([...NEVER_RESTART].some(s => addon.slug.includes(s))) continue;
       if (addon.state !== 'error') {
         // Si se recuperó solo → limpiar confirmación pendiente
         if (st.addons[addon.slug]?.confirmed) {

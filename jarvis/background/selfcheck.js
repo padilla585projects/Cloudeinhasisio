@@ -256,9 +256,18 @@ Responde ÚNICAMENTE con este JSON (sin texto extra):
       saveJSON(path.join(C.DATA_DIR, 'self_repair_needed.json'), { repairedAt: new Date().toISOString(), analysis: fix.analysis, status: 'repaired' });
 
       setTimeout(async () => {
-        await fetch('http://supervisor/addons/jarvis_ai_agent/restart', {
-          method: 'POST', headers: { Authorization: `Bearer ${C.HA_TOKEN}` }
-        }).catch(e => console.log('[self-repair] Reinicio:', e.message));
+        try {
+          // "jarvis_ai_agent" no es el slug real instalado (suele llevar prefijo
+          // "local_") — resolver contra /addons/self/info antes de reiniciar.
+          const infoRes = await fetch('http://supervisor/addons/self/info', {
+            headers: { Authorization: `Bearer ${C.HA_TOKEN}` }
+          });
+          const slug = infoRes.ok ? (await infoRes.json()).data?.slug : null;
+          if (!slug) { console.log('[self-repair] No pude resolver mi slug para reiniciar.'); return; }
+          await fetch(`http://supervisor/addons/${slug}/restart`, {
+            method: 'POST', headers: { Authorization: `Bearer ${C.HA_TOKEN}` }
+          });
+        } catch (e) { console.log('[self-repair] Reinicio:', e.message); }
       }, 3000);
     } else {
       console.log('[self-repair] Confianza baja o fragmento no encontrado — creando pensamiento para revisión.');

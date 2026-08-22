@@ -3,6 +3,37 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.36.6 (2026-08-22) — Fix: slug de auto-referencia adivinado en varios sitios
+────────────────────────────────────────────────────────────────────────────────
+
+FIX (misma familia de bug que v3.36.4/v3.36.5, hallado al revisar el codigo):
+- Add-ons instalados desde un repositorio local en HA suelen llevar el
+  prefijo "local_" en el slug real (ej: "local_jarvis_ai_agent"), que NO
+  coincide con "jarvis_ai_agent" (el nombre declarado en config.yaml).
+  Varios sitios adivinaban el slug sin prefijo, con riesgo de 404/403 o,
+  peor, de fallos silenciosos:
+  · background/infraguard.js: la lista NEVER_RESTART (guardarraíl "no
+    suicidarse") comparaba por igualdad exacta — si el slug real llevaba
+    el prefijo, infraguard NO reconocía que jarvis_ai_agent era él mismo.
+  · background/selfcheck.js: self-repair reiniciaba con el slug adivinado
+    tras aplicar un patch de emergencia.
+  · tools/executor.js: get_system_logs(source:'addon'), la accion
+    update_self.restart_self, y ha_supervisor.deploy_update usaban el
+    mismo slug adivinado como default.
+  · tools/executor.js update_self.restart_self ademas NUNCA comprobaba si
+    el POST al Supervisor tuvo éxito (igual que el bug de Zigbee2MQTT en
+    proactive.js arreglado en v3.36.5) — siempre reportaba
+    "Reinicio iniciado" aunque el Supervisor lo hubiera rechazado.
+- Fix: utils/ha-api.js añade getSelfSlug(), que resuelve el slug real una
+  vez via /addons/self/info (el único endpoint donde "self" es válido) y
+  lo cachea en memoria. Todos los sitios anteriores lo usan ahora en vez
+  de adivinar, y restart_self comprueba response.ok antes de reportar éxito.
+
+IMPACTO TOKENS: $0.00/dia (llamadas REST al Supervisor, sin LLM). Una
+llamada extra a /addons/self/info la primera vez que se necesita el slug,
+cacheada en memoria para el resto de la vida del proceso.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.36.5 (2026-08-22) — Fix: 403 de infraguard era una URL mal construida, no permisos
 ────────────────────────────────────────────────────────────────────────────────
 

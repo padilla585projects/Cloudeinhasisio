@@ -11,7 +11,7 @@ let yaml; try { yaml = require('js-yaml'); } catch { yaml = null; }
 
 const state = require('../utils/state');
 const { loadJSON, saveJSON, validateYamlSyntax, validateHAStructure, autoBackup } = require('../utils/persistence');
-const { haGet, haPost, supervisorGet } = require('../utils/ha-api');
+const { haGet, haPost, supervisorGet, getSelfSlug } = require('../utils/ha-api');
 const { callOpenAI, callImageEdit } = require('../utils/llm');
 const { execSync, spawnSync } = require('child_process');
 const C = require('../utils/constants');
@@ -1007,7 +1007,7 @@ async function executeTool(name, input) {
               break;
             }
             case 'addon': {
-              const slug = input.addon_slug || 'jarvis_ai_agent';
+              const slug = input.addon_slug || await getSelfSlug() || 'jarvis_ai_agent';
               const res = await fetch(`http://supervisor/addons/${slug}/logs`, {
                 headers: { Authorization: `Bearer ${C.HA_TOKEN}` }
               });
@@ -2030,10 +2030,13 @@ Prohibida la copia, redistribucion y uso comercial.`);
 
           case 'restart_self': {
             console.log('[self] Reiniciando Jarvis...');
-            const r = await fetch('http://supervisor/addons/jarvis_ai_agent/restart', {
+            const slug = await getSelfSlug();
+            if (!slug) return { initiated: false, error: 'No pude resolver mi propio slug de add-on.' };
+            const r = await fetch(`http://supervisor/addons/${slug}/restart`, {
               method: 'POST',
               headers: { Authorization: `Bearer ${C.HA_TOKEN}` }
             }).catch(() => null);
+            if (!r || !r.ok) return { initiated: false, error: `Supervisor → ${r ? r.status : 'sin respuesta'}` };
             return { initiated: true, note: 'Reinicio iniciado. Esta conexión se cerrará en segundos.' };
           }
 
@@ -2302,7 +2305,7 @@ Prohibida la copia, redistribucion y uso comercial.`);
             // Ciclo completo: refresh_repo + update_addon en una sola llamada.
             // Usa después de un github_push para que la actualización se instale sola.
             const deployRepoUrl = input.repo_url || 'https://github.com/padilla585projects/Cloudeinhasisio';
-            const addonSlug = input.addon_slug || 'jarvis_ai_agent';
+            const addonSlug = input.addon_slug || await getSelfSlug() || 'jarvis_ai_agent';
 
             console.log('[supervisor] deploy_update: iniciando ciclo refresh+update...');
 
