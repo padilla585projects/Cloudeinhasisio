@@ -3,6 +3,26 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.36.4 (2026-08-22) — Fix: auto-update usaba un endpoint de Supervisor inexistente
+────────────────────────────────────────────────────────────────────────────────
+
+FIX (confirmado en log de produccion tras actualizar a v3.36.3):
+- background/updates.js checkSelfUpdate(): intentaba POST
+  http://supervisor/addons/self/update, que NO EXISTE en la API del
+  Supervisor ("self" solo es valido para lecturas como /addons/self/info,
+  no para acciones). El fallback usaba POST /addons/<slug>/update con un
+  slug ADIVINADO ("local_jarvis_ai_agent") sobre un endpoint ademas
+  deprecado -> 404 en ambos intentos. Resultado en el log real:
+  "[update] Nueva versión disponible: 3.36.2 → 3.36.3" seguido de
+  "[update] Error al actualizar: 404" — el auto-update nunca funcionaba,
+  el usuario tenia que actualizar manualmente desde el panel de HA.
+- Fix: se usa el slug real devuelto por /addons/self/info (en vez de
+  adivinarlo) contra POST /store/addons/<slug>/update, el endpoint no
+  deprecado documentado por HA.
+
+IMPACTO TOKENS: $0.00/dia (llamada REST al Supervisor, sin LLM).
+
+────────────────────────────────────────────────────────────────────────────────
 v3.36.3 (2026-08-22) — Elimina la red de agentes GetawayAgentes
 ────────────────────────────────────────────────────────────────────────────────
 

@@ -1,6 +1,6 @@
 {
   "name": "jarvis-ai-agent",
-  "version": "3.36.3",
+  "version": "3.36.4",
   "description": "Jarvis — Agente IA privado para Home Assistant",
   "main": "server.js",
   "dependencies": {
