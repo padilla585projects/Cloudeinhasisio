@@ -1,6 +1,6 @@
 name: "Jarvis AI Agent"
 description: "Jarvis — Asistente IA para Home Assistant. Control por voz y texto."
-version: "3.37.0"
+version: "3.38.0"
 slug: "jarvis_ai_agent"
 init: false
 arch:
@@ -40,6 +40,9 @@ options:
   telegram_bot_token: ""
   telegram_allowed_ids: ""
   gemini_api_key: ""
+  omv_url: ""
+  omv_user: "admin"
+  omv_password: ""
 schema:
   openai_api_key: str
   serper_api_key: str?
@@ -53,3 +56,6 @@ schema:
   telegram_bot_token: str?
   telegram_allowed_ids: str?
   gemini_api_key: str?
+  omv_url: str?
+  omv_user: str?
+  omv_password: password?

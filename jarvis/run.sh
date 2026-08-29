@@ -55,8 +55,22 @@ if bashio::config.has_value 'gemini_api_key'; then
   export GEMINI_API_KEY="$(bashio::config 'gemini_api_key')"
 fi
 
+# NAS OpenMediaVault (opcional) — vigilancia de discos/servicios/contenedores
+export OMV_URL=""
+export OMV_USER="admin"
+export OMV_PASSWORD=""
+if bashio::config.has_value 'omv_url'; then
+  export OMV_URL="$(bashio::config 'omv_url')"
+fi
+if bashio::config.has_value 'omv_user'; then
+  export OMV_USER="$(bashio::config 'omv_user')"
+fi
+if bashio::config.has_value 'omv_password'; then
+  export OMV_PASSWORD="$(bashio::config 'omv_password')"
+fi
 
-bashio::log.info "Iniciando Jarvis AI Agent v3.37.0..."
+
+bashio::log.info "Iniciando Jarvis AI Agent v3.38.0..."
 bashio::log.info "Modelos cloud: DeepSeek V4 Flash (bg) + V4 Pro (principal/dev)"
 bashio::log.info "Nucleos activos:"
 if [ -n "${DEEPSEEK_API_KEY:-}" ]; then
@@ -77,6 +91,11 @@ else
 fi
 if [ -n "${PROXMOX_URL:-}" ]; then
   bashio::log.info "Proxmox: ${PROXMOX_URL} (nodo: ${PROXMOX_NODE})"
+fi
+if [ -n "${OMV_URL:-}" ]; then
+  bashio::log.info "NAS OpenMediaVault: ${OMV_URL} (vigilancia cada 6h)"
+else
+  bashio::log.info "NAS OpenMediaVault: desactivado (configurar omv_url para vigilarlo)"
 fi
 if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
   bashio::log.info "📱 Bot Telegram: ACTIVO (acceso remoto habilitado)"

@@ -84,6 +84,7 @@ Si los archivos están en la raíz, HA no detecta actualizaciones. NUNCA mover a
 - `HA_TOKEN` — ${SUPERVISOR_TOKEN} (acceso completo a HA, automático)
 - `HA_URL` — http://supervisor/core
 - `PROXMOX_URL`, `PROXMOX_TOKEN`, `PROXMOX_NODE` — Proxmox (opcionales)
+- `OMV_URL`, `OMV_USER`, `OMV_PASSWORD` — NAS OpenMediaVault (opcionales). Sin `OMV_URL`, nasguard no arranca
 - `GITHUB_TOKEN` — Token GitHub para github_push (opcional)
 
 ## Reglas del proyecto
@@ -182,7 +183,7 @@ default                            → callOpenAI
 
 **Router dual:** Capa 1 regex (0 tokens) → Capa 1.5 dynamic keywords → Capa 2 LLM BG_MODEL → fallback ha_control
 
-## Tools disponibles (96 total)
+## Tools disponibles (97 total)
 
 ### Dispositivos (5)
 1. `get_entities` — Lista entidades por dominio (caché 30s, máx 100)
@@ -327,6 +328,9 @@ default                            → callOpenAI
 94. `smart_schedule` — Horarios inteligentes combinando PVPC + presencia + clima
 95. `device_health` — Batería, última actividad, firmware y señal de dispositivos
 96. `anomaly_detect` — Detecta anomalías comparando con línea base histórica
+
+### NAS OpenMediaVault (1)
+97. `omv_status` — Estado del NAS vía API RPC de OMV (discos/SMART, volúmenes, servicios, contenedores). Solo lectura. Requiere `omv_url`+`omv_user`+`omv_password` y ruta de red desde HA hasta el NAS.
 
 ## UI — Funcionalidades actuales
 

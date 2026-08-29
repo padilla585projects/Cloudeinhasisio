@@ -29,6 +29,7 @@ const { checkSelfUpdate, checkSystemUpdates } = require('./background/updates');
 const { checkEmergencies, bootRecoverScripts, bootSelfCheck, bootLearnHA, bootLearnOwnProject } = require('./background/selfcheck');
 const { netGuardLoop } = require('./background/netguard');
 const { infraGuardLoop } = require('./background/infraguard');
+const { nasGuardLoop } = require('./background/nasguard');
 const { startTelegramBot } = require('./background/telegram_bot');
 const { init: initNotifications, queueNotification, getRecentNotifications } = require('./background/notifications');
 
@@ -1782,6 +1783,12 @@ app.listen(PORT, '0.0.0.0', () => {
   //    Cada 5 min; primer chequeo a los 5 min (cuando HA esté estable).
   setInterval(infraGuardLoop, 5 * 60_000);
   setTimeout(infraGuardLoop, 5 * 60_000);
+
+  // ── NASGUARD — vigilancia del NAS OpenMediaVault (código puro, sin IA): salud
+  //    SMART, ocupación, servicios y contenedores. Cada 6h; primer chequeo a los
+  //    8 min. No hace nada si omv_url no está configurado.
+  setInterval(nasGuardLoop, 6 * 3600_000);
+  setTimeout(nasGuardLoop, 8 * 60_000);
 
   // ── Proactive device health scan (cada 4h, primer chequeo a los 10 min)
   setInterval(proactiveDeviceHealthScan, 4 * 3600_000);

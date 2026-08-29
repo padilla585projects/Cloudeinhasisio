@@ -3,6 +3,77 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.38.0 (2026-08-29) — Jarvis vigila el NAS OpenMediaVault
+────────────────────────────────────────────────────────────────────────────────
+
+CONTEXTO (hallado entrando por consola al NAS real, apex-omv):
+- Los sensores sensor.omv_* llevaban en "unavailable" y se interpretaba como
+  "el NAS esta apagado". FALSO: el NAS funciona perfectamente. El motivo es que
+  el NAS tiene una unica interfaz (enp3s0, 192.168.0.12/24, gateway 192.168.0.1)
+  y HA vive en 192.168.10.x. No hay ruta entre ambos. HA no puede verlo, punto.
+- El NAS YA anuncia 192.168.0.0/24 como subnet route en Tailscale, asi que basta
+  con meter HA en el tailnet con --accept-routes para restablecer la vision.
+- Auditando SMART aparecieron dos discos degradados que nadie estaba vigilando:
+  · sdd (Toshiba N300 4TB): 990 sectores reasignados, 36 pendientes, 36 no
+    corregibles. OMV ya lo clasifica como BAD_SECTOR.
+  · sda (149GB, 58.360h): 5 reasignados, 10 pendientes, 10 no corregibles.
+  Y lo importante: sdd tiene "monitor": false en OMV, o sea que la vigilancia
+  SMART esta DESACTIVADA para el. Nunca habria avisado por si solo.
+- La documentacion del proyecto (CLAUDE.md y nexus/modules.js) afirmaba que en
+  el NAS corren frigate, wireguard, syncthing, zerotier y motioneye. Ninguno de
+  los cinco existe ya. Jarvis diagnosticaba contra un mapa inventado.
+
+NUEVO — utils/omv-api.js:
+- Cliente de la API RPC de OpenMediaVault (POST unico a /rpc.php, sesion por
+  cookie con renovacion automatica cada 20 min).
+- Nombres de servicio/metodo VERIFICADOS contra un OMV 8.5.6 real via omv-rpc y
+  los .inc de /usr/share/openmediavault/engined/rpc/ — la API RPC de OMV no esta
+  documentada, asi que no se ha adivinado ni uno.
+- Lecturas: getDisks (con overallstatus, el veredicto del propio OMV),
+  getDiskAttributes (contadores 5/187/188/197/198/199), getFilesystems,
+  getServices, getContainers.
+- Detalle que costo un bug: OMV responde HTTP 400 en los errores de aplicacion,
+  con el motivo real en el cuerpo. Hay que parsear el JSON ANTES de mirar el
+  codigo de estado o se pierde el mensaje y todo degenera en "HTTP 400".
+
+NUEVO — tool omv_status (97 tools en total):
+- Acciones: overview | disks | disk_attributes | filesystems | services |
+  containers. "overview" devuelve ademas un bloque "problemas" ya resumido
+  (discos con fallos, discos sin monitorizar, volumenes llenos, servicios y
+  contenedores caidos) para que el modelo no tenga que deducirlo.
+- Anadida al experto "red". Solo lee, no modifica nada en el NAS.
+
+NUEVO — background/nasguard.js:
+- Watchdog del NAS cada 6h. Alerta por Telegram + pending_thoughts cuando:
+  salud SMART distinta de GOOD, contadores de dano fisico que SUBEN respecto al
+  ciclo anterior (dano nuevo, no historico), disco sin monitorizacion SMART,
+  volumen >=85%, servicio habilitado pero caido, contenedor fuera de "running",
+  o el NAS sin responder dos ciclos seguidos.
+- Deduplicacion por firma: un problema que sigue igual no vuelve a avisar cada
+  6h. Solo se repite si empeora.
+
+IMPACTO DE TOKENS: CERO en regimen normal.
+- nasguard NO llama a ningun LLM: todas las comparaciones son en codigo contra
+  el estado del ciclo anterior guardado en /data/nasguard_state.json.
+- Un NAS sano no genera ni un token. Solo se produce texto cuando algo empeora,
+  y ese texto va a Telegram y a pending_thoughts, no a un modelo.
+- La tool omv_status solo se ejecuta cuando el usuario pregunta.
+- Coste diario incremental: $0.00.
+
+CORREGIDO — nexus/modules.js (red_infra):
+- Lista real de contenedores del NAS (nextcloud x2, portainer, heimdall,
+  filebrowser, gemma x3, canai x5) y aviso explicito de que los cinco antiguos
+  ya no existen.
+- Aviso de que sensor.omv_* en "unavailable" significa "HA no tiene ruta", NO
+  "el NAS ha caido", y de que hay que comprobarlo con omv_status antes de
+  concluir nada.
+
+CONFIGURACION NUEVA (add-on): omv_url, omv_user, omv_password.
+- Si omv_url esta vacio, nasguard no hace nada y la tool devuelve un error claro.
+- REQUISITO: HA necesita ruta hasta el NAS. Add-on Tailscale en HA con
+  --accept-routes es la via soportada.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.37.0 (2026-08-22) — Diagnostico real de entidades caidas: huerfanas vs fallo activo
 ────────────────────────────────────────────────────────────────────────────────
 

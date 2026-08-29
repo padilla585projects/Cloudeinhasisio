@@ -489,11 +489,19 @@ PROXMOX (192.168.10.113:8006, nodo: pve):
 - HA OS corre como VM aquí — puedes hacer snapshot antes de cambios grandes
 - Comando habitual: proxmox_api(action:'status') para ver estado general
 
-OMV NAS (OpenMediaVault):
-- Sensores: sensor.omv_*, binary_sensor.omv_*
-- Docker containers corriendo: frigate, wireguard, nextcloud, syncthing, zerotier, motioneye
-- Si el NAS cae → muchos servicios caen (cámaras, VPN, cloud, sync)
-- Para diagnosticar: primero comprobar si el NAS responde (ping o sensor.omv_*)
+OMV NAS "apex-omv" (OpenMediaVault 8, Debian 13, Celeron J1900, 7,5 GB RAM):
+- Web UI en http://192.168.0.12:83 (puerto 83, NO el 80). Tailscale: 100.88.112.104
+- IMPORTANTE: el NAS está en 192.168.0.x y HA en 192.168.10.x. Los sensores
+  sensor.omv_* / binary_sensor.omv_* llevan caídos desde que se separaron las
+  redes — si salen "unavailable" NO significa que el NAS esté apagado, significa
+  que HA no tiene ruta hasta él. Comprobar SIEMPRE con omv_status antes de
+  concluir que el NAS ha caído.
+- Herramienta: omv_status(action:'overview') → discos, volúmenes, servicios y
+  contenedores de una sola vez, con un bloque "problemas" ya resumido.
+- 5 discos: sda (149G), sdb (931G), sdc (3,6T, etiquetado CHINO_NO_FIAR),
+  sdd (Toshiba N300 4TB), sde (SSD Kingston, sistema).
+- Si el NAS cae → caen Nextcloud, Portainer, Heimdall, filebrowser y los stacks
+  gemma y canai.
 
 NETWORKING:
 - Router: TP-Link Archer → sensor.archer_*, sensor.*tp_link*
@@ -501,13 +509,15 @@ NETWORKING:
 - WireGuard (VPN): corre en Docker del NAS. Para acceso remoto.
 - ZeroTier: red overlay para conexión entre dispositivos remotos
 
-DOCKER EN NAS — contenedores conocidos:
-- frigate: detección de objetos en cámaras (puerto 5000)
-- wireguard: VPN (puerto 51820)
-- nextcloud: cloud privado
-- syncthing: sincronización de archivos
-- zerotier: red overlay
-- motioneye: grabación de cámaras legacy
+DOCKER EN NAS — contenedores reales (verificados 29-08-2026):
+- nexcloud-app-1 + nexcloud-db-1: Nextcloud (cloud privado) + MariaDB
+- portainer: gestión de Docker
+- heimdall: panel de accesos
+- filebrowser-filebrowser-1: navegador de archivos web
+- gemma_security_agent + gemma_sandbox + gemma_docker_proxy: agente de seguridad
+- canai-api + canai-postgres + canai-nginx + canai-tunnel + canai-tunnel-quick
+NOTA: frigate, wireguard, syncthing, zerotier y motioneye YA NO EXISTEN en este
+NAS. No los des por supuestos ni los uses para diagnosticar.
 
 DIAGNÓSTICO DE RED:
 - Si muchos dispositivos caen a la vez → problema de red, no de dispositivo

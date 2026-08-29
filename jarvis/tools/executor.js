@@ -16,6 +16,7 @@ const { callOpenAI, callImageEdit } = require('../utils/llm');
 const { execSync, spawnSync } = require('child_process');
 const C = require('../utils/constants');
 const { scanInstallation } = require('../utils/scan');
+const omv = require('../utils/omv-api');
 
 let mcpClient;
 try { mcpClient = require('../utils/mcp-client'); } catch { mcpClient = null; }
@@ -5718,6 +5719,51 @@ ${dots}`;
           }
           default:
             return { error: `Acción anomaly_detect desconocida: ${input.action}` };
+        }
+      }
+
+      case 'omv_status': {
+        if (!omv.omvConfigured()) {
+          return { error: 'NAS no configurado. Añade omv_url, omv_user y omv_password en la configuración del add-on.' };
+        }
+        switch (input.action) {
+          case 'disks':
+            return { disks: await omv.getDisks() };
+          case 'disk_attributes': {
+            if (!input.device) return { error: 'Falta "device" (ej: sdd)' };
+            const dev = input.device.startsWith('/dev/') ? input.device : `/dev/${input.device}`;
+            return { device: dev, attributes: await omv.getDiskAttributes(dev) };
+          }
+          case 'filesystems':
+            return { filesystems: await omv.getFilesystems() };
+          case 'services':
+            return { services: await omv.getServices() };
+          case 'containers':
+            return { containers: await omv.getContainers() };
+          case 'overview': {
+            const [disks, filesystems, services] = await Promise.all([
+              omv.getDisks(), omv.getFilesystems(), omv.getServices(),
+            ]);
+            // El plugin compose puede no estar instalado: su ausencia no es un fallo.
+            let containers = [];
+            try { containers = await omv.getContainers(); } catch {}
+            const unhealthy = disks.filter(d => d.status && d.status !== 'GOOD');
+            const full      = filesystems.filter(f => f.usedPct >= 85);
+            const svcDown   = services.filter(s => s.enabled && !s.running);
+            const ctrDown   = containers.filter(c => c.state && c.state !== 'running');
+            return {
+              disks, filesystems, services, containers,
+              problemas: {
+                discos_con_fallos: unhealthy.map(d => `${d.device} (${d.model}): ${d.status}`),
+                discos_sin_monitorizar: disks.filter(d => !d.monitored).map(d => d.device),
+                volumenes_llenos: full.map(f => `${f.device}: ${f.usedPct}%`),
+                servicios_caidos: svcDown.map(s => s.name),
+                contenedores_caidos: ctrDown.map(c => `${c.name}: ${c.state}`),
+              },
+            };
+          }
+          default:
+            return { error: `Acción omv_status desconocida: ${input.action}` };
         }
       }
 

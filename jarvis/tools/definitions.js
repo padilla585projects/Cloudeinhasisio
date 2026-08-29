@@ -1414,6 +1414,24 @@ const tools = [
       },
       required: ['action']
     }
+  },
+
+  // ─── NAS OpenMediaVault ───
+  {
+    name: 'omv_status',
+    description: 'Consulta el NAS de casa (OpenMediaVault) por su API RPC. Acciones: overview (resumen completo: discos, volúmenes, servicios y contenedores), disks (salud SMART por disco, con el veredicto de OMV), disk_attributes (contadores SMART crudos de un disco concreto: sectores reasignados, pendientes y no corregibles), filesystems (ocupación de volúmenes), services (SSH/SMB/NFS/Docker), containers (contenedores Docker). Úsala cuando pregunten por el NAS, los discos duros, el estado del servidor de casa, o cuando algo que vive en el NAS (Nextcloud, Portainer, Heimdall) no responda. Solo lee, no modifica nada.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['overview', 'disks', 'disk_attributes', 'filesystems', 'services', 'containers'],
+          description: 'Qué consultar en el NAS'
+        },
+        device: { type: 'string', description: 'Disco para action=disk_attributes (ej: sdd o /dev/sdd)' }
+      },
+      required: ['action']
+    }
   }
 ];
 

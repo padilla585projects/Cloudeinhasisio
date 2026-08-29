@@ -145,7 +145,7 @@ const EXPERTS = {
     tools: ['network', 'proxmox_api', 'agent_chat', 'agent_communicate', 'web_search',
             'fetch_url', 'read_file', 'write_file', 'exec_command', 'get_system_logs',
             'ha_supervisor', 'learn', 'knowledge_db', 'mqtt_publish', 'zigbee_manage',
-            'esphome_manage', 'system_info']
+            'esphome_manage', 'system_info', 'omv_status']
   },
 
   aprendizaje: {
