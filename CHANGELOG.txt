@@ -3,6 +3,30 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.38.1 (2026-08-29) — Correcciones tras verificar nasguard contra el NAS real
+────────────────────────────────────────────────────────────────────────────────
+
+Hallado verificando el primer ciclo real: el log del NAS registraba TRES
+"Authorized login" por cada chequeo, cuando deberia ser uno.
+
+CORREGIDO — utils/omv-api.js (login single-flight):
+- nasguard lanza getDisks + getFilesystems + getServices con Promise.all. Las
+  tres veian sessionCookie=null a la vez y las tres hacian login. 3 sesiones por
+  ciclo en vez de 1, y 3 entradas de login en el log del NAS por chequeo.
+- Ahora la primera llamada crea la promesa de login y las demas se enganchan a
+  ella. Una sesion por ciclo.
+
+CORREGIDO — background/nasguard.js (fallos silenciosos):
+- Si la conexion con el NAS fallaba, no se escribia NADA en el log: la alerta
+  solo salta al segundo ciclo fallido, o sea 12h despues. Un error de
+  credenciales habria sido invisible medio dia.
+- Ahora se loguea el fallo en cada intento, y tambien una linea de resumen
+  cuando el chequeo va bien ("N discos, N volumenes, N contenedores — N
+  problemas"), para poder confirmar de un vistazo que la vigilancia esta viva.
+
+IMPACTO DE TOKENS: cero. Ambos cambios son codigo y logs, sin LLM.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.38.0 (2026-08-29) — Jarvis vigila el NAS OpenMediaVault
 ────────────────────────────────────────────────────────────────────────────────
 

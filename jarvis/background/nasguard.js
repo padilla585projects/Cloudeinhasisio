@@ -78,6 +78,10 @@ async function nasGuardLoop() {
     // Los contenedores dependen del plugin compose; si no está, no es un fallo.
     try { containers = await omv.getContainers(); } catch { containers = []; }
   } catch (e) {
+    // Se loguea SIEMPRE, no solo al alertar: si no, un fallo de credenciales
+    // permanece invisible 12h (dos ciclos) — que es justo el tipo de fallo
+    // silencioso que tuvo los sensores del NAS mintiendo durante meses.
+    console.log(`[nasguard] No pude consultar el NAS: ${e.message}`);
     st.unreachable = (st.unreachable || 0) + 1;
     if (st.unreachable === UNREACHABLE_CONFIRMS) {
       recordThought({
@@ -204,6 +208,14 @@ async function nasGuardLoop() {
       clearAlert(st, key);
     }
   }
+
+  const problemas =
+    disks.filter(d => d.status && d.status !== 'GOOD').length +
+    filesystems.filter(f => f.usedPct >= DISK_USAGE_WARN).length +
+    services.filter(s => s.enabled && !s.running).length +
+    containers.filter(c => c.state && c.state !== 'running').length;
+  console.log(`[nasguard] NAS consultado: ${disks.length} discos, ${filesystems.length} volúmenes, ` +
+              `${containers.length} contenedores — ${problemas} problema(s)`);
 
   saveJSON(STATE_FILE, st);
 }

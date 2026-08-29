@@ -18,6 +18,7 @@ const C = require('./constants');
 // La cookie de sesión dura ~30 min; la renovamos sola cuando caduca.
 let sessionCookie = null;
 let sessionAt     = 0;
+let loginInFlight = null;   // single-flight: ver login()
 const SESSION_TTL = 20 * 60_000;
 
 function omvConfigured() {
@@ -47,7 +48,18 @@ async function rpcRaw(service, method, params = {}, cookie = null) {
   return { data: json?.response, setCookie: res.headers.get('set-cookie') };
 }
 
+// Single-flight: varias llamadas concurrentes (nasguard lanza getDisks,
+// getFilesystems y getServices con Promise.all) veian todas sessionCookie=null y
+// hacian login cada una. Resultado: 3 sesiones por ciclo en vez de 1, y 3
+// entradas de "Authorized login" en el log del NAS por cada chequeo. Ahora la
+// primera que llega crea la promesa y las demas se enganchan a ella.
 async function login() {
+  if (loginInFlight) return loginInFlight;
+  loginInFlight = doLogin().finally(() => { loginInFlight = null; });
+  return loginInFlight;
+}
+
+async function doLogin() {
   const { data, setCookie } = await rpcRaw('Session', 'login', {
     username: C.OMV_USER,
     password: C.OMV_PASSWORD,
