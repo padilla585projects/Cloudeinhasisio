@@ -13,7 +13,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 const path = require('path');
 const { loadJSON, saveJSON } = require('../utils/persistence');
-const { haGet, supervisorGet, supervisorPost, haPost } = require('../utils/ha-api');
+const { haGet, supervisorGet, supervisorPost } = require('../utils/ha-api');
+const { notify: notifyChannel } = require('../utils/notify');
 const C = require('../utils/constants');
 
 const STATE_FILE   = path.join(C.DATA_DIR, 'infraguard_state.json');
@@ -66,7 +67,7 @@ function recordThought(t) {
 }
 
 async function notify(msg) {
-  try { await haPost('/services/notify/telegram', { message: msg }); } catch {}
+  await notifyChannel(msg, { title: 'Jarvis — Infraestructura', source: 'infraguard' });
 }
 
 // Lista todos los add-ons vía Supervisor

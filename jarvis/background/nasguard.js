@@ -21,7 +21,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 const path = require('path');
 const { loadJSON, saveJSON } = require('../utils/persistence');
-const { haPost } = require('../utils/ha-api');
+const { notify: notifyChannel } = require('../utils/notify');
 const omv = require('../utils/omv-api');
 
 const STATE_FILE    = path.join(require('../utils/constants').DATA_DIR, 'nasguard_state.json');
@@ -49,7 +49,7 @@ function recordThought(t) {
 }
 
 async function notify(msg) {
-  try { await haPost('/services/notify/telegram', { message: msg }); } catch {}
+  await notifyChannel(msg, { title: 'Jarvis — NAS', source: 'nasguard' });
 }
 
 // Emite una alerta solo si no la habíamos emitido ya (evita repetir lo mismo

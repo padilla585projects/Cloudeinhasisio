@@ -16,7 +16,7 @@ const dns = require('dns');
 const path = require('path');
 const fetch = require('node-fetch');
 const { loadJSON, saveJSON } = require('../utils/persistence');
-const { haPost } = require('../utils/ha-api');
+const { notify: notifyChannel } = require('../utils/notify');
 const C = require('../utils/constants');
 
 const STATE_FILE = path.join(C.DATA_DIR, 'netguard_state.json');
@@ -146,8 +146,8 @@ function recordThought(t) {
 }
 
 async function notify(msg) {
-  // Vía servicio de HA (local); HA core ya tiene DNS porque la red se recuperó
-  try { await haPost('/services/notify/telegram', { message: msg }); } catch {}
+  // HA core ya tiene DNS porque la red se recuperó
+  await notifyChannel(msg, { title: 'Jarvis — Red', source: 'netguard' });
 }
 
 // ── Loop principal del watchdog ─────────────────────────────────────────────

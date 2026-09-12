@@ -3,6 +3,45 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.38.2 (2026-09-12) — Los vigilantes ya no avisan al vacio
+────────────────────────────────────────────────────────────────────────────────
+
+CONTEXTO (descubierto de la peor manera posible):
+- El 29-08-2026 a las 14:05:53 el disco sdd del NAS solto cinco errores EIO
+  seguidos y ext4 paso el volumen a "emergency_ro". Todo lo que vive ahi
+  (canai-data con su Postgres, HDD2/Projects, Multimedia2) quedo en solo lectura.
+- nasguard LO DETECTO y genero los avisos correspondientes.
+- El usuario se entero 14 DIAS DESPUES, y de casualidad, porque su unidad de red
+  Z: no le dejaba escribir.
+- Motivo: netguard, infraguard y nasguard tenian los tres esta misma linea
+  copiada literalmente:
+      try { await haPost('/services/notify/telegram', { message: msg }); } catch {}
+  Como telegram_bot_token no esta configurado, el servicio notify.telegram no
+  existe, la llamada lanza, el catch VACIO se la traga, y el aviso desaparece
+  sin dejar ni una linea en el log. Un vigilante que no puede avisar no es un
+  vigilante.
+
+NUEVO — utils/notify.js:
+- Canal de avisos unico y con red de seguridad, en cascada:
+  1. Telegram, si telegram_bot_token esta configurado.
+  2. Si no hay Telegram o falla → notificacion PERSISTENTE de Home Assistant.
+     Ese servicio siempre existe, no necesita configuracion, y el aviso se queda
+     en la campana hasta que el usuario lo descarta.
+  3. Pase lo que pase, se escribe en el log, incluido el motivo de cada canal
+     que ha fallado. Ya no hay forma de que un aviso se pierda en silencio.
+- Devuelve el canal que funciono ('telegram' | 'ha' | 'ninguno') por si algun
+  llamante quiere reaccionar.
+
+APLICADO A LOS TRES VIGILANTES:
+- background/nasguard.js   → titulo "Jarvis — NAS"
+- background/infraguard.js → titulo "Jarvis — Infraestructura"
+- background/netguard.js   → titulo "Jarvis — Red"
+- Retirado el import de haPost de los tres, que ya no lo usan.
+
+IMPACTO DE TOKENS: cero. No hay ninguna llamada a LLM en este cambio; es una
+ruta de notificacion y logs.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.38.1 (2026-08-29) — Correcciones tras verificar nasguard contra el NAS real
 ────────────────────────────────────────────────────────────────────────────────
 
