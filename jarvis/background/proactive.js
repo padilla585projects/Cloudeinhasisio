@@ -1,6 +1,5 @@
 'use strict';
 const path = require('path');
-const fetch = require('node-fetch');
 const { callLLM } = require('../utils/llm');
 const { loadJSON, saveJSON } = require('../utils/persistence');
 const { haGet, haPost } = require('../utils/ha-api');
@@ -59,30 +58,41 @@ function scopedTools(focus) {
 }
 
 // Auto-fix previo: si hay caída masiva simultánea, recargar integraciones reloadables.
+//
+// AQUI YA NO SE REINICIA ZIGBEE2MQTT (quitado en v3.38.5). Lo hacia, y estaba
+// mal por tres motivos:
+//   1. El filtro se llamaba "zigbeeDown" pero cogia cualquier light, sensor,
+//      binary_sensor o switch en unavailable, viniera de donde viniera. Cuatro
+//      entidades caidas de la camara Reolink o de un enchufe TP-Link bastaban
+//      para reiniciar el Zigbee sin que hubiera UN SOLO dispositivo Zigbee con
+//      problemas.
+//   2. No tenia cooldown, ni tope diario, ni doble confirmacion — al contrario
+//      que infraguard, que si los tiene.
+//   3. Reiniciar el puente deja todas las entidades Zigbee caidas un rato, asi
+//      que el siguiente ciclo volvia a ver "caida masiva" y reiniciaba otra vez.
+//      El propio remedio alimentaba el sintoma.
+// Quien decide reiniciar el puente es infraguard, que mira la senal correcta
+// (binary_sensor.zigbee2mqtt_bridge_connection_state) cada 5 min y actua con
+// guardarrailes. Una sola pieza al mando.
+//
+// Tambien se ha sacado 'mqtt' de la lista de recargas a ciegas: recargar la
+// integracion MQTT tumba temporalmente TODAS las entidades de Zigbee2MQTT, o
+// sea que provoca justo la caida masiva que venia a arreglar.
 async function autoFixMassCrash(unavailable) {
   const log = [];
   try {
     const configEntries = await haGet('/config/config_entries').catch(() => []);
-    const reloadDomains = ['alexa_media_player', 'pvpc_energyhourly', 'tp_link', 'rest', 'reolink', 'alfa_romeo', 'awattar', 'mqtt'];
-    const zigbeeDown = unavailable.filter(e =>
+    const reloadDomains = ['alexa_media_player', 'pvpc_energyhourly', 'tp_link', 'rest', 'reolink', 'alfa_romeo', 'awattar'];
+
+    // Se sigue contando, pero como INFORMACION para el analisis, no como excusa
+    // para reiniciar nada.
+    const caidasComunes = unavailable.filter(e =>
       e.entity_id.startsWith('light.') || e.entity_id.startsWith('sensor.') ||
       e.entity_id.startsWith('binary_sensor.') || e.entity_id.startsWith('switch.'));
-    if (zigbeeDown.length > 3) {
-      try {
-        const zRes = await fetch('http://supervisor/addons/45df7312_zigbee2mqtt/restart', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${C.HA_TOKEN}`, 'Content-Type': 'application/json' }
-        });
-        // fetch() no lanza excepción en 4xx/5xx — hay que comprobar .ok explícitamente
-        // o el log dice "reiniciado" aunque el Supervisor haya rechazado la petición.
-        if (zRes.ok) {
-          log.push(`Zigbee2MQTT reiniciado (${zigbeeDown.length} entidades Zigbee caídas)`);
-          await new Promise(r => setTimeout(r, 8000));
-        } else {
-          log.push(`Zigbee2MQTT restart falló: Supervisor → ${zRes.status}`);
-        }
-      } catch (e) { log.push(`Zigbee2MQTT restart falló: ${e.message}`); }
+    if (caidasComunes.length > 3) {
+      log.push(`${caidasComunes.length} entidades de dominios comunes caidas — el reinicio del puente Zigbee, si hace falta, lo decide infraguard`);
     }
+
     for (const domain of reloadDomains) {
       for (const entry of configEntries.filter(e => e.domain === domain)) {
         try {

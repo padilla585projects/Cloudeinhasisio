@@ -3,6 +3,49 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.38.5 (2026-09-13) — Zigbee se caia tanto porque Jarvis lo reiniciaba
+────────────────────────────────────────────────────────────────────────────────
+
+LA PREGUNTA DE ADRIAN: "por que zigbee se ha caido tantas veces seguidas".
+Parte de la respuesta estaba en casa: habia TRES sitios distintos del propio
+Jarvis que reiniciaban Zigbee2MQTT por su cuenta, y no se hablaban entre ellos.
+
+EL CULPABLE — background/proactive.js, autoFixMassCrash():
+- El filtro se llamaba "zigbeeDown" pero no tenia nada de Zigbee: cogia
+  cualquier light, sensor, binary_sensor o switch en estado unavailable,
+  viniera de la integracion que viniera. Cuatro entidades caidas de la camara
+  Reolink, de un enchufe TP-Link o de Alexa Media Player bastaban para
+  reiniciar el puente Zigbee sin que hubiera UN SOLO dispositivo Zigbee con
+  problemas.
+- No tenia cooldown, ni tope diario, ni doble confirmacion. Se disparaba cada
+  vez que el foco proactivo caia en fallen_devices o system_health (2 de cada 5
+  ciclos, cada 2h) con mas de 5 entidades no disponibles.
+- Y se retroalimentaba: reiniciar el puente deja todas las entidades Zigbee
+  caidas un rato, asi que el siguiente ciclo volvia a ver "caida masiva" y
+  reiniciaba otra vez. El remedio alimentaba el sintoma.
+
+ARREGLADO:
+- Fuera el reinicio de Zigbee2MQTT de proactive.js. Quien decide reiniciar el
+  puente es infraguard, que mira la senal correcta
+  (binary_sensor.zigbee2mqtt_bridge_connection_state) cada 5 min y actua con
+  doble confirmacion, cooldown de 20 min y tope de 3 al dia. Una sola pieza al
+  mando. proactive sigue contando las caidas, pero como informacion.
+- Fuera 'mqtt' de la lista de integraciones que se recargaban a ciegas en ese
+  mismo barrido: recargar MQTT tumba temporalmente TODAS las entidades de
+  Zigbee2MQTT, o sea que provocaba justo la caida masiva que venia a arreglar.
+
+ARREGLADO TAMBIEN — background/infraguard.js:
+- La ruta por entidad, al agotar los 3 reinicios del dia, hacia `continue` a
+  secas: Jarvis se callaba el resto de la jornada aunque el puente siguiera
+  caido. La ruta de add-ons si avisaba (capNotified); esta no. Ahora avisa una
+  vez y se calla, y el aviso se rearma si la entidad se recupera o al cambiar
+  el dia.
+
+IMPACTO DE TOKENS: cero, y ligeramente negativo en el buen sentido: un reinicio
+menos significa menos entidades caidas que analizar en el siguiente ciclo
+proactivo, que SI gasta LLM.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.38.4 (2026-09-13) — El aviso preguntaba por un bot y llamaba a otro
 ────────────────────────────────────────────────────────────────────────────────
 

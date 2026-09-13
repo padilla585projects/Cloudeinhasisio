@@ -102,7 +102,10 @@ async function infraGuardLoop() {
         if (st.addons[k]) st.addons[k].actionsToday = 0;
       }
       for (const k of Object.keys(st.entityFails)) {
-        if (st.entityFails[k]) st.entityFails[k].actionsToday = 0;
+        if (st.entityFails[k]) {
+          st.entityFails[k].actionsToday = 0;
+          st.entityFails[k].capNotified  = false;   // dia nuevo, aviso nuevo
+        }
       }
     }
 
@@ -200,9 +203,10 @@ async function infraGuardLoop() {
       const isBad  = check.badStates.includes(entityState);
 
       if (!isBad) {
-        if (failSt.count > 0) {
+        if (failSt.count > 0 || failSt.capNotified) {
           console.log(`[infraguard] ✅ ${check.name} recuperada (estado: ${entityState})`);
           failSt.count = 0;
+          failSt.capNotified = false;
         }
         st.entityFails[check.id] = failSt;
         continue;
@@ -219,7 +223,24 @@ async function infraGuardLoop() {
       // Guardarraíles
       const sinceLast = Date.now() - (failSt.lastActionAt || 0);
       if (sinceLast < COOLDOWN_MS) continue;
-      if (failSt.actionsToday >= MAX_ACTIONS_DAY) continue;
+      if (failSt.actionsToday >= MAX_ACTIONS_DAY) {
+        // Antes esto era un `continue` a secas: agotados los reinicios del dia,
+        // Jarvis se callaba el resto de la jornada aunque el puente siguiera
+        // caido. Justo el vigilante mudo que este proyecto existe para evitar.
+        // La ruta de add-ons ya avisaba con capNotified; esta no.
+        if (!failSt.capNotified) {
+          failSt.capNotified = true;
+          st.entityFails[check.id] = failSt;
+          recordThought({
+            priority: 'critical',
+            title: `${check.name} sigue cayendose — reinicios agotados`,
+            detail: `La entidad "${check.entity}" sigue en estado "${entityState}" despues de ` +
+                    `${MAX_ACTIONS_DAY} reinicios hoy. No vuelvo a tocarlo: necesita revision manual.`,
+          });
+          await notify(`🚨 Jarvis: *${check.name}* sigue cayendose tras ${MAX_ACTIONS_DAY} reinicios hoy. No insisto mas: revisalo a mano.`);
+        }
+        continue;
+      }
 
       // Encontrar el add-on candidato
       const targetAddon = check.addonPattern
