@@ -92,10 +92,17 @@ async function doLogin() {
     .map(c => c.split(';')[0].trim())
     .filter(Boolean)
     .join('; ');
-  // Sin cookie no hay sesion, y las llamadas siguientes fallarian una a una con
-  // un mensaje confuso. Mejor decirlo aqui y de una vez.
+  // Si por lo que sea no llega la cabecera Set-Cookie, el login nuevo de OMV
+  // devuelve el identificador de sesion en el cuerpo, asi que la cookie se
+  // reconstruye. Verificado en el NAS: session_name() es PHPSESSID, y
+  // session.name = PHPSESSID en el php.ini de OMV.
+  if (!sessionCookie && data?.sessionid) {
+    sessionCookie = `PHPSESSID=${data.sessionid}`;
+  }
+  // Y si tampoco hay eso, se falla AQUI con un motivo claro, en vez de dejar
+  // que revienten una a una las llamadas siguientes con "sesion caducada".
   if (!sessionCookie) {
-    throw new Error('OMV autenticó pero no devolvió cookie de sesión');
+    throw new Error('OMV autenticó pero no hubo forma de obtener la sesión (ni cookie ni sessionid)');
   }
   sessionAt = Date.now();
   return sessionCookie;

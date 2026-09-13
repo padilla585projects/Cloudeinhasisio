@@ -3,6 +3,28 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.38.8 (2026-09-13) — Verificado contra el NAS real, no solo contra su codigo
+────────────────────────────────────────────────────────────────────────────────
+
+Comprobados uno a uno, con omv-rpc en el NAS de Adrian (OMV 8.5.8), los cinco
+metodos que usa nasguard. TODOS responden y TODOS los campos que Jarvis lee
+siguen existiendo: overallstatus, monitor, temperature y serialnumber en
+Smart.getList; mountpoint, percentage, used y available en
+enumerateMountedFilesystems; title, enabled y running en Services.getStatus;
+name, image, state y status en Compose.getContainerList; id, attrname,
+rawvalue y threshold en Smart.getAttributes. La actualizacion del NAS solo
+rompio el login, nada de lo que viene despues.
+
+CORREGIDO UN RIESGO QUE INTRODUJO v3.38.7: esa version fallaba en seco si el
+login no traia cabecera Set-Cookie. El login nuevo de OMV devuelve ademas el
+identificador de sesion en el cuerpo, asi que ahora la cookie se reconstruye a
+partir de el (PHPSESSID, confirmado con session_name() y el php.ini del NAS) y
+solo se falla si no hay ninguna de las dos cosas. Un arreglo no debe traer su
+propia forma nueva de romperse.
+
+IMPACTO DE TOKENS: cero.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.38.7 (2026-09-13) — El NAS decia que si y Jarvis entendia que no
 ────────────────────────────────────────────────────────────────────────────────
 
