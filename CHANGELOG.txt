@@ -3,6 +3,35 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.38.6 (2026-09-13) — Reparar es para cuando algo se acaba de romper
+────────────────────────────────────────────────────────────────────────────────
+
+CONFIRMADO CONTRA LA INSTALACION REAL (via el conector de HA, no teoria):
+- 6 sensores "OMV Disk sda..sdf" llevan en unavailable desde que el NAS dejo de
+  responder, y 3 bombillas del salon estan en unavailable de forma permanente.
+- Son NUEVE entidades caidas de forma cronica, de dominios sensor y light.
+- La condicion del auto-fix de proactive.js era `unavailable.length > 5`. O sea
+  que se cumplia SIEMPRE, dia y noche, desde hace semanas. Cada vez que el foco
+  proactivo caia en fallen_devices o system_health (2 de cada 5 ciclos, cada
+  2h), se disparaba: ~4-5 veces al dia, todos los dias.
+- En v3.38.5 se le quito el reinicio del Zigbee. Quedaba lo demas: recargaba a
+  ciegas alexa_media_player, pvpc, tp_link, rest, reolink, alfa_romeo y awattar
+  con la misma excusa. Mismo error, otras victimas.
+
+ARREGLADO — background/proactive.js:
+- gatherSeed() ya calculaba si las entidades cayeron TODAS A LA VEZ (ventana de
+  3 min): eso es lo que delata una averia de verdad, frente a cadaveres viejos
+  que llevan semanas ahi. Ese dato estaba y solo se usaba para redactar el
+  texto del analisis.
+- Ahora el auto-fix se condiciona a esa senal (caidaSimultanea) en vez de a un
+  contador. Si no se ha roto nada ahora mismo, no se recarga nada.
+
+IMPACTO DE TOKENS: negativo en el buen sentido. Se dejan de recargar 7
+integraciones ~4-5 veces al dia sin motivo, y cada recarga generaba entidades
+temporalmente caidas que el siguiente ciclo proactivo volvia a analizar con
+LLM. Menos ruido que analizar, menos tokens.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.38.5 (2026-09-13) — Zigbee se caia tanto porque Jarvis lo reiniciaba
 ────────────────────────────────────────────────────────────────────────────────
 

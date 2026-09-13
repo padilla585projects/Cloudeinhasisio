@@ -135,11 +135,16 @@ async function gatherSeed(focus) {
     (groups[g] = groups[g] || []).push(e.attributes?.friendly_name || id);
   }
 
-  // ¿Caída masiva simultánea?
+  // ¿Caída masiva SIMULTANEA? Que haya muchas entidades caidas no significa
+  // que acabe de pasar algo: en esta casa hay entidades muertas desde hace
+  // semanas (los sensores del NAS, un par de bombillas sin corriente). Lo que
+  // delata una averia de verdad es que cayeran TODAS A LA VEZ.
   let massCrash = '';
+  let caidaSimultanea = false;
   if (unavailable.length > 5) {
     const ts = unavailable.map(e => new Date(e.last_changed).getTime());
     if (Math.max(...ts) - Math.min(...ts) < 3 * 60_000) {
+      caidaSimultanea = true;
       massCrash = `CAÍDA MASIVA: ${unavailable.length} entidades cayeron en <3min (~${new Date(Math.min(...ts)).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}). Probable reinicio de HA o corte de red.`;
     }
   }
@@ -153,7 +158,7 @@ Entidades NO disponibles: ${unavailable.length}` +
     seed += `\n\nMEMORIA DEL USUARIO (preferencias reales):\n${state.userMemory.slice(-8).map(m => `- (${m.category}) ${m.note}`).join('\n')}`;
   }
 
-  return { seed, unavailable };
+  return { seed, unavailable, caidaSimultanea };
 }
 
 // Focos que se ejecutan incluso si el usuario lleva tiempo inactivo (afectan a la casa)
@@ -175,16 +180,23 @@ async function proactiveThinkingLoop() {
     }
     console.log(`[proactive] Ciclo autónomo — foco: ${focus}`);
 
-    const { seed, unavailable } = await gatherSeed(focus);
+    const { seed, unavailable, caidaSimultanea } = await gatherSeed(focus);
 
     // Pensamientos ya registrados (para reforzar el NO-repetir — todos, no solo los últimos)
     const existing = loadJSON(path.join(C.DATA_DIR, 'pending_thoughts.json'), [])
       .filter(t => t.status === 'pending');
     const recentTitles = existing.map(t => `- ${t.title}`).join('\n');
 
-    // Auto-fix de caída masiva antes de pensar (solo en focos relevantes)
+    // Auto-fix de caída masiva antes de pensar (solo en focos relevantes).
+    //
+    // LA CONDICION ES caidaSimultanea, NO unavailable.length > 5 (v3.38.5).
+    // Con el contador a secas bastaba con tener entidades muertas de forma
+    // cronica —aqui: 6 sensores del NAS desde que dejo de responder, mas un
+    // par de bombillas sin corriente— para que esto recargara media docena de
+    // integraciones varias veces al dia, todos los dias, sin que hubiera
+    // pasado nada. Reparar es para cuando algo se acaba de romper.
     let autoFixLog = [];
-    if ((focus === 'fallen_devices' || focus === 'system_health') && unavailable.length > 5) {
+    if ((focus === 'fallen_devices' || focus === 'system_health') && caidaSimultanea) {
       autoFixLog = await autoFixMassCrash(unavailable);
       if (autoFixLog.length) console.log(`[proactive] auto-fix: ${autoFixLog.join(' | ')}`);
     }
