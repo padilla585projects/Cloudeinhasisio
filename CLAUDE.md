@@ -51,7 +51,11 @@ Si los archivos están en la raíz, HA no detecta actualizaciones. NUNCA mover a
     │   ├── llm.js           # callOpenAI, callAnthropic, callDeepSeek, callLLM
     │   ├── state.js         # Estado global compartido (JARVIS_VERSION, etc.)
     │   ├── context.js       # buildDynamicContext, updateLiveContext
-    │   ├── ha-api.js        # haGet, haPost
+    │   ├── ha-api.js        # haGet, haPost, supervisorGet, supervisorPost
+    │   ├── notify.js        # Canal único de avisos de los vigilantes (Telegram + HA)
+    │   ├── omv-api.js       # Cliente RPC del NAS OpenMediaVault
+    │   ├── persistence.js   # loadJSON / saveJSON sobre /data
+    │   ├── mcp-client.js    # Cliente MCP
     │   └── scan.js          # scanInstallation
     ├── tools/
     │   ├── definitions.js   # Definición de las 96 tools (JSON schema)
@@ -71,6 +75,8 @@ Si los archivos están en la raíz, HA no detecta actualizaciones. NUNCA mover a
         ├── updates.js        # Chequeo de actualizaciones HA/add-ons
         ├── netguard.js       # Monitor de red local
         ├── infraguard.js     # Monitor de add-ons/infra vía Supervisor
+        ├── nasguard.js       # Monitor del NAS OpenMediaVault (cada 6h)
+        ├── latido.js         # Señal de vida al centinela externo (cada 5 min)
         ├── notifications.js  # Batching de notificaciones
         └── telegram_bot.js   # Bot de Telegram
 ```
@@ -86,6 +92,8 @@ Si los archivos están en la raíz, HA no detecta actualizaciones. NUNCA mover a
 - `PROXMOX_URL`, `PROXMOX_TOKEN`, `PROXMOX_NODE` — Proxmox (opcionales)
 - `OMV_URL`, `OMV_USER`, `OMV_PASSWORD` — NAS OpenMediaVault (opcionales). Sin `OMV_URL`, nasguard no arranca
 - `GITHUB_TOKEN` — Token GitHub para github_push (opcional)
+- `CENTINELA_URL`, `CENTINELA_CLAVE` — Worker de Cloudflare que vigila la casa
+  desde fuera (opcionales). Sin `CENTINELA_URL`, `latido.js` no manda nada
 
 ## Reglas del proyecto
 
@@ -330,7 +338,7 @@ default                            → callOpenAI
 96. `anomaly_detect` — Detecta anomalías comparando con línea base histórica
 
 ### NAS OpenMediaVault (1)
-97. `omv_status` — Estado del NAS vía API RPC de OMV (discos/SMART, volúmenes, servicios, contenedores). Solo lectura. Requiere `omv_url`+`omv_user`+`omv_password` y ruta de red desde HA hasta el NAS.
+97. `omv_status` — Estado del NAS vía API RPC de OMV (discos/SMART, volúmenes, servicios, contenedores). Solo lectura. Requiere `omv_url`+`omv_user`+`omv_password`. **Usar la IP de Tailscale del NAS**, no la de su LAN: HA tiene el complemento Tailscale con *"Accept routes"* DESACTIVADO, así que no alcanza la red del NAS aunque este anuncie esa ruta. (La dirección concreta, en las opciones del add-on — no se publica aquí.)
 
 ## UI — Funcionalidades actuales
 
@@ -339,6 +347,57 @@ default                            → callOpenAI
 - **Slash commands**: `/` en el input muestra menú con /estado, /scan, /score, /diagnostico, /backup, /logs, /memoria, /ayuda
 - **Adjuntar archivos**: imágenes y documentos al chat
 - **Panel lateral**: estado de la casa en tiempo real
+
+## Avisos, vigilantes y el NAS — lecciones que cuestan caras
+
+### El canal de avisos
+Todo vigilante de background (`netguard`, `infraguard`, `nasguard`) avisa por
+`utils/notify.js`, NUNCA con un `haPost` suelto envuelto en un `catch {}` vacío.
+Un aviso que se pierde en silencio es peor que no tenerlo: el 29-08-2026 un
+disco del NAS se pasó a solo lectura, nasguard lo detectó, y no se supo en
+catorce días.
+
+### Hay TRES bots de Telegram y no son intercambiables
+1. **El de la integración de HA** — servicios `telegram_bot.send_message` /
+   `notify.telegram`. Configurado en el `configuration.yaml` de HA.
+2. **El propio del add-on** — opción `telegram_bot_token`, lo sondea
+   `background/telegram_bot.js`. Es el único con el que se puede CONVERSAR.
+3. **El del centinela externo** — vive como secreto del Worker de Cloudflare.
+   Solo avisos, de una dirección.
+
+No compartir token entre ellos: dos sondeos de `getUpdates` sobre el mismo bot
+se comen los mensajes el uno al otro. Y al depurar cualquier cosa de Telegram,
+la primera pregunta es **de qué bot hablamos** (`getMe` lo dice sin exponer el
+token). En v3.38.4 la guarda preguntaba por el bot 2 y la acción llamaba al 1,
+y por eso los avisos del NAS no salían.
+
+### La API RPC de OMV no está documentada NI versionada
+Puede cambiar en una actualización del NAS sin que nadie lo anuncie, y romper
+`utils/omv-api.js` en silencio. Pasó el 12-09-2026: OMV 8.5.7 convirtió
+`Session.login` en dos pasos y cambió `{authenticated: true}` por
+`{status: "authenticated"}`, así que un login válido se leía como credenciales
+rechazadas.
+
+**Al depurarla, leer el código que corre en la máquina**, no suponer:
+`/var/www/openmediavault/rpc/*.inc` y
+`/usr/share/openmediavault/engined/rpc/*.inc`. Y `omv-rpc -u admin <Servicio>
+<metodo> '<json>'` por SSH ejecuta las mismas llamadas en local, sin contraseña
+web: sirve para comprobar que los métodos y sus campos siguen existiendo.
+
+⚠️ `HTTP 200` en nginx y `Authorized login` en el log de OMV pueden ser las dos
+cosas ciertas y aun así el cliente dar el login por fallido. No fiarse de un
+código de estado como prueba de éxito.
+
+### Reparar automáticamente solo lo que se acaba de romper
+Contar entidades `unavailable` NO sirve para decidir si hay una avería: en esta
+casa hay entidades muertas de forma crónica. Lo que delata una avería real es
+que cayeran TODAS A LA VEZ (ventana de 3 min, `caidaSimultanea` en
+`background/proactive.js`). Con el contador a secas, Jarvis reiniciaba
+Zigbee2MQTT cuatro veces al día por culpa de unos sensores de un NAS apagado.
+
+Y el reinicio de un servicio lo decide UNA sola pieza, la que mira la señal
+correcta. Dos vigilantes sobre lo mismo, cada uno con su contador, no son el
+doble de seguros.
 
 ## Documentos de referencia en la raíz
 

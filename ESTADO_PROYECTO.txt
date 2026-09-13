@@ -1,8 +1,48 @@
 ================================================================================
 ESTADO ACTUAL DEL PROYECTO — Jarvis AI Agent para Home Assistant
 ================================================================================
-Ultima actualizacion: 2026-05-15
-Version actual: 3.24.1
+Ultima actualizacion: 2026-09-13
+Version actual: 3.38.8
+
+--------------------------------------------------------------------------------
+AL DIA 13-09-2026 — lo que ha cambiado desde la 3.24.1 y no esta abajo
+--------------------------------------------------------------------------------
+El grueso de este documento describe la 3.24.1 y sigue siendo valido en lo
+esencial. Lo anadido desde entonces, por orden de importancia:
+
+* CENTINELA EXTERNO (v3.38.3). Jarvis vive DENTRO de HA, que es una VM de
+  Proxmox, cuyos backups viven en el NAS, que es lo que Jarvis vigila. Un
+  vigilante dentro de lo que vigila no puede avisar de que lo que lo contiene
+  se cayo — el 29-08 un corte de luz lo tumbo todo y no se supo en 14 dias.
+  Ahora background/latido.js manda un latido cada 5 min a un Worker de
+  Cloudflare (jarvis-centinela, fuera de la casa y del ISP). Si los latidos
+  paran, el Worker avisa por Telegram. Interruptor de hombre muerto: la casa
+  habla, nadie pregunta, no hace falta exponer HA a internet.
+  Se activa con centinela_url + centinela_clave. El codigo del Worker vive en
+  la carpeta jarvis-centinela, junto a este repo.
+
+* NASGUARD (v3.38.0 a 3.38.8). Vigila el NAS OpenMediaVault cada 6h contra su
+  API RPC: SMART por disco, evolucion de los contadores de dano, ocupacion de
+  volumenes, servicios caidos y contenedores Docker. Cero coste de LLM.
+
+* CANAL DE AVISOS UNIFICADO (v3.38.2, corregido en 3.38.4). utils/notify.js.
+  Ver la seccion de lecciones en CLAUDE.md: los tres bots de Telegram y por que
+  no son intercambiables.
+
+* AUTO-REPARACION ACOTADA (v3.38.5 y 3.38.6). El ciclo proactivo reiniciaba
+  Zigbee2MQTT unas 4 veces al dia porque contaba entidades caidas sin mirar si
+  habian caido a la vez. Ahora solo actua ante una caida SIMULTANEA, y el
+  reinicio del puente Zigbee lo decide unicamente infraguard.
+
+* INFRAESTRUCTURA DE CASA (no es codigo, pero condiciona todo):
+  - HA y el NAS se ven por Tailscale. El complemento Tailscale de HA tiene
+    "Accept routes" DESACTIVADO, asi que HA NO alcanza 192.168.0.0/24: para el
+    NAS hay que usar su IP del tailnet.
+  - El disco Toshiba del NAS (serie 64A0A032FZ0G) esta condenado a garantia y
+    fuera de la configuracion de OMV.
+  - La integracion OpenMediaVault de HACS se elimino el 13-09: llevaba meses
+    sin conectar y sus 6 sensores muertos eran los que disparaban los reinicios
+    de Zigbee. nasguard cubre lo mismo y mejor.
 
 === QUE ES ===
 Agente IA autonomo especializado en Home Assistant y GATEWAY CENTRAL de una red
