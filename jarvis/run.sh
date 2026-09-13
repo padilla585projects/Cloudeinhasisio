@@ -69,6 +69,16 @@ if bashio::config.has_value 'omv_password'; then
   export OMV_PASSWORD="$(bashio::config 'omv_password')"
 fi
 
+# Centinela externo (opcional) — latido hacia el Worker de Cloudflare
+export CENTINELA_URL=""
+export CENTINELA_CLAVE=""
+if bashio::config.has_value 'centinela_url'; then
+  export CENTINELA_URL="$(bashio::config 'centinela_url')"
+fi
+if bashio::config.has_value 'centinela_clave'; then
+  export CENTINELA_CLAVE="$(bashio::config 'centinela_clave')"
+fi
+
 
 bashio::log.info "Iniciando Jarvis AI Agent v3.38.2..."
 bashio::log.info "Modelos cloud: DeepSeek V4 Flash (bg) + V4 Pro (principal/dev)"
@@ -96,6 +106,11 @@ if [ -n "${OMV_URL:-}" ]; then
   bashio::log.info "NAS OpenMediaVault: ${OMV_URL} (vigilancia cada 6h)"
 else
   bashio::log.info "NAS OpenMediaVault: desactivado (configurar omv_url para vigilarlo)"
+fi
+if [ -n "${CENTINELA_URL:-}" ]; then
+  bashio::log.info "Centinela externo: ${CENTINELA_URL} (latido cada 5 min)"
+else
+  bashio::log.info "Centinela externo: desactivado (configurar centinela_url)"
 fi
 if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
   bashio::log.info "📱 Bot Telegram: ACTIVO (acceso remoto habilitado)"

@@ -43,6 +43,8 @@ options:
   omv_url: ""
   omv_user: "admin"
   omv_password: ""
+  centinela_url: ""
+  centinela_clave: ""
 schema:
   openai_api_key: str
   serper_api_key: str?
@@ -59,3 +61,5 @@ schema:
   omv_url: str?
   omv_user: str?
   omv_password: password?
+  centinela_url: str?
+  centinela_clave: password?

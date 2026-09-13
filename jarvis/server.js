@@ -30,6 +30,7 @@ const { checkEmergencies, bootRecoverScripts, bootSelfCheck, bootLearnHA, bootLe
 const { netGuardLoop } = require('./background/netguard');
 const { infraGuardLoop } = require('./background/infraguard');
 const { nasGuardLoop } = require('./background/nasguard');
+const { latidoLoop } = require('./background/latido');
 const { startTelegramBot } = require('./background/telegram_bot');
 const { init: initNotifications, queueNotification, getRecentNotifications } = require('./background/notifications');
 
@@ -1789,6 +1790,12 @@ app.listen(PORT, '0.0.0.0', () => {
   //    8 min. No hace nada si omv_url no está configurado.
   setInterval(nasGuardLoop, 6 * 3600_000);
   setTimeout(nasGuardLoop, 8 * 60_000);
+
+  // ── LATIDO — señal de vida al centinela externo (código puro, sin IA).
+  //    Cada 5 min. Si estos latidos paran, alguien de FUERA de la casa se entera
+  //    y avisa: es lo único que funciona cuando HA, el NAS o la luz se caen.
+  setInterval(latidoLoop, 5 * 60_000);
+  setTimeout(latidoLoop, 60_000);
 
   // ── Proactive device health scan (cada 4h, primer chequeo a los 10 min)
   setInterval(proactiveDeviceHealthScan, 4 * 3600_000);
