@@ -3,6 +3,42 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.38.4 (2026-09-13) — El aviso preguntaba por un bot y llamaba a otro
+────────────────────────────────────────────────────────────────────────────────
+
+EL FALLO, encontrado revisando por que Adrian no recibia avisos:
+- utils/notify.js preguntaba por TELEGRAM_BOT_TOKEN —que es el bot PROPIO del
+  add-on, el de conversar— y a continuacion llamaba a notify.telegram, que es
+  el bot de la INTEGRACION de Home Assistant. Son dos bots distintos.
+- Consecuencia real: con el bot de HA perfectamente configurado pero sin
+  rellenar telegram_bot_token, notify() ni intentaba Telegram. Y notify() es el
+  canal de nasguard, infraguard y netguard: discos degradados, el NAS sin
+  responder, add-ons crasheando. Todo eso se quedaba en la campana de HA.
+- Tiene guasa: v3.38.2 se llamo "Los vigilantes ya no avisan al vacio" y creo
+  este mismo notify.js. El cruce dejaba ese arreglo a medias.
+
+ARREGLADO — utils/notify.js:
+- Se prueban de verdad los dos bots, en orden: primero los servicios del bot de
+  HA (telegram_bot.send_message y notify.telegram), y si no, el bot propio del
+  add-on por la Bot API, al chat de telegram_allowed_ids o al que aprendio
+  telegram_bot.js la primera vez que le escribieron.
+- El log dice CUAL funciono, y si no funciono ninguno, enumera por que fallo
+  cada uno. Un aviso no vuelve a desaparecer sin dejar rastro.
+- Se exporta notifyTelegram() para quien solo quiera ese canal.
+
+ARREGLADO — la variable TELEGRAM_CHAT_ID, que no existia en ningun sitio:
+- No esta en config.yaml, no se exporta en run.sh, no se declara en
+  constants.js. Dos sitios la leian y siempre veian cadena vacia.
+- server.js (cost guard): el aviso de "modo ahorro activado automaticamente"
+  colgaba de ese if, asi que no se ha mandado jamas. Ahora va por notify().
+- tools/executor.js (notify_all): siempre caia al notify.notify de reserva, que
+  es el push del movil, no Telegram. Ahora usa notifyTelegram() y devuelve por
+  que via salio, o por que no salio.
+
+IMPACTO DE TOKENS: cero. Ni una llamada a LLM en todo el cambio. Como mucho una
+peticion HTTP mas por aviso cuando el primer servicio de HA no existe.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.38.3 (2026-09-13) — Latido hacia un centinela fuera de la casa
 ────────────────────────────────────────────────────────────────────────────────
 

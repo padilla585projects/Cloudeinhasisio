@@ -408,12 +408,12 @@ async function handleChat(req, res, messages, files) {
       state._saverAutoActivated = false;
       const costMsg = `⚠️ **Modo ahorro activado automáticamente** — el gasto diario de API superó el límite ($${(state.apiUsage.costUSD || 0).toFixed(2)}). Claude Sonnet reemplazado por gpt-4.1-mini hasta mañana. Puedes desactivarlo con \`/saver off\`.`;
       sendEvent({ type: 'text', text: costMsg });
-      // También notificar por Telegram si está configurado
+      // También por Telegram. Antes esto colgaba de process.env.TELEGRAM_CHAT_ID,
+      // que NO se exporta en run.sh ni existe como opcion: el if no entraba
+      // nunca y este aviso no se mando jamas. Ahora va por el canal comun.
       try {
-        const { haPost } = require('./utils/ha-api');
-        if (process.env.TELEGRAM_CHAT_ID) {
-          await haPost('/services/telegram_bot/send_message', { message: costMsg, target: process.env.TELEGRAM_CHAT_ID });
-        }
+        const { notify } = require('./utils/notify');
+        await notify(costMsg, { title: 'Jarvis — modo ahorro', source: 'cost-guard' });
       } catch (_) {}
     }
 

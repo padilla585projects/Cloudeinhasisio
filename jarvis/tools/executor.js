@@ -4533,15 +4533,17 @@ ${dots}`;
         const results = {};
 
         if (channels.includes('telegram')) {
+          // Antes esto miraba process.env.TELEGRAM_CHAT_ID, que no existe en
+          // ningun sitio: siempre caia al notify.notify de abajo, que es el
+          // push del movil, no Telegram. Ahora usa el canal comun, que prueba
+          // el bot de HA y el bot propio del add-on y dice cual funciono.
           try {
-            const chatId = process.env.TELEGRAM_CHAT_ID || '';
-            if (chatId) {
-              await haPost('/services/telegram_bot/send_message', { message: input.message, title: input.title || undefined, target: chatId });
-              results.telegram = 'sent';
-            } else {
-              await haPost('/services/notify/notify', { message: input.message, title: input.title || 'Jarvis' });
-              results.telegram = 'sent via notify.notify';
-            }
+            const { notifyTelegram } = require('../utils/notify');
+            const fallos = [];
+            const texto = input.title ? `${input.title}
+${input.message}` : input.message;
+            const via = await notifyTelegram(texto, fallos);
+            results.telegram = via ? `sent via ${via}` : `sin canal de Telegram (${fallos.join('; ')})`;
           } catch (e) { results.telegram = `error: ${e.message}`; }
         }
 
