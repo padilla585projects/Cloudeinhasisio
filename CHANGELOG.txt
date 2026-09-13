@@ -3,6 +3,40 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.38.7 (2026-09-13) — El NAS decia que si y Jarvis entendia que no
+────────────────────────────────────────────────────────────────────────────────
+
+EL SINTOMA: nasguard llevaba desde el 12-09 sin vigilar el NAS. El log del NAS
+registraba "Authorized login from 100.80.68.10" cada 6h —o sea que Jarvis
+entraba— pero despues NO pedia un solo dato. Una peticion por ciclo y punto.
+
+LA CAUSA: OMV 8.5.7 convirtio el login en un proceso de DOS PASOS para soportar
+MFA, y al hacerlo cambio la respuesta del paso 1.
+  Antes:  authenticated: true, username, permissions
+  Ahora:  status: "authenticated", username, permissions, sessionid
+El campo `authenticated` se mudo al paso 2 (Session.verify). utils/omv-api.js
+comprobaba `if (!data?.authenticated) throw`, asi que un login PERFECTAMENTE
+VALIDO se leia como credenciales rechazadas y nasguard abortaba el ciclo.
+
+Lo rompio la actualizacion del NAS del 12-09 (8.5.6 -> 8.5.8), justo despues de
+que nasguard se hubiera verificado contra el NAS real. La API RPC de OMV no
+esta documentada ni versionada: cambia y no lo anuncia nadie.
+
+ARREGLADO — utils/omv-api.js:
+- Se aceptan las dos formas, status === "authenticated" y authenticated ===
+  true, porque el add-on puede hablar con NAS mas antiguos.
+- Si OMV responde challengeRequired (la cuenta tiene MFA), se dice eso con
+  todas las letras en vez de "credenciales rechazadas", que era mentira.
+- Si autentica pero no llega cookie de sesion, se falla ahi con un mensaje
+  claro en lugar de dejar que revienten una a una las llamadas siguientes.
+
+COMO SE ENCONTRO: leyendo /var/www/openmediavault/rpc/session.inc en el NAS de
+Adrian, no adivinando. El log de nginx decia HTTP 200 y el de OMV "Authorized
+login": las dos cosas eran ciertas y aun asi el cliente lo daba por fallido.
+
+IMPACTO DE TOKENS: cero, ninguna llamada a LLM.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.38.6 (2026-09-13) — Reparar es para cuando algo se acaba de romper
 ────────────────────────────────────────────────────────────────────────────────
 

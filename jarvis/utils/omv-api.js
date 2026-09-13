@@ -6,9 +6,11 @@
 // un cuerpo {service, method, params}. La sesión es una cookie, así que hay que
 // hacer login primero y reutilizar la cookie mientras siga viva.
 //
-// Los nombres de servicio/método de aquí están verificados contra un OMV 8.5.6
-// real (`omv-rpc` + los .inc de /usr/share/openmediavault/engined/rpc/), no
-// sacados de la documentación — la API RPC de OMV no está documentada.
+// Los nombres de servicio/método de aquí están verificados contra un OMV 8.5.8
+// real (los .inc de /usr/share/openmediavault/engined/rpc/ y /var/www/
+// openmediavault/rpc/), no sacados de la documentación — la API RPC de OMV no
+// está documentada, así que una actualización del NAS puede cambiarla sin que
+// nadie lo anuncie. Ya pasó una vez: ver el comentario de doLogin().
 //
 // Coste de tokens: CERO. Este módulo no llama a ningún LLM.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -59,18 +61,42 @@ async function login() {
   return loginInFlight;
 }
 
+// OJO CON LA FORMA DE LA RESPUESTA (roto y arreglado el 13-09-2026):
+// OMV 8.5.7 convirtio el login en un proceso de DOS PASOS para soportar MFA, y
+// con ello cambio lo que devuelve el paso 1. Antes:
+//     { authenticated: true, username, permissions }
+// Ahora:
+//     { status: "authenticated", username, permissions, sessionid }
+// El campo `authenticated` se mudo al paso 2 (Session.verify). Comprobar solo
+// `data.authenticated` hacia que un login PERFECTAMENTE VALIDO se leyera como
+// credenciales rechazadas: el NAS registraba "Authorized login" y nasguard
+// abortaba sin pedir un solo dato. Se aceptan las dos formas porque el add-on
+// puede hablar con NAS mas antiguos.
+// Verificado contra /var/www/openmediavault/rpc/session.inc de OMV 8.5.8.
 async function doLogin() {
   const { data, setCookie } = await rpcRaw('Session', 'login', {
     username: C.OMV_USER,
     password: C.OMV_PASSWORD,
   });
-  if (!data?.authenticated) throw new Error('OMV rechazó las credenciales');
+
+  if (data?.status === 'challengeRequired') {
+    const tipo = data?.challenge?.kind || 'segundo factor';
+    throw new Error(`OMV pide ${tipo} para esta cuenta y este cliente no puede resolverlo. Usa una cuenta de solo lectura sin MFA.`);
+  }
+
+  const autenticado = data?.status === 'authenticated' || data?.authenticated === true;
+  if (!autenticado) throw new Error('OMV rechazó las credenciales');
   // El header trae varias cookies separadas por coma; solo necesitamos los pares k=v.
   sessionCookie = (setCookie || '')
     .split(/,(?=\s*[A-Za-z0-9_-]+=)/)
     .map(c => c.split(';')[0].trim())
     .filter(Boolean)
     .join('; ');
+  // Sin cookie no hay sesion, y las llamadas siguientes fallarian una a una con
+  // un mensaje confuso. Mejor decirlo aqui y de una vez.
+  if (!sessionCookie) {
+    throw new Error('OMV autenticó pero no devolvió cookie de sesión');
+  }
   sessionAt = Date.now();
   return sessionCookie;
 }
