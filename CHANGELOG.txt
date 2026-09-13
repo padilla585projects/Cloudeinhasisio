@@ -3,6 +3,49 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.38.3 (2026-09-13) — Latido hacia un centinela fuera de la casa
+────────────────────────────────────────────────────────────────────────────────
+
+EL PROBLEMA DE FONDO, que Adrian identifico y tenia razon:
+- Jarvis vive DENTRO de Home Assistant, que es la VM 101 de Proxmox, cuyos
+  backups viven en el NAS, que es lo que Jarvis vigila. Es un vigilante dentro
+  de lo que vigila: si HA se reinicia, calla; si HA no arranca, no avisa de que
+  HA no arranca.
+- El 29-08 un corte de luz a las 05:40 tumbo todo y no se supo en catorce dias.
+  Ninguna mejora del canal interno arregla eso: hace falta que alguien de FUERA
+  note el silencio.
+
+NUEVO — background/latido.js:
+- Manda un latido cada 5 min a un Worker de Cloudflare que vive fuera de la casa
+  y fuera del ISP. Si los latidos paran —da igual el motivo: HA caido, NAS
+  apagado, luz cortada, fibra caida— el centinela avisa por un canal que no
+  depende de nada de aqui.
+- El latido lleva ademas los problemas que YA detectaron netguard, infraguard y
+  nasguard (de pending_thoughts, criticos y altos de las ultimas 24h). Asi sus
+  hallazgos salen de casa aunque el canal interno falle, que es lo que paso.
+- Los fallos de envio se loguean SIEMPRE. Un latido que falla en silencio nos
+  devolveria justo al problema que este modulo existe para resolver.
+
+CONFIGURACION NUEVA: centinela_url, centinela_clave. Sin centinela_url el modulo
+no hace nada.
+
+IMPACTO DE TOKENS: CERO. Ni una llamada a LLM. Un POST de unos cientos de bytes
+cada 5 min: 288 peticiones al dia, dentro del plan gratuito de Cloudflare
+(100.000/dia) con cuatro ordenes de magnitud de margen.
+
+NOTA SOBRE EL LADO DE CLOUDFLARE (fuera de este repo):
+- El Worker no usa cron: la cuenta tiene los 5 cron triggers del plan Free
+  ocupados por otros proyectos. Usa una alarma de Durable Object, que hace lo
+  mismo y no cuenta para ese limite.
+- ntfy.sh NO sirve como canal desde Workers: devuelve 429 "daily message quota
+  reached" porque limita por IP y los Workers salen por IPs compartidas ya
+  agotadas. El canal tiene que ser Telegram.
+
+CORRIGE UN COMMIT ROTO: el auto-commit e034b74 subio los cambios de config y de
+server.js pero dejo latido.js sin trackear. Ese estado no arranca
+("Cannot find module './background/latido'"). No llego a GitHub.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.38.2 (2026-09-12) — Los vigilantes ya no avisan al vacio
 ────────────────────────────────────────────────────────────────────────────────
 
