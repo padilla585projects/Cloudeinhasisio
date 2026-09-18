@@ -3,6 +3,34 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.38.9 (2026-09-18) — Un vigilante que repite lo que ya sabes es ruido
+────────────────────────────────────────────────────────────────────────────────
+
+NUEVA OPCION `nas_discos_ignorados` (lista separada por comas, p.ej. "sdd").
+Los discos que aparezcan ahi no generan ningun aviso de nasguard: ni salud
+SMART, ni falta de monitorizacion, ni evolucion de los contadores de dano.
+
+POR QUE: el Toshiba del NAS esta diagnosticado y en camino a garantia, pero
+mientras siga en la maquina se sigue degradando —el smartd programado lo lee y
+cada pasada encuentra mas superficie mala: reasignados 1037 -> 1041 entre el 13
+y el 18-09—. nasguard avisaba una y otra vez de algo que su dueno ya tiene
+controlado. Un vigilante que repite lo que ya sabes acaba siendo ruido, y el
+ruido es lo que hace que se ignoren los avisos que SI importan.
+
+La linea base de contadores del disco silenciado SE SIGUE GUARDANDO, para que
+al quitarlo de la lista no salte un aviso falso comparando con datos viejos.
+
+ARREGLADO DE PASO, y era grave: background/nasguard.js NO importaba
+utils/constants — lo usaba en linea dos veces para DATA_DIR y no tenia ninguna
+variable `C`. La primera version de este cambio la usaba, asi que habria
+lanzado `C is not defined` en cada ciclo y dejado el NAS sin vigilar. Lo cazo
+una prueba de la funcion nueva antes de subir nada; ahora el modulo importa
+constants como los demas.
+
+IMPACTO DE TOKENS: cero. Ninguna llamada a LLM, y un aviso menos son menos
+pensamientos pendientes que el ciclo proactivo acabaria leyendo.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.38.8 (2026-09-13) — Verificado contra el NAS real, no solo contra su codigo
 ────────────────────────────────────────────────────────────────────────────────
 

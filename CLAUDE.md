@@ -94,6 +94,9 @@ Si los archivos están en la raíz, HA no detecta actualizaciones. NUNCA mover a
 - `GITHUB_TOKEN` — Token GitHub para github_push (opcional)
 - `CENTINELA_URL`, `CENTINELA_CLAVE` — Worker de Cloudflare que vigila la casa
   desde fuera (opcionales). Sin `CENTINELA_URL`, `latido.js` no manda nada
+- `NAS_DISCOS_IGNORADOS` — discos del NAS que no deben generar avisos de
+  nasguard, separados por comas (p.ej. `sdd`). Para un disco ya diagnosticado y
+  en camino a garantía: sigue degradándose y avisar de ello es ruido
 
 ## Reglas del proyecto
 

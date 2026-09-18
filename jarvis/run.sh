@@ -69,6 +69,12 @@ if bashio::config.has_value 'omv_password'; then
   export OMV_PASSWORD="$(bashio::config 'omv_password')"
 fi
 
+# Discos del NAS que no deben generar avisos (p.ej. uno ya en camino a garantia)
+export NAS_DISCOS_IGNORADOS=""
+if bashio::config.has_value 'nas_discos_ignorados'; then
+  export NAS_DISCOS_IGNORADOS="$(bashio::config 'nas_discos_ignorados')"
+fi
+
 # Centinela externo (opcional) — latido hacia el Worker de Cloudflare
 export CENTINELA_URL=""
 export CENTINELA_CLAVE=""
@@ -80,7 +86,7 @@ if bashio::config.has_value 'centinela_clave'; then
 fi
 
 
-bashio::log.info "Iniciando Jarvis AI Agent v3.38.8..."
+bashio::log.info "Iniciando Jarvis AI Agent v3.38.9..."
 bashio::log.info "Modelos cloud: DeepSeek V4 Flash (bg) + V4 Pro (principal/dev)"
 bashio::log.info "Nucleos activos:"
 if [ -n "${DEEPSEEK_API_KEY:-}" ]; then

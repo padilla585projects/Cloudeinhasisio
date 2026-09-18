@@ -1,6 +1,6 @@
 name: "Jarvis AI Agent"
 description: "Jarvis — Asistente IA para Home Assistant. Control por voz y texto."
-version: "3.38.8"
+version: "3.38.9"
 slug: "jarvis_ai_agent"
 init: false
 arch:
@@ -43,6 +43,7 @@ options:
   omv_url: ""
   omv_user: "admin"
   omv_password: ""
+  nas_discos_ignorados: ""
   centinela_url: ""
   centinela_clave: ""
 schema:
@@ -61,5 +62,6 @@ schema:
   omv_url: str?
   omv_user: str?
   omv_password: password?
+  nas_discos_ignorados: str?
   centinela_url: str?
   centinela_clave: password?

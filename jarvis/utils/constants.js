@@ -22,6 +22,7 @@ const PROXMOX_NODE      = process.env.PROXMOX_NODE  || 'pve';
 const OMV_URL           = process.env.OMV_URL       || '';
 const OMV_USER          = process.env.OMV_USER      || 'admin';
 const OMV_PASSWORD      = process.env.OMV_PASSWORD  || '';
+const NAS_DISCOS_IGNORADOS = process.env.NAS_DISCOS_IGNORADOS || '';
 const CENTINELA_URL     = process.env.CENTINELA_URL   || '';
 const CENTINELA_CLAVE   = process.env.CENTINELA_CLAVE || '';
 const GITHUB_TOKEN      = process.env.GITHUB_TOKEN  || '';
@@ -60,6 +61,7 @@ module.exports = {
   PROXMOX_URL, PROXMOX_TOKEN, PROXMOX_NODE,
   OMV_URL, OMV_USER, OMV_PASSWORD,
   CENTINELA_URL, CENTINELA_CLAVE,
+  NAS_DISCOS_IGNORADOS,
   GITHUB_TOKEN, GITHUB_REPO, GITHUB_BRANCH,
   TELEGRAM_BOT_TOKEN, TELEGRAM_ALLOWED_IDS,
   DATA_DIR, HA_CONFIG, HA_ADDONS, HA_SHARE, HA_MEDIA,

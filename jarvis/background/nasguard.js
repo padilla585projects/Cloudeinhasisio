@@ -23,9 +23,10 @@ const path = require('path');
 const { loadJSON, saveJSON } = require('../utils/persistence');
 const { notify: notifyChannel } = require('../utils/notify');
 const omv = require('../utils/omv-api');
+const C = require('../utils/constants');
 
-const STATE_FILE    = path.join(require('../utils/constants').DATA_DIR, 'nasguard_state.json');
-const THOUGHTS_FILE = path.join(require('../utils/constants').DATA_DIR, 'pending_thoughts.json');
+const STATE_FILE    = path.join(C.DATA_DIR, 'nasguard_state.json');
+const THOUGHTS_FILE = path.join(C.DATA_DIR, 'pending_thoughts.json');
 
 const DISK_USAGE_WARN = 85;   // % de ocupación a partir del cual avisamos
 const UNREACHABLE_CONFIRMS = 2; // ciclos seguidos sin respuesta antes de alertar
@@ -62,6 +63,25 @@ function shouldAlert(st, key, signature) {
 
 function clearAlert(st, key) {
   if (st.alerts[key]) delete st.alerts[key];
+}
+
+// Discos que NO deben generar avisos, por la opcion `nas_discos_ignorados`.
+//
+// POR QUE EXISTE: un disco ya diagnosticado y en camino a garantia sigue
+// degradandose mientras esta en la maquina —el smartd programado lo lee y cada
+// pasada encuentra mas superficie mala—, asi que nasguard avisa una y otra vez
+// de algo que su dueno ya tiene controlado. Un vigilante que repite lo que ya
+// sabes acaba siendo ruido, y el ruido es lo que hace que se ignoren los avisos
+// que si importan.
+//
+// Se SIGUE guardando su linea base de contadores, para que al quitarlo de la
+// lista no salte un aviso falso comparando con datos de hace semanas.
+function discoSilenciado(device) {
+  return String(C.NAS_DISCOS_IGNORADOS || '')
+    .split(',')
+    .map(x => x.trim().toLowerCase())
+    .filter(Boolean)
+    .includes(String(device || '').toLowerCase());
 }
 
 async function nasGuardLoop() {
@@ -104,8 +124,9 @@ async function nasGuardLoop() {
   for (const d of disks) {
     const prev = st.disks[d.device] || {};
     const key  = `disk:${d.device}`;
+    const silenciado = discoSilenciado(d.device);
 
-    if (d.status && d.status !== 'GOOD') {
+    if (!silenciado && d.status && d.status !== 'GOOD') {
       if (shouldAlert(st, key, d.status)) {
         recordThought({
           priority: 'critical',
@@ -120,7 +141,7 @@ async function nasGuardLoop() {
     }
 
     // Un disco sin monitorización SMART no avisaría nunca por su cuenta.
-    if (d.status === 'GOOD' && !d.monitored) {
+    if (!silenciado && d.status === 'GOOD' && !d.monitored) {
       if (shouldAlert(st, `unmonitored:${d.device}`, 'off')) {
         recordThought({
           priority: 'medium',
@@ -141,6 +162,7 @@ async function nasGuardLoop() {
       if (DAMAGE_ATTRS[a.id] != null) counters[a.id] = Number(a.raw) || 0;
     }
     for (const [id, label] of Object.entries(DAMAGE_ATTRS)) {
+      if (silenciado) break;          // los contadores se guardan igual, abajo
       const now  = counters[id];
       const then = prev.counters?.[id];
       if (now == null || then == null || now <= then) continue;
@@ -220,4 +242,4 @@ async function nasGuardLoop() {
   saveJSON(STATE_FILE, st);
 }
 
-module.exports = { nasGuardLoop };
+module.exports = { nasGuardLoop, discoSilenciado};
