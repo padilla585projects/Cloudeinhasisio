@@ -3,6 +3,40 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.38.10 (2026-09-18) — Jarvis veia las actualizaciones y no las contaba
+────────────────────────────────────────────────────────────────────────────────
+
+LA PREGUNTA DE ADRIAN: "por que Jarvis no me avisa de las actualizaciones?",
+con 12 pendientes en la campana de HA. Eran TRES fallos encadenados en
+background/updates.js.
+
+1. SE RENDIA ANTES DE EMPEZAR. checkSystemUpdates() abria con
+   `if (!C.ANTHROPIC_API_KEY) return;`. Esa funcion NO llama a ningun LLM: son
+   cuatro consultas REST al Supervisor y una comparacion de versiones. Sin esa
+   clave, que no pinta nada ahi, no se comprobaba NUNCA. Guarda eliminada.
+
+2. AUNQUE LAS ENCONTRARA, NO AVISABA. Solo escribia un pending_thought de tipo
+   'optimization' y prioridad media. Eso no sale por Telegram, no sale por la
+   campana de HA, y ni siquiera viaja en el latido al centinela (que solo lleva
+   problemas de nasguard/infraguard/netguard con prioridad alta o critica). La
+   nota quedaba para quien entrara al panel a leerla, que es justo lo que no se
+   hace cuando no sabes que hay algo que leer. Ahora ademas se avisa por
+   utils/notify.js, con las 5 primeras y un "y N mas".
+
+3. checkSelfUpdate() avisaba con un haPost suelto al servicio de Telegram de HA
+   envuelto en un catch vacio. Si ese servicio no existe, el aviso se perdia sin
+   rastro. Mismo cruce de bots que se arreglo en v3.38.4, en otro sitio. Ahora
+   va por el canal comun.
+
+Y UNO MAS, encontrado probando el arreglo: con el Supervisor inalcanzable, los
+cuatro `.catch(() => ({}))` devolvian objetos vacios y la funcion concluia
+"Sistema al dia, sin actualizaciones pendientes". Una tranquilidad falsa es
+peor que un error. Ahora distingue "no hay nada pendiente" de "no he podido
+mirar" y lo dice con esas palabras.
+
+IMPACTO DE TOKENS: cero. Ni una llamada a LLM en todo el modulo.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.38.9 (2026-09-18) — Un vigilante que repite lo que ya sabes es ruido
 ────────────────────────────────────────────────────────────────────────────────
 

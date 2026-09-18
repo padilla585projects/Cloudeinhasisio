@@ -4,6 +4,7 @@ const fetch = require('node-fetch');
 const { callOpenAI } = require('../utils/llm');
 const { loadJSON, saveJSON } = require('../utils/persistence');
 const { haPost } = require('../utils/ha-api');
+const { notify } = require('../utils/notify');
 const C = require('../utils/constants');
 const state = require('../utils/state');
 
@@ -54,13 +55,13 @@ async function checkSelfUpdate() {
     if (updateRes.ok) {
       console.log(`[update] Actualización a v${latest} iniciada. El add-on se reiniciará.`);
 
-      // Notificar por Telegram
-      try {
-        await haPost('/services/telegram_bot/send_message', {
-          message: `🔄 *JARVIS — AUTO-UPDATE*\n\nActualización: v${current} → v${latest}\nEl add-on se está reiniciando...`,
-          parse_mode: 'markdown'
-        });
-      } catch {}
+      // Por el canal comun. Antes iba con un haPost suelto al servicio de
+      // Telegram de HA envuelto en un catch vacio: si ese servicio no existe,
+      // el aviso desaparecia sin dejar rastro.
+      await notify(
+        `Jarvis se esta actualizando solo: v${current} -> v${latest}. Vuelvo en un momento.`,
+        { title: 'Jarvis - auto-actualizacion', source: 'update' }
+      );
     } else {
       const errText = await updateRes.text().catch(() => '');
       console.log(`[update] Error al actualizar via update.install: ${updateRes.status} ${errText.slice(0, 150)}`);
@@ -73,9 +74,12 @@ async function checkSelfUpdate() {
   }
 }
 
+// OJO: esta funcion NO llama a ningun LLM. Son cuatro consultas REST al
+// Supervisor y una comparacion de versiones. Hasta v3.38.9 empezaba con
+// `if (!C.ANTHROPIC_API_KEY) return;`, asi que sin esa clave —que no pinta nada
+// aqui— no se comprobaba NUNCA si habia actualizaciones. Guarda eliminada.
 async function checkSystemUpdates() {
   try {
-    if (!C.ANTHROPIC_API_KEY) return;
     console.log('[updates] Verificando actualizaciones del sistema...');
 
     const [core, os, sup, addons] = await Promise.all([
@@ -90,6 +94,15 @@ async function checkSystemUpdates() {
     const osData = os.data || os;
     const supData = sup.data || sup;
     const addonList = (addons.data || addons).addons || [];
+
+    // Si el Supervisor no responde, los cuatro `.catch(() => ({}))` de arriba
+    // devuelven objetos vacios y el codigo de abajo concluiria "sistema al dia":
+    // una tranquilidad falsa, que es peor que un error. Hay que distinguir
+    // "no hay nada pendiente" de "no he podido mirar".
+    if (!coreData.version && !supData.version && addonList.length === 0) {
+      console.log('[updates] No pude consultar al Supervisor. NO se ha comprobado nada — esto no significa que el sistema este al dia.');
+      return;
+    }
 
     if (coreData.update_available) updates.push(`HA Core: ${coreData.version} → ${coreData.version_latest}`);
     if (osData.update_available) updates.push(`HA OS: ${osData.version} → ${osData.version_latest}`);
@@ -113,6 +126,20 @@ async function checkSystemUpdates() {
         if (thoughts.length > 50) thoughts = thoughts.slice(-50);
         saveJSON(thoughtsFile, thoughts);
         console.log(`[updates] Pensamiento creado con las ${updates.length} actualizaciones.`);
+
+        // Y AVISAR. Antes solo se apuntaba en pending_thoughts, que hay que
+        // entrar al panel para leer: detectaba y se callaba. El pensamiento
+        // sigue guardandose con el detalle completo; esto es el aviso.
+        const MAX_EN_AVISO = 5;
+        const SALTO = String.fromCharCode(10);
+        const lista = updates.slice(0, MAX_EN_AVISO).map(u => '- ' + u).join(SALTO);
+        const resto = updates.length > MAX_EN_AVISO
+          ? SALTO + '...y ' + (updates.length - MAX_EN_AVISO) + ' mas.'
+          : '';
+        await notify(
+          'Jarvis: hay ' + updates.length + ' actualizaciones pendientes.' + SALTO + lista + resto,
+          { title: 'Jarvis - actualizaciones', source: 'updates' }
+        );
       }
     } else {
       console.log('[updates] Sistema al día, sin actualizaciones pendientes.');
