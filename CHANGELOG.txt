@@ -3,6 +3,50 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.38.11 (2026-10-01) — Cuando el backup de Proxmox deja a HA sin internet
+────────────────────────────────────────────────────────────────────────────────
+
+EL INCIDENTE (madrugada del 01-10-2026):
+- 03:27  Proxmox empieza el backup de la VM 101 (Home Assistant) en modo
+         snapshot. Para arrancarlo PAUSA la VM unos 15 segundos.
+- 03:29  HA OS se queda con la red medio rota: el puerto 80 de salida colgado
+         (el 443 seguia funcionando), el chequeo de conectividad de
+         NetworkManager fallando y el Supervisor convencido de que no hay
+         internet. Resultado: "HomeAssistantCore.update blocked from
+         execution, no host internet connection". Las actualizaciones,
+         bloqueadas.
+- Ademas seis enchufes y relés —incluida la impresora 3D, que Adrian no podia
+  apagar— y varios ESPHome del jardin se quedaron unavailable.
+- Nadie aviso. Lo descubrio Adrian a mano.
+- Un reinicio del anfitrion lo arreglo todo de golpe: host_internet volvio a
+  true, el puerto 80 respondio en 0,03 s y volvieron todos los dispositivos.
+
+NUEVO — background/infraguard.js, checkHostInternet():
+- Vigila /network/info del Supervisor en cada vuelta (cada 5 min).
+- La firma del fallo es muy concreta y no se confunde con una caida real:
+      host_internet === false  &&  supervisor_internet === true
+  Ante una caida de verdad de la fibra, los DOS son false y no hace nada.
+- Si la firma dura mas de 15 minutos, reinicia el anfitrion. Guardarrailes:
+  * NUNCA dentro de la ventana de backups (03:00-05:00 hora de HA): reiniciar
+    la VM a mitad de su propia copia seria peor que el problema.
+  * Como maximo UN reinicio al dia. Si despues vuelve a fallar, avisa una sola
+    vez y no insiste, porque entonces la cura no es esa.
+  * Avisa ANTES de reiniciar (el reinicio apaga tambien a Jarvis) y DESPUES,
+    cuando confirma que ha vuelto internet.
+  * Guarda el estado en disco ANTES de pedir el reinicio. Si no, al arrancar no
+    sabria que ya lo hizo hoy y podria reiniciar en bucle.
+  * Si el Supervisor no le deja reiniciar, avisa para hacerlo a mano.
+- La ventana de backups se calcula en la zona horaria de HA, no en la del
+  contenedor, que puede ir en UTC.
+
+PROBADO sin tocar el Supervisor (la funcion acepta dependencias inyectadas):
+14 de 14 comprobaciones, incluidas "caida real -> no reinicia", "03:30 ->
+espera a que acabe el backup", "guarda antes de reiniciar" y "ya reinicio hoy
+-> no insiste".
+
+IMPACTO DE TOKENS: cero. Ni una llamada a LLM.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.38.10 (2026-09-18) — Jarvis veia las actualizaciones y no las contaba
 ────────────────────────────────────────────────────────────────────────────────
 

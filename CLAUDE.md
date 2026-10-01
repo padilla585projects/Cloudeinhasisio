@@ -402,6 +402,24 @@ Y el reinicio de un servicio lo decide UNA sola pieza, la que mira la señal
 correcta. Dos vigilantes sobre lo mismo, cada uno con su contador, no son el
 doble de seguros.
 
+### El backup de Proxmox puede dejar a HA "sin internet" sin estarlo
+HA es la VM 101 de Proxmox. Su backup nocturno (03:00, modo snapshot) la PAUSA
+unos 15 s, y eso puede dejar la red de HA OS medio rota: puerto 80 de salida
+colgado y `host_internet: false` con `supervisor_internet: true`. El Supervisor
+entonces BLOQUEA las actualizaciones y se caen enchufes y ESPHome. Lo cura
+reiniciar el anfitrión, y desde v3.38.11 lo hace `infraguard` solo, con
+guardarraíles (nunca en la ventana de backups, máximo una vez al día).
+
+Para diagnosticarlo a mano, desde la terminal de HA:
+`ha network info` (mira `host_internet`) y
+`curl http://checkonline.home-assistant.io/online.txt` — si el HTTP plano no
+responde pero el HTTPS sí, es esto.
+
+⚠️ La terminal de HA va en una pestaña del navegador: si el frontend se recarga,
+la pestaña vuelve al panel y lo que tecleas se convierte en ATAJOS de teclado
+(la "a" abre Assist, la "e" el buscador de entidades, la "m" Mi enlace).
+Comprobar SIEMPRE que se ve el prompt `[core-ssh ~]$` antes de escribir.
+
 ## Documentos de referencia en la raíz
 
 - `FUTURAS_MEJORAS.txt` — roadmap oficial con sprints priorizados

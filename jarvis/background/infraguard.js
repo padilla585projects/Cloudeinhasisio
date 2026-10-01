@@ -25,6 +25,28 @@ const COOLDOWN_MS      = 20 * 60_000;  // 20 min de espera entre reinicios del m
 const MAX_ACTIONS_DAY  = 3;            // tope diario de reinicios por add-on
 const CONFIRM_LOOPS    = 2;            // fallos consecutivos antes de actuar
 
+// ── Conectividad del anfitrión de HA ────────────────────────────────────────
+// POR QUE EXISTE (incidente del 01-10-2026): el backup nocturno de Proxmox pausa
+// la VM de HA unos 15 s para arrancar la copia. Esa noche, a las 03:29 —dos
+// minutos después— HA OS se quedó con la red medio rota: el puerto 80 de salida
+// colgado, el chequeo de conectividad de NetworkManager fallando, y el
+// Supervisor convencido de que "no hay internet", BLOQUEANDO las actualizaciones
+// ("blocked from execution, no host internet connection"). Además seis enchufes
+// y varios ESPHome se quedaron unavailable. Nadie avisó. Un reinicio del
+// anfitrión lo arregló todo de golpe.
+//
+// La firma del fallo es muy concreta y no se confunde con una caída real:
+//     host_internet === false  &&  supervisor_internet === true
+// "El Supervisor sale a internet, pero el sistema jura que no". Ante una caída
+// de verdad de la fibra, los DOS serían false y aquí no se hace nada.
+const HOST_FAIL_MIN_MS      = 15 * 60_000;   // el fallo tiene que durar 15 min
+const HOST_MAX_REBOOTS_DAY  = 1;             // si tras reiniciar vuelve, avisa y NO insiste
+// Ventana de los backups de Proxmox (hora LOCAL de HA). No se reinicia dentro:
+// reiniciar la VM a mitad de su propia copia sería peor que el problema. Las
+// copias arrancan a las 03:00; la de HA (VM 101) acabó a las 04:12 el 01-10.
+// Margen hasta las 05:00.
+const BACKUP_WINDOW = { desdeMin: 3 * 60, hastaMin: 5 * 60 };
+
 // Add-ons que NUNCA reiniciamos (infraestructura crítica del sistema)
 const NEVER_RESTART = new Set([
   'hassio_supervisor', 'hassio_observer', 'hassio_multicast',
@@ -90,6 +112,106 @@ async function restartAddon(slug) {
   await supervisorPost(`/addons/${slug}/restart`);
 }
 
+// Minuto del día en la zona horaria de HA (el contenedor puede ir en UTC).
+function minutoDelDia(fecha, zona) {
+  const p = new Intl.DateTimeFormat('en-GB', {
+    timeZone: zona, hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(fecha);
+  const h = Number(p.find(x => x.type === 'hour').value) % 24;
+  const m = Number(p.find(x => x.type === 'minute').value);
+  return h * 60 + m;
+}
+
+// Vigila el falso negativo de conectividad del anfitrión y, con guardarraíles,
+// reinicia el host. `deps` existe para poder probarlo sin tocar el Supervisor.
+async function checkHostInternet(st, deps = {}) {
+  const getNet  = deps.getNet  || (async () => (await supervisorGet('/network/info')).data);
+  const reboot  = deps.reboot  || (async () => supervisorPost('/host/reboot'));
+  const getZona = deps.getZona || (async () => {
+    try { return (await haGet('/config')).time_zone || 'Europe/Madrid'; } catch { return 'Europe/Madrid'; }
+  });
+  const ahora   = deps.now ? deps.now() : Date.now();
+  const avisar  = deps.notify || notify;
+  const anotar  = deps.recordThought || recordThought;
+  const guardar = deps.save || (() => saveJSON(STATE_FILE, st));
+
+  st.host = st.host || { since: 0, rebootsToday: 0, lastRebootAt: 0, capNotified: false, pending: false };
+  const h = st.host;
+
+  let net;
+  try { net = await getNet(); }
+  catch (e) { console.log(`[infraguard] no pude leer /network/info: ${e.message}`); return 'sin_datos'; }
+
+  const falsoNegativo = net?.host_internet === false && net?.supervisor_internet === true;
+
+  if (!falsoNegativo) {
+    if (h.since || h.pending) {
+      console.log('[infraguard] conectividad del anfitrión correcta otra vez');
+      if (h.pending) {
+        await avisar('✅ Jarvis: Home Assistant vuelve a tener internet tras el reinicio. Las actualizaciones ya no están bloqueadas.');
+      }
+    }
+    h.since = 0; h.pending = false;
+    return 'ok';
+  }
+
+  if (!h.since) {
+    h.since = ahora;
+    console.log('[infraguard] ⚠️ host_internet=false con supervisor_internet=true — empiezo a contar');
+    return 'empieza';
+  }
+  const durMin = Math.round((ahora - h.since) / 60_000);
+  if (ahora - h.since < HOST_FAIL_MIN_MS) return 'esperando';
+
+  const zona = await getZona();
+  const min = minutoDelDia(new Date(ahora), zona);
+  if (min >= BACKUP_WINDOW.desdeMin && min < BACKUP_WINDOW.hastaMin) {
+    console.log(`[infraguard] falso negativo de conectividad desde hace ${durMin} min, pero estamos en la ventana de backups: espero`);
+    return 'ventana_backup';
+  }
+
+  if (h.rebootsToday >= HOST_MAX_REBOOTS_DAY) {
+    if (!h.capNotified) {
+      h.capNotified = true;
+      anotar({
+        priority: 'critical',
+        title: 'HA sigue creyendo que no tiene internet tras reiniciar',
+        detail: `host_internet=false con supervisor_internet=true desde hace ${durMin} min, y ya reinicié el anfitrión hoy. ` +
+                `El reinicio no es la cura esta vez: revisa la red de la VM (puerto 80 de salida, DNS del host).`,
+      });
+      await avisar('🚨 Jarvis: HA vuelve a creer que no tiene internet y ya lo reinicié hoy. No insisto: el problema es otro. Revisa la red de la VM.');
+    }
+    return 'tope';
+  }
+
+  // Avisar ANTES: el reinicio nos apaga a nosotros también.
+  await avisar(`🔄 Jarvis: Home Assistant cree que no tiene internet desde hace ${durMin} min aunque sí lo tiene, y eso bloquea las actualizaciones. Reinicio el anfitrión; vuelvo en unos minutos.`);
+  // Guardar ANTES de reiniciar. Si no, tras el arranque no sabríamos que ya lo
+  // hicimos y podríamos reiniciar en bucle. `since` se pone a 0 para dar al
+  // sistema recién arrancado sus 15 minutos antes de volver a juzgarlo.
+  h.rebootsToday += 1;
+  h.lastRebootAt = ahora;
+  h.pending = true;
+  h.since = 0;
+  guardar();
+  try {
+    await reboot();
+    console.log('[infraguard] 🔄 reinicio del anfitrión solicitado');
+    return 'reiniciado';
+  } catch (e) {
+    h.pending = false;
+    guardar();
+    console.log(`[infraguard] no pude reiniciar el anfitrión: ${e.message}`);
+    anotar({
+      priority: 'critical',
+      title: 'HA cree que no tiene internet y no pude reiniciarlo',
+      detail: `host_internet=false con supervisor_internet=true. El reinicio falló: ${e.message}. Reinícialo a mano: Ajustes → Sistema → Reiniciar.`,
+    });
+    await avisar(`🚨 Jarvis: HA cree que no tiene internet y no he podido reiniciarlo (${e.message}). Hazlo a mano desde Ajustes → Sistema.`);
+    return 'fallo_reinicio';
+  }
+}
+
 // ── Loop principal ──────────────────────────────────────────────────────────
 async function infraGuardLoop() {
   try {
@@ -107,7 +229,13 @@ async function infraGuardLoop() {
           st.entityFails[k].capNotified  = false;   // dia nuevo, aviso nuevo
         }
       }
+      if (st.host) { st.host.rebootsToday = 0; st.host.capNotified = false; }
     }
+
+    // Conectividad del anfitrión: va primero, porque si dispara un reinicio el
+    // resto de comprobaciones de esta vuelta da igual.
+    try { await checkHostInternet(st); }
+    catch (e) { console.log(`[infraguard] checkHostInternet: ${e.message}`); }
 
     const addons = await getAddons();
 
@@ -285,4 +413,4 @@ async function infraGuardLoop() {
   }
 }
 
-module.exports = { infraGuardLoop };
+module.exports = { infraGuardLoop, checkHostInternet, minutoDelDia };
