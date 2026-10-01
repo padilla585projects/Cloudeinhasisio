@@ -29,6 +29,7 @@ const { checkSelfUpdate, checkSystemUpdates } = require('./background/updates');
 const { checkEmergencies, bootRecoverScripts, bootSelfCheck, bootLearnHA, bootLearnOwnProject } = require('./background/selfcheck');
 const { netGuardLoop } = require('./background/netguard');
 const { infraGuardLoop } = require('./background/infraguard');
+const { watchGuardLoop } = require('./background/watchguard');
 const { nasGuardLoop } = require('./background/nasguard');
 const { latidoLoop } = require('./background/latido');
 const { startTelegramBot } = require('./background/telegram_bot');
@@ -1639,9 +1640,8 @@ async function proactiveDeviceHealthScan() {
         const name = b.attributes?.friendly_name || b.entity_id;
         queueNotification('battery_low', 'Batería baja', `${name}: ${b.state}%`, parseFloat(b.state) < 5 ? 'high' : 'medium');
       }
-      if (unavailable.length > 5) {
-        queueNotification('device_down', 'Dispositivos caídos', `${unavailable.length} dispositivos no disponibles`, 'high');
-      }
+      // Los dispositivos caídos los lleva WATCHGUARD (con memoria entre vueltas
+      // y por el canal de avisos bueno). Aquí ya no se duplica.
     } else {
       console.log('[health-scan] Todo OK — 0 problemas detectados');
     }
@@ -1798,8 +1798,18 @@ app.listen(PORT, '0.0.0.0', () => {
   setTimeout(latidoLoop, 60_000);
 
   // ── Proactive device health scan (cada 4h, primer chequeo a los 10 min)
+  //    OJO: esto solo registra baterías bajas en device_health_log.json. Lo de
+  //    los dispositivos CAÍDOS lo lleva ahora WATCHGUARD, que sí tiene memoria
+  //    entre vueltas y avisa por el canal bueno.
   setInterval(proactiveDeviceHealthScan, 4 * 3600_000);
   setTimeout(proactiveDeviceHealthScan, 10 * 60_000);
+
+  // ── WATCHGUARD — vigila dispositivos caídos (>30 min) y errores repetidos en
+  //    el log de HA. Cada 15 min; primer chequeo a los 12 min (tras arrancar).
+  //    Nació del incidente del 01-10-2026: seis enchufes caídos durante días
+  //    sin que nadie avisara. Coste de tokens: cero.
+  setInterval(watchGuardLoop, 15 * 60_000);
+  setTimeout(watchGuardLoop, 12 * 60_000);
 
   // ── Bot de Telegram standalone (opt-in via telegram_bot_token en config) ──
   startTelegramBot().catch(e => console.log('[tg-bot] start error:', e.message));

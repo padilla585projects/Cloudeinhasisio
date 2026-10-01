@@ -3,6 +3,39 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.38.12 - Jarvis ya vigila los dispositivos caidos y el log de HA
+────────────────────────────────────────────────────────────────────────────────
+
+LA QUEJA DE ADRIAN (01-10-2026), con razon: seis enchufes y reles llevaban DIAS
+caidos (unavailable) y Jarvis no aviso. Habia un escaner de salud, pero:
+ - avisaba por un haPost suelto al bot de Telegram con un catch {} vacio (el
+   mismo fallo que ya costo en v3.38.4): el aviso se perdia en silencio;
+ - no tenia memoria entre vueltas, asi que no distinguia un parpadeo de 5 min
+   de una averia de 5 dias.
+
+NUEVO - background/watchguard.js (cada 15 min, coste de tokens CERO):
+ 1. DISPOSITIVOS CAIDOS. Guarda en disco desde cuando esta caido cada entidad.
+    Avisa UNA vez cuando cruza los 30 min (agrupado si son varios a la vez, para
+    no soltar una rafaga tras un reinicio), recuerda una vez al dia si sigue
+    caido, y avisa cuando vuelve, con la duracion. Ignora automatizaciones,
+    scripts, botones y demas que estan unknown/unavailable por diseno.
+ 2. LOG DE HA. Agrupa los ERROR/CRITICAL por "firma" (quita timestamp, handles
+    0x..., numeros) y avisa de los que se repiten 10+ veces en una hora. Una vez
+    al dia por firma. El ruido de un error puntual no molesta; una averia que
+    machaca el log, si.
+ Todo por utils/notify.js (Telegram del add-on o de HA + campana de HA de
+ reserva). Nunca un catch vacio.
+
+CAMBIADO - server.js: el escaner viejo (proactiveDeviceHealthScan) ya no avisa
+de dispositivos caidos (lo hace watchguard, mejor); se queda solo con las
+baterias bajas, que watchguard no mira. Se elimina asi el ultimo haPost suelto
+de Telegram con catch vacio.
+
+PROBADO sin tocar HA (dependencias inyectadas): 13/13, incluidos "parpadeo de
+<30 min no avisa", "tres caidos -> un solo aviso", "error x3 es ruido / x12
+avisa" y "misma firma pese a timestamp y handle distintos".
+
+────────────────────────────────────────────────────────────────────────────────
 v3.38.11 (2026-10-01) — Cuando el backup de Proxmox deja a HA sin internet
 ────────────────────────────────────────────────────────────────────────────────
 
