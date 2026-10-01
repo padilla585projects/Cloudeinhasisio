@@ -14,3 +14,7 @@ Thumbs.db
 # Worker MCP de Home Assistant: contiene la URL Nabu Casa de la instalacion.
 # El repo es PUBLICO — esto no se sube nunca.
 ha-mcp-worker/
+
+# Archivo de otro programa (estadisticas de pulsaciones de teclado) que se cuela
+# en la carpeta del proyecto. No es de Jarvis y no debe ir a un repo publico.
+config/
