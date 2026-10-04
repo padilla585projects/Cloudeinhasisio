@@ -3,6 +3,26 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.39.1 - La URL del pool se acepta con o sin /openai/v1 al final
+────────────────────────────────────────────────────────────────────────────────
+
+QUE CAMBIA: el panel del pool da la URL ya con el sufijo /openai/v1 (p.ej.
+http://IP:8765/openai/v1). Antes callPool() le concatenaba OTRA VEZ
+/openai/v1/chat/completions -> endpoint doblado (/openai/v1/openai/v1/...) ->
+404 -> Jarvis caia a DeepSeek sin que se notara. Ahora se acepta la URL tal cual
+la da el pool, con o sin ese sufijo.
+
+COMO:
+ - llm.js (callPool): la base se normaliza quitando una barra final y, si lo
+   lleva, un /openai/v1, /openai o /v1 del final, antes de reconstruir el
+   endpoint canonico /openai/v1/chat/completions. Asi da igual que en las
+   opciones se pegue "http://IP:8765" o "http://IP:8765/openai/v1".
+
+IMPACTO DE TOKENS (REGLA DE ORO): NEUTRO/POSITIVO. No anade ninguna llamada LLM.
+Al contrario: corrige que las peticiones que debian ir al pool (coste $0) se
+estuvieran yendo a DeepSeek de pago por la URL doblada. El coste solo puede bajar.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.39.0 - Jarvis puede usar el pool de IA local (jarvis:1.0), DeepSeek de respaldo
 ────────────────────────────────────────────────────────────────────────────────
 

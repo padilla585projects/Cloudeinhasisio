@@ -485,7 +485,9 @@ async function callPool(model, system, messages, aiTools, maxTokens, options = {
   }
   // Timeout adaptativo: interactivo 45s (cubre carga de modelo en frío), fondos más largo.
   const timeoutMs = options.timeoutMs || (options.background ? 180000 : 45000);
-  const base = POOL_URL.replace(/\/+$/, '');
+  // Acepta la URL como la da el panel del pool: con o sin /openai/v1 (o /v1) al final.
+  // Siempre reconstruimos el endpoint canónico, así no importa cuál peguen.
+  const base = POOL_URL.replace(/\/+$/, '').replace(/\/(openai\/v1|openai|v1)$/i, '');
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
