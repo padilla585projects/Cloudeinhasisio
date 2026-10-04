@@ -1698,11 +1698,14 @@ async function proactiveDeviceHealthScan() {
 
 // ── Calentamiento del pool ────────────────────────────────────────────────────
 // Tras reiniciar el equipo del pool su caché de prompt está fría: leer el prefijo
-// estático (~17k tokens en ha_control) tarda minutos y mi timeout interactivo es de
-// 45 s, así que ningún intento real llegaría a calentarla. Aquí se manda, EN SEGUNDO
-// PLANO y con timeout de 15 min, el mismo prefijo (system estable + tools) con
-// max_tokens:1. Coste $0 (inferencia local). Mientras dura, el cortacircuitos de
-// llm.js manda el chat a DeepSeek; al terminar bien, lo cierra. Un solo vuelo.
+// (~8k tokens medidos por el pool) tarda de ~90 s a >190 s según la carga de la GPU,
+// y mi timeout interactivo es de 45 s, así que ningún intento real llegaría a
+// calentarla. Aquí se manda, EN SEGUNDO PLANO y con timeout de 180 s (el Core del
+// pool corta cada petición a los 190 s), el mismo prefijo (system estable + tools) con
+// max_tokens:1. Si se corta, llama.cpp CONSERVA lo ya procesado de la tarea cancelada:
+// el reintento solo lee lo que falte, así que repetir converge. Coste $0 (local).
+// Mientras dura, el cortacircuitos de llm.js manda el chat a DeepSeek; al terminar
+// bien, lo cierra. Un solo vuelo.
 let _poolWarming = false;
 const _sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -1719,14 +1722,17 @@ async function warmPool() {
           if (mcpClient && mcpClient.getMcpOpenAiTools().length > 0) tls.push(...mcpClient.getMcpOpenAiTools());
           await callLLM(C.MODEL, nexusAssembleStaticPrompt(name),
             [{ role: 'user', content: '[Ahora: calentamiento de caché]\nok' }],
-            tls, 1, { poolOnly: true, timeoutMs: 15 * 60 * 1000 });
+            tls, 1, { poolOnly: true, timeoutMs: 180_000 });
           console.log(`[pool] caché calentada: ${name} (${Math.round((Date.now() - t0) / 1000)}s)`);
         }
         closePoolBreaker();
         return;
       } catch (e) {
-        console.log(`[pool] calentamiento, intento ${attempt}/12 falló: ${(e.message || '').slice(0, 100)}`);
-        await _sleep(60_000);
+        const msg = e.message || '';
+        console.log(`[pool] calentamiento, intento ${attempt}/12 falló: ${msg.slice(0, 100)}`);
+        // Corte por tiempo (nuestro abort o el 504 del Core): hubo progreso, reintentar ya.
+        // Cualquier otro fallo (503 sin equipo, red caída): esperar un minuto.
+        await _sleep(/aborted|timeout|timed out|pool error 504/i.test(msg) ? 5_000 : 60_000);
       }
     }
     console.log('[pool] no se pudo calentar tras 12 intentos; el chat sigue en DeepSeek');

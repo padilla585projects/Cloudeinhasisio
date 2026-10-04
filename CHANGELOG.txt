@@ -13,10 +13,13 @@ una sola peticion terminara en el pool. Tres causas encadenadas:
     ANTES del historial y de las tools: cualquier cambio obligaba al pool a releer
     todo lo de detras. El pool lee ~90 tok/s (~28 con la GPU compartida).
  2. Con la cache fria (tras reiniciar el ASUS) el prefijo estatico de ha_control
-    pesa ~17k tokens (instrucciones 6k + catalogo L4 1,4k + esquema de 55 tools
-    9,9k): leerlo tarda MINUTOS y el timeout interactivo es 45 s. Cada intento se
-    abortaba, la cache no se calentaba nunca y cada mensaje del usuario esperaba
-    45 s antes de caer a DeepSeek.
+    pesa ~8.200 tokens (medido por el pool: 8.192-8.248): a 90 tok/s son ~90 s y a
+    20-40 tok/s (GPU ocupada) mas de 190 s, y el timeout interactivo es 45 s. El
+    Core del pool ademas corta cada peticion a los 190 s (504). Cada intento se
+    abortaba antes de acabar el prefill y cada mensaje del usuario esperaba 45 s
+    antes de caer a DeepSeek. (llama.cpp conserva lo ya procesado de una tarea
+    cancelada, asi que reintentar converge; la causa del 04-10 fue ademas una
+    imagen de Docker construyendose en el ASUS que bajo la lectura a 20-42 tok/s.)
  3. Cada vuelta del bucle anadia 2.000-2.900 tokens nuevos (resultados de tools
     de hasta 2.000 chars + mensajes del asistente), y al guardar en el historial
     se re-truncaban distinto (500 chars) -> el turno siguiente no coincidia con el
@@ -42,8 +45,10 @@ pool_url/pool_api_key Jarvis funciona exactamente como antes):
    404 (errores nuestros) NO pausan: se siguen registrando.
  - Calentamiento (server.js warmPool): al arrancar y cada vez que se abre el
    cortacircuitos, manda EN SEGUNDO PLANO el mismo prefijo (system estable + tools de
-   ha_control y rapido) con max_tokens:1 y timeout de 15 min. Al terminar bien, cierra
-   el cortacircuitos. Un solo vuelo; hasta 12 intentos con 1 min entre ellos.
+   ha_control y rapido) con max_tokens:1 y timeout de 180 s (el Core del pool corta a
+   los 190 s). Al terminar bien, cierra el cortacircuitos. Un solo vuelo; hasta 12
+   intentos: 5 s entre ellos si se cortaron por tiempo (hubo progreso, la cache
+   parcial se conserva) y 60 s si fue otro fallo (503 sin equipo, red).
  - Respaldo mas barato: si la llamada no lleva tools (clasificar, resumir, destilar)
    el respaldo es deepseek-v4-flash en vez de v4-pro.
  - assembleSystemPrompt (camino sin pool) ya no manda el estado en vivo dos veces

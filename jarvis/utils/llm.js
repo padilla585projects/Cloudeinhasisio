@@ -467,9 +467,9 @@ async function callDeepSeek(model, system, messages, aiTools, maxTokens, options
 
 // ── Cortacircuitos del pool ──────────────────────────────────────────────────
 // Con la caché del pool fría (tras reiniciar el ASUS), leer el prompt entero
-// (~17k tokens de prefijo estático) tarda MINUTOS, y mi timeout interactivo es de
-// 45 s: cada intento se aborta, la caché no llega a calentarse nunca y cada mensaje
-// del usuario espera 45 s antes de caer a DeepSeek. Ante un fallo transitorio
+// (~8k tokens medidos por el pool) tarda 90-190+ s según la carga de la GPU, y mi
+// timeout interactivo es de 45 s: cada intento se aborta y cada mensaje del usuario
+// espera 45 s antes de caer a DeepSeek. Ante un fallo transitorio
 // (timeout, red, 429, 5xx) se ABRE el cortacircuitos: las peticiones van directas a
 // DeepSeek y se lanza un calentamiento en segundo plano (hook registrado por
 // server.js) con timeout largo. Al terminar bien, se cierra. Tope: 10 min.

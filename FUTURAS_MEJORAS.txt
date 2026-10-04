@@ -29,7 +29,7 @@ Orden de ataque (toca el bucle agentico: hacerlo con calma y probando):
 [ ] 6. Fase 2: busqueda web via /v1/tools/search del pool (DuckDuckGo/Serper de
        respaldo); voz via Wyoming (Piper + Whisper) en CPU, baja prioridad.
 [v] 7. Calentamiento (HECHO v3.40.0, al arrancar y tras cada caida del pool;
-       max_tokens:1, timeout 15 min) + cortacircuitos para no esperar 45 s/mensaje.
+       max_tokens:1, timeout 180 s con reintentos) + cortacircuitos para no esperar 45 s/mensaje.
 [ ] 8. Experto "pegajoso" con el pool: cada experto tiene su propio prefijo (otro
        L1 y otras tools); si el router alterna mucho, cada uno recalienta su cache.
        Medir con la traza antes de decidir.

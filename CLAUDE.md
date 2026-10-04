@@ -462,8 +462,10 @@ Reglas que NO hay que romper al tocar `server.js`, `nexus/layers.js` o `utils/co
   Lo recorta el resumen automático, que reescribe el inicio de golpe y pocas veces.
 - Tras una caída, `llm.js` pausa el pool (cortacircuitos, máx 10 min) y `warmPool()`
   en `server.js` calienta la caché en segundo plano. Sin eso, con la caché fría, el
-  prefijo (~17k tokens en ha_control) tarda minutos y el timeout de 45 s lo aborta
-  siempre. El calentamiento usa `poolOnly:true`: nunca cae a DeepSeek.
+  prefijo (~8k tokens medidos) tarda 90-190+ s según la carga de la GPU y el timeout
+  de 45 s lo aborta. El Core del pool corta cada petición a los 190 s, así que el
+  calentamiento usa timeout de 180 s y reintenta (llama.cpp conserva lo ya procesado
+  de una tarea cancelada). Usa `poolOnly:true`: nunca cae a DeepSeek.
 
 ## Documentos de referencia en la raíz
 
