@@ -449,6 +449,22 @@ Reglas de convivencia con el pool (la GPU es compartida, de una petición en una
   resultados de tools no. Ver la optimización de payload en `FUTURAS_MEJORAS.txt`.
 - No pasar parámetros de thinking al pool (los rechaza) ni usar streaming con tools (400).
 
+### Con el pool, el prompt tiene que ser un PREFIJO ESTABLE (v3.40.0)
+La caché del pool solo vale mientras el comienzo del prompt sea idéntico byte a byte.
+Reglas que NO hay que romper al tocar `server.js`, `nexus/layers.js` o `utils/context.js`:
+- Nada que cambie por petición (hora, nº de mensajes, estado de HA, memoria por
+  relevancia) en el system prompt. Va en `_ctx` del mensaje del usuario
+  (`buildTurnSnapshot`), que se guarda una vez y se expande siempre igual.
+- Lo que el bucle manda (mensaje del asistente, resultados de tools) debe ser lo
+  MISMO que se guarda en el historial; si se re-trunca distinto al guardar, el turno
+  siguiente no coincide con el anterior.
+- No acortar el historial con una ventana deslizante: mueve el comienzo en cada turno.
+  Lo recorta el resumen automático, que reescribe el inicio de golpe y pocas veces.
+- Tras una caída, `llm.js` pausa el pool (cortacircuitos, máx 10 min) y `warmPool()`
+  en `server.js` calienta la caché en segundo plano. Sin eso, con la caché fría, el
+  prefijo (~17k tokens en ha_control) tarda minutos y el timeout de 45 s lo aborta
+  siempre. El calentamiento usa `poolOnly:true`: nunca cae a DeepSeek.
+
 ## Documentos de referencia en la raíz
 
 - `FUTURAS_MEJORAS.txt` — roadmap oficial con sprints priorizados

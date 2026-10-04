@@ -465,6 +465,39 @@ async function callDeepSeek(model, system, messages, aiTools, maxTokens, options
   };
 }
 
+// ── Cortacircuitos del pool ──────────────────────────────────────────────────
+// Con la caché del pool fría (tras reiniciar el ASUS), leer el prompt entero
+// (~17k tokens de prefijo estático) tarda MINUTOS, y mi timeout interactivo es de
+// 45 s: cada intento se aborta, la caché no llega a calentarse nunca y cada mensaje
+// del usuario espera 45 s antes de caer a DeepSeek. Ante un fallo transitorio
+// (timeout, red, 429, 5xx) se ABRE el cortacircuitos: las peticiones van directas a
+// DeepSeek y se lanza un calentamiento en segundo plano (hook registrado por
+// server.js) con timeout largo. Al terminar bien, se cierra. Tope: 10 min.
+const POOL_BREAKER_MAX_MS = 10 * 60 * 1000;
+const poolBreaker = { openUntil: 0 };
+let poolWarmupHook = null;
+
+function setPoolWarmupHook(fn) { poolWarmupHook = fn; }
+function poolBreakerOpen() { return Date.now() < poolBreaker.openUntil; }
+function closePoolBreaker() {
+  if (poolBreaker.openUntil) console.log('[llm] pool operativo -> cortacircuitos cerrado');
+  poolBreaker.openUntil = 0;
+}
+// Fallos que merecen pausar el pool. Un 400/401/404 es un error NUESTRO (payload,
+// clave, URL): se sigue intentando y registrando, no se silencia con una pausa.
+function isPoolTransient(e) {
+  const msg = (e && e.message) || '';
+  return (e && e.name === 'AbortError') ||
+    /aborted|timeout|timed out|ECONNREFUSED|ECONNRESET|ENOTFOUND|EHOSTUNREACH|fetch failed|socket/i.test(msg) ||
+    /pool error (429|5\d\d)/.test(msg);
+}
+function openPoolBreaker(reason) {
+  const wasOpen = poolBreakerOpen();
+  poolBreaker.openUntil = Date.now() + POOL_BREAKER_MAX_MS;
+  if (!wasOpen) console.log(`[llm] pool en pausa hasta calentar (máx 10 min): ${reason}`);
+  if (poolWarmupHook) { try { poolWarmupHook(); } catch (_) {} }
+}
+
 // ── Pool de IA local (OpenAI-compatible) ──────────────────────────────────────
 // Llama al pool local (jarvis:1.0). NO manda parámetros de thinking (el pool los
 // rechaza). max_tokens SIEMPRE. Un solo intento: ante error/timeout lanza y
@@ -545,14 +578,28 @@ async function callLLM(model, system, messages, tools, maxTokens, options = {}) 
   // Pool de IA local (jarvis:1.0) — si está configurado, con respaldo a DeepSeek.
   if (POOL_API_KEY && POOL_URL && model &&
       (model === POOL_MODEL || model.startsWith('jarvis:') || model.startsWith('qwen'))) {
+    // Calentamiento: va SOLO al pool, con timeout largo, sin cortacircuitos ni respaldo.
+    if (options.poolOnly) return callPool(model, system, messages, tools, maxTokens, options);
+
+    // Respaldo: sin tools (clasificar, resumir, destilar) basta flash; con tools, pro.
+    const fallback = (cause) => {
+      const fbModel = (options.background || !tools || tools.length === 0) ? 'deepseek-v4-flash' : 'deepseek-v4-pro';
+      if (DEEPSEEK_API_KEY) return callDeepSeek(fbModel, system, messages, tools, maxTokens, options);
+      if (OPENAI_API_KEY)   return callOpenAI('gpt-4.1-mini', system, messages, tools, maxTokens);
+      throw cause;
+    };
+
+    if (poolBreakerOpen()) {
+      // Pool frío/caído: ir directo a DeepSeek en vez de esperar 45 s en cada mensaje.
+      return fallback(new Error('pool en pausa (calentando) y sin respaldo configurado'));
+    }
     try {
       return await callPool(model, system, messages, tools, maxTokens, options);
     } catch (e) {
       if (e.noApiKey) throw e;
       console.log(`[llm] pool no disponible (${(e.message || '').slice(0, 90)}) -> fallback DeepSeek`);
-      if (DEEPSEEK_API_KEY) return callDeepSeek('deepseek-v4-pro', system, messages, tools, maxTokens, options);
-      if (OPENAI_API_KEY)   return callOpenAI('gpt-4.1-mini', system, messages, tools, maxTokens);
-      throw e;
+      if (isPoolTransient(e)) openPoolBreaker((e.message || '').slice(0, 60));
+      return fallback(e);
     }
   }
   if (model && model.startsWith('claude-')) {
@@ -658,5 +705,9 @@ module.exports = {
   stripImagesFromHistory,
   convertMessagesToAnthropic,
   convertToolsToAnthropic,
-  persistApiUsage
+  persistApiUsage,
+  setPoolWarmupHook,
+  openPoolBreaker,
+  closePoolBreaker,
+  poolBreakerOpen
 };

@@ -3,6 +3,71 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.40.0 - Prompt cacheable para el pool, cortacircuitos y calentamiento
+────────────────────────────────────────────────────────────────────────────────
+
+PROBLEMA (medido el 04-10-2026 con el equipo del pool): Jarvis no conseguia que
+una sola peticion terminara en el pool. Tres causas encadenadas:
+ 1. El prompt de sistema cambiaba en CADA peticion (hora HH:MM, nº de mensajes,
+    estado en vivo de HA, memoria elegida por relevancia al ultimo mensaje) y va
+    ANTES del historial y de las tools: cualquier cambio obligaba al pool a releer
+    todo lo de detras. El pool lee ~90 tok/s (~28 con la GPU compartida).
+ 2. Con la cache fria (tras reiniciar el ASUS) el prefijo estatico de ha_control
+    pesa ~17k tokens (instrucciones 6k + catalogo L4 1,4k + esquema de 55 tools
+    9,9k): leerlo tarda MINUTOS y el timeout interactivo es 45 s. Cada intento se
+    abortaba, la cache no se calentaba nunca y cada mensaje del usuario esperaba
+    45 s antes de caer a DeepSeek.
+ 3. Cada vuelta del bucle anadia 2.000-2.900 tokens nuevos (resultados de tools
+    de hasta 2.000 chars + mensajes del asistente), y al guardar en el historial
+    se re-truncaban distinto (500 chars) -> el turno siguiente no coincidia con el
+    anterior.
+
+QUE CAMBIA (todo el comportamiento nuevo SOLO si el pool esta configurado; sin
+pool_url/pool_api_key Jarvis funciona exactamente como antes):
+ - Prompt de sistema ESTABLE (nexus/layers.js assembleStaticPrompt): L0 + L1 +
+   contexto que cambia poco (instalacion, 20 notas recientes, reglas, pendientes,
+   conocimiento propio). Sin hora, sin estado en vivo y sin el catalogo L4 (repite
+   lo que ya dice el esquema de las tools). La memoria ya no se elige por
+   relevancia al mensaje; para lo antiguo esta la tool get_memory.
+ - La hora y un resumen corto del estado de la casa (presencia, luces, alertas;
+   <=600 chars) van en una linea "[Ahora: ...]" guardada UNA vez en el mensaje del
+   usuario (campo _ctx) y expandida siempre igual al enviar. El historial es
+   append-only: el prefijo del turno N+1 es byte a byte lo enviado en el turno N.
+   La UI no ve la linea (el historial guardado conserva el texto original).
+ - El mensaje del asistente y los resultados de tools que se mandan en el bucle son
+   EXACTAMENTE los que se guardan en el historial (resultados a 1.200 chars,
+   argumentos a 800 chars). Antes: 2.000/3.000 en el bucle y 500 en el historial.
+ - Cortacircuitos (llm.js): ante timeout, red, 429 o 5xx el pool se PAUSA (max 10
+   min) y el chat va directo a DeepSeek, sin esperar 45 s por mensaje. Los 400/401/
+   404 (errores nuestros) NO pausan: se siguen registrando.
+ - Calentamiento (server.js warmPool): al arrancar y cada vez que se abre el
+   cortacircuitos, manda EN SEGUNDO PLANO el mismo prefijo (system estable + tools de
+   ha_control y rapido) con max_tokens:1 y timeout de 15 min. Al terminar bien, cierra
+   el cortacircuitos. Un solo vuelo; hasta 12 intentos con 1 min entre ellos.
+ - Respaldo mas barato: si la llamada no lleva tools (clasificar, resumir, destilar)
+   el respaldo es deepseek-v4-flash en vez de v4-pro.
+ - assembleSystemPrompt (camino sin pool) ya no manda el estado en vivo dos veces
+   (L2 lo incluia y L3 lo repetia).
+
+IMPACTO DE TOKENS (REGLA DE ORO): NO SUBE, BAJA.
+ - Pool: $0 (inferencia local). El calentamiento es local: $0, y max_tokens:1.
+ - DeepSeek (respaldo y camino sin pool): -300..500 tokens por llamada al quitar el
+   estado en vivo duplicado. Las llamadas sin tools del respaldo pasan de v4-pro
+   ($0.435/$0.87 /MTok) a v4-flash ($0.14/$0.28), -68%.
+ - Mientras el cortacircuitos esta abierto el chat cuesta lo mismo que antes del
+   pool (DeepSeek), nunca mas; y ya no hay 45 s de espera por mensaje.
+ - Tiempo en el pool (a ~90 tok/s): turno normal con cache caliente = solo los
+   tokens nuevos del turno (~0,2-1k) en vez de releer sistema + historial.
+
+RIESGOS CONOCIDOS / SIGUIENTE:
+ - Cambiar de experto cambia el prefijo (otro L1 y otras tools): el router puede
+   alternar rapido/ha_control/diagnostico y cada uno tiene su propia cache. Con la
+   traza "[llm] pool OK ... nuevos N" se vera si hace falta fijar el experto.
+ - Cuando el resumen automatico del historial (cada ~20 mensajes) reescribe el
+   inicio, el pool relee el historial una vez.
+ - Cambios en memoria/reglas/instalacion cambian el prompt estable: una relectura.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.39.2 - Jarvis avisa al pool de su timeout y registra quien respondio
 ────────────────────────────────────────────────────────────────────────────────
 

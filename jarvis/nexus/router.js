@@ -6,7 +6,7 @@ const state = require('../utils/state');
 const { EXPERTS } = require('./experts');
 const { nexusGetScore } = require('./health');
 const { NEXUS_MODULES } = require('./modules');
-const { assembleSystemPrompt, getScopedTools, layerStats } = require('./layers');
+const { assembleSystemPrompt, assembleStaticPrompt, getScopedTools, layerStats } = require('./layers');
 
 // ── Helpers de expertos ───────────────────────────────────────────────────────
 
@@ -130,6 +130,11 @@ function nexusAssemblePrompt(expertName) {
   return assembleSystemPrompt(expertName);
 }
 
+// Versión estable (cacheable) para el pool local: ver layers.assembleStaticPrompt.
+function nexusAssembleStaticPrompt(expertName) {
+  return assembleStaticPrompt(expertName);
+}
+
 // ── Tool scoping ──────────────────────────────────────────────────────────────
 
 /**
@@ -153,6 +158,7 @@ function nexusLogLayerStats(expertName) {
 module.exports = {
   nexusRoute,
   nexusAssemblePrompt,
+  nexusAssembleStaticPrompt,
   nexusGetAllExperts,
   nexusGetModule,
   nexusPickExpert,

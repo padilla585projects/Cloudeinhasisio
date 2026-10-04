@@ -12,14 +12,15 @@ const C       = require('./utils/constants');
 const { loadJSON, saveJSON, autoBackup } = require('./utils/persistence');
 const { haGet, haPost }      = require('./utils/ha-api');
 const { scanInstallation }   = require('./utils/scan');
-const { callLLM, callOpenAI, callWhisper, callImageEdit, sanitizeMessagesForOpenAI, stripImagesFromHistory, persistApiUsage } = require('./utils/llm');
-const { updateLiveContext, buildDynamicContext } = require('./utils/context');
+const { callLLM, callOpenAI, callWhisper, callImageEdit, sanitizeMessagesForOpenAI, stripImagesFromHistory, persistApiUsage,
+        setPoolWarmupHook, openPoolBreaker, closePoolBreaker } = require('./utils/llm');
+const { updateLiveContext, buildDynamicContext, buildTurnSnapshot } = require('./utils/context');
 const { tools, openAITools } = require('./tools/definitions');
 const { executeTool }        = require('./tools/executor');
 
 let mcpClient;
 try { mcpClient = require('./utils/mcp-client'); } catch { mcpClient = null; }
-const { nexusRoute, nexusAssemblePrompt, nexusGetAllExperts, nexusPickExpert, nexusGetToolsForExpert, nexusLogLayerStats } = require('./nexus/router');
+const { nexusRoute, nexusAssemblePrompt, nexusAssembleStaticPrompt, nexusGetAllExperts, nexusPickExpert, nexusGetToolsForExpert, nexusLogLayerStats } = require('./nexus/router');
 const { nexusEvolutionTick, nexusWatchers, nexusGetScore } = require('./nexus/health');
 const { EXPERTS } = require('./nexus/experts');
 const { proactiveThinkingLoop } = require('./background/proactive');
@@ -89,6 +90,51 @@ function saveHistory() {
   if (state.conversationHistory.length > histLimit)
     state.conversationHistory = state.conversationHistory.slice(-histLimit);
   saveJSON(C.HISTORY_FILE, state.conversationHistory);
+}
+
+// ── Modo pool: prefijo cacheable ─────────────────────────────────────────────
+// El pool local reutiliza su caché de prompt solo mientras el PREFIJO sea idéntico
+// byte a byte, y lo NUEVO se lee a ~90 tok/s. Reglas (solo si el pool está
+// configurado; sin pool todo funciona como siempre):
+//  1. System prompt estable (nexusAssembleStaticPrompt): sin hora ni estado en vivo.
+//  2. La hora y el estado de la casa van en una línea [Ahora: ...] guardada UNA vez
+//     en el mensaje del usuario (_ctx) y expandida siempre igual al enviar.
+//  3. Lo que el bucle manda en cada vuelta (mensaje del asistente y resultados de
+//     tools) es EXACTAMENTE lo que luego se guarda en el historial, así el turno
+//     siguiente empieza con el mismo prefijo que dejó este.
+const POOL_MODE      = !!C.USE_POOL;
+const POOL_TOOL_MAX  = 1200;  // chars por resultado de tool (bucle e historial)
+const POOL_ARGS_MAX  = 800;   // chars de argumentos de una tool call que se conservan
+
+// Expande _ctx en el contenido enviado al LLM (el historial guardado no lo toca,
+// así la UI no ve la línea). Determinista: el mismo mensaje da siempre los mismos bytes.
+function expandTurnCtx(messages) {
+  return messages.map(m => {
+    if (!m || !m._ctx) return m;
+    const { _ctx, ...rest } = m;
+    if (Array.isArray(m.content)) return { ...rest, content: [{ type: 'text', text: _ctx }, ...m.content] };
+    return { ...rest, content: `${_ctx}\n${m.content}` };
+  });
+}
+
+// Mensaje del asistente en su forma compacta y canónica. Los argumentos largos se
+// sustituyen por '{}' válido (cortar el string a medias dejaría un JSON roto que
+// la API puede rechazar en el turno siguiente).
+// keepReasoning: en el bucle, si el respaldo DeepSeek respondió con thinking, su
+// reasoning_content hay que devolvérselo en la vuelta siguiente (lo exige su API);
+// al guardar en el historial se descarta, como siempre.
+function compactAssistantMsg(msg, argsMax, keepReasoning = false) {
+  if (!msg.tool_calls) return { role: 'assistant', content: msg.content };
+  const out = {
+    role: 'assistant', content: msg.content || null,
+    tool_calls: msg.tool_calls.map(tc => {
+      const args = tc.function.arguments || '{}';
+      return { id: tc.id, type: 'function',
+        function: { name: tc.function.name, arguments: args.length > argsMax ? '{}' : args } };
+    })
+  };
+  if (keepReasoning && msg.reasoning_content) out.reasoning_content = msg.reasoning_content;
+  return out;
 }
 
 async function summarizeOldHistory() {
@@ -397,6 +443,8 @@ async function handleChat(req, res, messages, files) {
       } else {
         state.conversationHistory.push(lastMsg);
       }
+      // Modo pool: hora + estado de la casa, fijados UNA vez en este mensaje (ver arriba).
+      if (POOL_MODE) state.conversationHistory[state.conversationHistory.length - 1]._ctx = buildTurnSnapshot();
       saveHistory();
     }
 
@@ -454,14 +502,15 @@ async function handleChat(req, res, messages, files) {
       llmOptions.thinking = expertThinking;
     }
 
-    let currentMessages = [...state.conversationHistory];
+    let currentMessages = expandTurnCtx(state.conversationHistory);
     let finalText = '';
     let iterations = 0;
     const MAX_ITERATIONS = state.saverMode ? 8 : activeMaxIter;
     let consecutiveTextOnly = 0;
     let lastToolSignature = '';
     // Bloque B: assembleSystemPrompt ya integra L0-L4 (incluye buildDynamicContext via L2)
-    const systemPrompt = nexusAssemblePrompt(nexusExpertName);
+    // Con pool: prompt estable (prefijo cacheable). Sin pool: el de siempre.
+    const systemPrompt = POOL_MODE ? nexusAssembleStaticPrompt(nexusExpertName) : nexusAssemblePrompt(nexusExpertName);
 
     while (iterations < MAX_ITERATIONS) {
       if (clientDisconnected) {
@@ -481,7 +530,7 @@ async function handleChat(req, res, messages, files) {
         if (err.message.includes('base64') || err.message.includes('image') || err.message.includes('invalid_value')) {
           console.log('[jarvis] Error de imagen — limpiando historial y reintentando sin imágenes...');
           stripImagesFromHistory();
-          currentMessages = sanitizeMessagesForOpenAI([...state.conversationHistory], true);
+          currentMessages = sanitizeMessagesForOpenAI(expandTurnCtx(state.conversationHistory), true);
           try {
             result = await callLLM(activeModel, systemPrompt, currentMessages, scopedTools, activeMaxTokens, llmOptions);
           } catch (err2) {
@@ -552,9 +601,12 @@ async function handleChat(req, res, messages, files) {
         })
       );
 
-      currentMessages.push(result.message);
+      // Con pool se guarda la forma compacta YA en el bucle: es la misma que irá al
+      // historial, así el prefijo del turno siguiente coincide con el de este.
+      currentMessages.push(POOL_MODE ? compactAssistantMsg(result.message, POOL_ARGS_MAX, true) : result.message);
 
-      const maxLen = state.saverMode ? 1500 : (activeModel === C.BG_MODEL ? 2000 : 3000);
+      const maxLen = POOL_MODE ? POOL_TOOL_MAX
+        : state.saverMode ? 1500 : (activeModel === C.BG_MODEL ? 2000 : 3000);
       for (let i = 0; i < result.toolCalls.length; i++) {
         const tc = result.toolCalls[i];
         sendEvent({ type: 'tool_end', tool: tc.name, result: results[i] });
@@ -582,25 +634,19 @@ async function handleChat(req, res, messages, files) {
           // sustituyen por un '{}' válido en vez de cortar el string a medias — un JSON
           // roto en el historial puede hacer que la API rechace el siguiente turno.
           if (msg.tool_calls) {
-            const compactMsg = { role: 'assistant', content: msg.content || null,
-              tool_calls: msg.tool_calls.map(tc => {
-                const args = tc.function.arguments || '{}';
-                return {
-                  id: tc.id, type: 'function',
-                  function: { name: tc.function.name, arguments: args.length > 300 ? '{}' : args }
-                };
-              })
-            };
-            state.conversationHistory.push(compactMsg);
+            // Con pool, mismo límite que en el bucle (ya viene compactado: queda idéntico).
+            state.conversationHistory.push(compactAssistantMsg(msg, POOL_MODE ? POOL_ARGS_MAX : 300));
           } else if (msg.content) {
             state.conversationHistory.push({ role: 'assistant', content: msg.content });
           }
         } else if (msg.role === 'tool') {
-          // Compactar tool results a max 500 chars para no inflar historial
+          // Sin pool: compactar tool results a max 500 chars para no inflar el historial.
+          // Con pool: se guarda tal cual se envió (ya truncado a POOL_TOOL_MAX) para que
+          // el prefijo del turno siguiente coincida byte a byte con el de este.
           const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
           state.conversationHistory.push({
             role: 'tool', tool_call_id: msg.tool_call_id,
-            content: content.length > 500 ? content.slice(0, 500) + '...[truncado]' : content
+            content: (!POOL_MODE && content.length > 500) ? content.slice(0, 500) + '...[truncado]' : content
           });
         }
       }
@@ -1650,8 +1696,48 @@ async function proactiveDeviceHealthScan() {
   }
 }
 
+// ── Calentamiento del pool ────────────────────────────────────────────────────
+// Tras reiniciar el equipo del pool su caché de prompt está fría: leer el prefijo
+// estático (~17k tokens en ha_control) tarda minutos y mi timeout interactivo es de
+// 45 s, así que ningún intento real llegaría a calentarla. Aquí se manda, EN SEGUNDO
+// PLANO y con timeout de 15 min, el mismo prefijo (system estable + tools) con
+// max_tokens:1. Coste $0 (inferencia local). Mientras dura, el cortacircuitos de
+// llm.js manda el chat a DeepSeek; al terminar bien, lo cierra. Un solo vuelo.
+let _poolWarming = false;
+const _sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function warmPool() {
+  if (!POOL_MODE || _poolWarming) return;
+  _poolWarming = true;
+  const t0 = Date.now();
+  try {
+    for (let attempt = 1; attempt <= 12; attempt++) {
+      try {
+        // ha_control = el prefijo más grande; rapido = el que más se usa en mensajes cortos.
+        for (const name of ['ha_control', 'rapido']) {
+          const tls = [...nexusGetToolsForExpert(name)];
+          if (mcpClient && mcpClient.getMcpOpenAiTools().length > 0) tls.push(...mcpClient.getMcpOpenAiTools());
+          await callLLM(C.MODEL, nexusAssembleStaticPrompt(name),
+            [{ role: 'user', content: '[Ahora: calentamiento de caché]\nok' }],
+            tls, 1, { poolOnly: true, timeoutMs: 15 * 60 * 1000 });
+          console.log(`[pool] caché calentada: ${name} (${Math.round((Date.now() - t0) / 1000)}s)`);
+        }
+        closePoolBreaker();
+        return;
+      } catch (e) {
+        console.log(`[pool] calentamiento, intento ${attempt}/12 falló: ${(e.message || '').slice(0, 100)}`);
+        await _sleep(60_000);
+      }
+    }
+    console.log('[pool] no se pudo calentar tras 12 intentos; el chat sigue en DeepSeek');
+  } finally {
+    _poolWarming = false;
+  }
+}
+
 const PORT = 3000;
 app.listen(PORT, '0.0.0.0', () => {
+  if (POOL_MODE) setPoolWarmupHook(() => { warmPool().catch(() => {}); });
   console.log(`Jarvis AI Agent v${state.JARVIS_VERSION} corriendo en puerto ${PORT}`);
   console.log(`Modelo: ${C.MODEL} (DeepSeek V4) | Config: ${C.HA_CONFIG} | Data: ${C.DATA_DIR}`);
   console.log(`API Key: ${C.DEEPSEEK_API_KEY ? 'configurada' : 'NO CONFIGURADA'}`);
@@ -1685,6 +1771,9 @@ app.listen(PORT, '0.0.0.0', () => {
       await updateLiveContext().catch(e => console.log(`[boot] LiveContext falló (no crítico): ${e.message}`));
 
       console.log('[boot] Inicialización completa. Jarvis operativo.');
+
+      // Pool: calentar su caché con el prompt ya definitivo (pausa el pool mientras tanto).
+      if (POOL_MODE) openPoolBreaker('arranque (calentando caché)');
 
       await bootSelfCheck().catch(e => console.log(`[boot] Self-check falló: ${e.message}`));
 

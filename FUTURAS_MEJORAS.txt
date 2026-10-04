@@ -2,7 +2,7 @@
 FUTURAS MEJORAS — Jarvis AI Agent para Home Assistant
 ================================================================================
 Ultima actualizacion: 2026-10-04
-Version actual: 3.39.2
+Version actual: 3.40.0
 
 Prioridad: ALTA | MEDIA | BAJA
 Orden del usuario: INTELIGENCIA primero, luego el resto.
@@ -15,18 +15,25 @@ anade 2.000-2.900 tokens NUEVOS al prompt (el contexto crecio 5k -> 14k en 5
 vueltas). Las 96 tools se reutilizan de cache; lo nuevo hay que leerlo:
 25-30 s/vuelta incluso con la GPU libre (~90 tok/s). Mi timeout es 45 s.
 Orden de ataque (toca el bucle agentico: hacerlo con calma y probando):
-[ ] 1. Truncar resultados de tools (~1500 caracteres) antes de meterlos al historial
-[ ] 2. Estados de HA filtrados por dominio/area en vez del volcado completo
-[ ] 3. Historial corto (ultimas 4-6 vueltas)
-[ ] 4. Bucle de tools: prefijo IDENTICO (solo anadir el resultado nuevo, mismo
-       orden) para maximizar la cache del pool
-[ ] 5. Stopgap alternativo: enrutar al pool solo los turnos cortos (<1500 tokens
-       nuevos, estimados por caracteres, ~3,5 car/token en espanol) y DeepSeek el
-       resto. Calibrar con usage.prompt_tokens - cached_tokens de la respuesta.
+[v] 1. Truncar resultados de tools (HECHO v3.40.0: 1.200 chars en bucle E historial)
+[v] 2. Estado de HA fuera del system prompt (HECHO v3.40.0: linea [Ahora: ...] corta
+       de ~150-600 chars por mensaje; el detalle se pide con tools)
+[~] 3. Historial corto: NO se acorto a proposito. Con cache, un historial largo y
+       ESTABLE sale gratis; uno corto que se desliza rompe el prefijo en cada turno.
+       Lo recorta el resumen automatico (cada ~20 mensajes).
+[v] 4. Prefijo IDENTICO turno a turno (HECHO v3.40.0: prompt estable, _ctx expandido
+       de forma determinista, bucle == historial)
+[ ] 5. Stopgap: enrutar al pool solo los turnos cortos (<1500 tokens nuevos,
+       ~3,5 car/token) y DeepSeek el resto. Solo si tras v3.40.0 la traza
+       "[llm] pool OK ... nuevos N" sigue mostrando N grandes.
 [ ] 6. Fase 2: busqueda web via /v1/tools/search del pool (DuckDuckGo/Serper de
        respaldo); voz via Wyoming (Piper + Whisper) en CPU, baja prioridad.
-[ ] 7. Calentamiento (max_tokens:1) al detectar presencia para que la primera
-       respuesta real salga en 1-2 s.
+[v] 7. Calentamiento (HECHO v3.40.0, al arrancar y tras cada caida del pool;
+       max_tokens:1, timeout 15 min) + cortacircuitos para no esperar 45 s/mensaje.
+[ ] 8. Experto "pegajoso" con el pool: cada experto tiene su propio prefijo (otro
+       L1 y otras tools); si el router alterna mucho, cada uno recalienta su cache.
+       Medir con la traza antes de decidir.
+[ ] 9. Calentar mas expertos (diagnostico, automatizacion) si se usan a menudo.
 
 ================================================================================
 SPRINT 1 — INTELIGENCIA                                              ALTA

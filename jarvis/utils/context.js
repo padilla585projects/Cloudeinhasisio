@@ -268,4 +268,92 @@ function buildDynamicContext() {
   return ctx;
 }
 
-module.exports = { updateLiveContext, buildDynamicContext, classifyUnavailable, getBrokenIntegrations };
+// ── Contexto ESTABLE y por turno (modo pool: prefijo cacheable) ───────────────
+//
+// El pool local lee el prompt a ~90 tok/s y reutiliza su caché solo mientras el
+// PREFIJO sea idéntico byte a byte. buildDynamicContext() mete en el system prompt
+// la hora (HH:MM), el nº de mensajes, el estado en vivo de HA y una memoria
+// elegida por relevancia al ÚLTIMO mensaje: cambia en cada petición y obliga a
+// releer todo lo que va detrás (historial incluido). Se parte en dos:
+//   - buildStableContext(): lo que cambia poco (instalación, memoria reciente,
+//     reglas, pendientes, conocimiento propio). Va en el system prompt.
+//   - buildTurnSnapshot(): una línea corta con hora + estado de la casa. Se guarda
+//     UNA vez en el mensaje del usuario (_ctx) y se expande siempre igual, así que
+//     el historial es append-only y el prefijo no cambia entre turnos.
+
+function buildStableContext() {
+  let ctx = '';
+  if (state.houseContext) ctx += `\nINSTALACIÓN:\n${state.houseContext}`;
+
+  if (state.userMemory.length > 0) {
+    // Sin relevancia por mensaje (eso movía el prompt en cada turno): las 20 más
+    // recientes. Para lo antiguo está la tool get_memory.
+    const memSlice = state.userMemory.slice(-20);
+    ctx += `\nMEMORIA (${memSlice.length} más recientes / ${state.userMemory.length} total; get_memory para buscar el resto):\n`;
+    for (const m of memSlice) ctx += `(${m.category || '?'}) ${m.note}\n`;
+  }
+
+  const distilledRules = loadJSON(path.join(DATA_DIR, 'distilled_rules.json'), []);
+  if (distilledRules.length > 0) {
+    ctx += `\nREGLAS APRENDIDAS:\n`;
+    for (const r of distilledRules.slice(-15)) ctx += `• ${r}\n`;
+  } else if (state.learnings.length > 0) {
+    ctx += `\nAPRENDIZAJES RECIENTES:\n`;
+    for (const l of state.learnings.slice(-10)) {
+      if (l.type === 'error')   ctx += `⚠ NO REPETIR: ${l.context} → ${l.lesson}${l.solution ? ' | FIX: ' + l.solution : ''}\n`;
+      else if (l.type === 'success') ctx += `✓ FUNCIONA: ${l.lesson}\n`;
+      else ctx += `→ ${l.lesson}\n`;
+    }
+  }
+
+  const pendingThoughts = loadJSON(path.join(DATA_DIR, 'pending_thoughts.json'), []).filter(t => t.status === 'pending');
+  if (pendingThoughts.length > 0) {
+    ctx += `\n⚠️ ASUNTOS PENDIENTES (${pendingThoughts.length}):\n`;
+    for (const t of pendingThoughts.slice(0, 5)) {
+      const icon = t.priority === 'critical' ? '🔴' : t.priority === 'high' ? '🟠' : '🟡';
+      ctx += `${icon} [${t.type}] ${t.title}: ${t.detail}\n`;
+    }
+    ctx += `INSTRUCCIÓN: Menciona los asuntos pendientes relevantes (especialmente high/critical) antes de responder.\n`;
+  }
+
+  const selfKnowledge = loadJSON(path.join(DATA_DIR, 'self_knowledge.json'), []);
+  if (selfKnowledge.length > 0) {
+    ctx += `\nCONOCIMIENTO PROPIO (auto-actualizado):\n`;
+    for (const section of selfKnowledge) ctx += `--- ${section.title} ---\n${section.content}\n`;
+  }
+
+  ctx += `\nCada mensaje del usuario empieza con una línea automática [Ahora: ...] con la hora y un ` +
+         `resumen del estado de la casa EN ESE MOMENTO. No la escribió el usuario: úsala como referencia ` +
+         `(la del último mensaje es la actual) y pide el detalle con tools si lo necesitas.\n`;
+  return ctx;
+}
+
+// Línea corta (<= ~600 chars) con hora y lo esencial del estado en vivo. El detalle
+// (temperaturas, clima, switches, media) se consulta con tools: no hace falta
+// arrastrarlo en cada mensaje del historial.
+function buildTurnSnapshot() {
+  const now = new Date();
+  const dias = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+  const hora = now.getHours();
+  let momento = 'madrugada';
+  if (hora >= 7  && hora < 12) momento = 'mañana';
+  else if (hora >= 12 && hora < 15) momento = 'mediodía';
+  else if (hora >= 15 && hora < 20) momento = 'tarde';
+  else if (hora >= 20 && hora < 24) momento = 'noche';
+
+  let snap = `${dias[now.getDay()]} ${now.toLocaleDateString('es-ES')} ` +
+             `${now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })} (${momento})`;
+
+  const keep = (state.liveContext || '').split('\n')
+    .filter(l => /^(PRESENCIA|LUCES|🔴|⚠️)/.test(l))
+    .map(l => l.length > 220 ? l.slice(0, 220) + '…' : l);
+  if (keep.length) snap += ' · ' + keep.join(' · ');
+
+  if (snap.length > 600) snap = snap.slice(0, 600) + '…';
+  return `[Ahora: ${snap}]`;
+}
+
+module.exports = {
+  updateLiveContext, buildDynamicContext, buildStableContext, buildTurnSnapshot,
+  classifyUnavailable, getBrokenIntegrations
+};

@@ -96,10 +96,25 @@ function buildL4(expertName) {
 function assembleSystemPrompt(expertName) {
   const L0 = buildL0();
   const L1 = buildL1(expertName);
+  // L2 (buildDynamicContext) YA incluye el estado en vivo ("ESTADO EN TIEMPO REAL"):
+  // añadir además L3 lo mandaba dos veces en cada petición.
   const L2 = buildL2();
-  const L3 = buildL3();
   const L4 = buildL4(expertName);
-  return [L0, L1, L2, L3, L4].filter(Boolean).join('\n\n');
+  return [L0, L1, L2, L4].filter(Boolean).join('\n\n');
+}
+
+/**
+ * Prompt de sistema ESTABLE para el pool local (prefijo cacheable).
+ * L0 + L1 + contexto que cambia poco. Sin hora, sin nº de mensajes, sin estado en
+ * vivo y sin el catálogo L4 (repite lo que ya dice el esquema de las tools, que
+ * van aparte). Lo volátil viaja en el mensaje del usuario (ver buildTurnSnapshot).
+ * Mientras la memoria/reglas no cambien, el resultado es idéntico byte a byte.
+ */
+function assembleStaticPrompt(expertName) {
+  const { buildStableContext } = require('../utils/context');
+  const L0 = buildL0();
+  const L1 = buildL1(expertName);
+  return [L0, L1, buildStableContext()].filter(Boolean).join('\n\n');
 }
 
 /**
@@ -110,12 +125,11 @@ function buildAnthropicSystemBlocks(expertName) {
   const L0 = buildL0();
   const L1 = buildL1(expertName);
   const L2 = buildL2();
-  const L3 = buildL3();
   const L4 = buildL4(expertName);
 
   const blocks = [];
   const staticPart = [L0, L1].filter(Boolean).join('\n\n');
-  const dynamicPart = [L2, L3, L4].filter(Boolean).join('\n\n');
+  const dynamicPart = [L2, L4].filter(Boolean).join('\n\n');
 
   if (staticPart) blocks.push({ type: 'text', text: staticPart, cache_control: { type: 'ephemeral' } });
   if (dynamicPart) blocks.push({ type: 'text', text: dynamicPart });
@@ -161,6 +175,7 @@ function layerStats(expertName) {
 module.exports = {
   buildL0, buildL1, buildL2, buildL3, buildL4,
   assembleSystemPrompt,
+  assembleStaticPrompt,
   buildAnthropicSystemBlocks,
   getScopedTools,
   layerStats
