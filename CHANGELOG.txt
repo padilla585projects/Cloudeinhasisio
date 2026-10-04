@@ -3,6 +3,42 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.39.0 - Jarvis puede usar el pool de IA local (jarvis:1.0), DeepSeek de respaldo
+────────────────────────────────────────────────────────────────────────────────
+
+QUE CAMBIA: si se configura la clave del pool en las opciones del add-on
+(pool_api_key + pool_url), el chat principal y los procesos de fondo pasan de
+DeepSeek V4 (cloud) al POOL DE IA LOCAL de casa (modelo "jarvis:1.0", servido en
+la LAN). DeepSeek queda de RESPALDO automatico. Sin clave, TODO sigue yendo a
+DeepSeek exactamente igual que antes (cero cambio de comportamiento).
+
+COMO:
+ - constants.js: POOL_URL/POOL_API_KEY/POOL_MODEL desde entorno. Si hay clave +
+   url -> MODEL/BG_MODEL/CLAUDE_MODEL = jarvis:1.0; si no, DeepSeek como siempre.
+ - llm.js: nueva funcion callPool() (OpenAI-compatible, POST a
+   /openai/v1/chat/completions). NO manda parametros de thinking (el pool los
+   rechaza); max_tokens SIEMPRE; tool_choice auto. Un solo intento: ante
+   error/timeout/503/429, callLLM cae a DeepSeek al momento. Timeout 45s
+   interactivo (cubre la carga del modelo en frio), 180s en fondos.
+ - callLLM enruta jarvis:1.0 / qwen* al pool con fallback a DeepSeek (y OpenAI si
+   no hay DeepSeek). Precio de jarvis:1.0 = 0 en el cost-guard (local = gratis).
+ - config.yaml/run.sh: opciones pool_url, pool_api_key (password), pool_model.
+
+IMPACTO DE TOKENS (REGLA DE ORO): BAJA el coste. El chat y los fondos pasan de
+DeepSeek de pago (V4 Pro $0.435/$0.87, Flash $0.14/$0.28 por MTok) a inferencia
+LOCAL a coste $0/token. El coste base diario tiende a ~0 para lo que atienda el
+pool; DeepSeek solo se paga cuando el pool falla (respaldo). No sube nada.
+
+NOTAS:
+ - El experto "razonamiento" (R1) sigue en DeepSeek: el pool tiene el thinking
+   apagado, asi que no aporta alli.
+ - La URL del pool se pone en las opciones del add-on (no se hardcodea la IP
+   interna en este repo publico).
+ - Busqueda web (/v1/tools/search) y voz (Wyoming) quedan para una 2a fase.
+ - Medido por el pool con el prompt real de ha_control (55 tools): 18/18
+   aciertos; con el modelo cargado, respuestas en 1-6s.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.38.12 - Jarvis ya vigila los dispositivos caidos y el log de HA
 ────────────────────────────────────────────────────────────────────────────────
 

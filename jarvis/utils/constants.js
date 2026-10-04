@@ -10,9 +10,18 @@ const DEEPSEEK_API_KEY   = process.env.DEEPSEEK_API_KEY   || '';
 const DEEPSEEK_URL       = 'https://api.deepseek.com/v1';
 const DEEPSEEK_MODEL     = 'deepseek-v4-flash';   // V4 Flash — análisis + tools (non-thinking)
 const DEEPSEEK_R1_MODEL  = 'deepseek-v4-pro';     // V4 Pro — razonamiento profundo (thinking mode)
-const MODEL             = 'deepseek-v4-pro';     // Consultas complejas (DeepSeek V4 Pro)
-const BG_MODEL          = 'deepseek-v4-flash';   // Background + consultas simples (DeepSeek V4 Flash)
-const CLAUDE_MODEL      = 'deepseek-v4-pro';     // Dev expert (DeepSeek V4 Pro, antes Claude)
+// ── Pool de IA local (opcional) ──────────────────────────────────────────────
+// Si hay clave del pool, el chat principal y los fondos van al pool local
+// (jarvis:1.0) con DeepSeek de respaldo. Sin clave, TODO a DeepSeek (igual que
+// antes). La URL se pone en las opciones del add-on (no se hardcodea la IP
+// interna en el repo público). Coste del pool: $0 (inferencia local).
+const POOL_URL          = process.env.POOL_URL     || '';
+const POOL_API_KEY      = process.env.POOL_API_KEY || '';
+const POOL_MODEL        = process.env.POOL_MODEL   || 'jarvis:1.0';
+const USE_POOL          = !!(POOL_API_KEY && POOL_URL);
+const MODEL             = USE_POOL ? POOL_MODEL : 'deepseek-v4-pro';   // Chat principal
+const BG_MODEL          = USE_POOL ? POOL_MODEL : 'deepseek-v4-flash'; // Background + simples
+const CLAUDE_MODEL      = USE_POOL ? POOL_MODEL : 'deepseek-v4-pro';   // Dev expert
 const HA_TOKEN          = process.env.HA_TOKEN;
 const HA_URL            = process.env.HA_URL  || 'http://supervisor/core';
 const LANGUAGE          = process.env.LANGUAGE || 'es';
@@ -57,6 +66,7 @@ module.exports = {
   ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, SERPER_API_KEY,
   MODEL, BG_MODEL, CLAUDE_MODEL,
   DEEPSEEK_API_KEY, DEEPSEEK_URL, DEEPSEEK_MODEL, DEEPSEEK_R1_MODEL,
+  POOL_URL, POOL_API_KEY, POOL_MODEL, USE_POOL,
   HA_TOKEN, HA_URL, LANGUAGE,
   PROXMOX_URL, PROXMOX_TOKEN, PROXMOX_NODE,
   OMV_URL, OMV_USER, OMV_PASSWORD,

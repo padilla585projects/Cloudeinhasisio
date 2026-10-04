@@ -1,6 +1,6 @@
 name: "Jarvis AI Agent"
 description: "Jarvis — Asistente IA para Home Assistant. Control por voz y texto."
-version: "3.38.12"
+version: "3.39.0"
 slug: "jarvis_ai_agent"
 init: false
 arch:
@@ -46,6 +46,9 @@ options:
   nas_discos_ignorados: ""
   centinela_url: ""
   centinela_clave: ""
+  pool_url: ""
+  pool_api_key: ""
+  pool_model: "jarvis:1.0"
 schema:
   openai_api_key: str
   serper_api_key: str?
@@ -65,3 +68,6 @@ schema:
   nas_discos_ignorados: str?
   centinela_url: str?
   centinela_clave: password?
+  pool_url: str?
+  pool_api_key: password?
+  pool_model: str?

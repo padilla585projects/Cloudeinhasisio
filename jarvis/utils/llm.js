@@ -1,7 +1,8 @@
 'use strict';
 const fs = require('fs');
 const fetch = require('node-fetch');
-const { OPENAI_API_KEY, ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, DEEPSEEK_URL, API_USAGE_FILE } = require('./constants');
+const { OPENAI_API_KEY, ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, DEEPSEEK_URL, API_USAGE_FILE,
+        POOL_URL, POOL_API_KEY, POOL_MODEL } = require('./constants');
 const state = require('./state');
 
 // Precios reales por modelo (USD / token)
@@ -17,6 +18,7 @@ const MODEL_PRICES = {
   'gpt-4o':             { in: 2.50 / 1e6,   out: 10.00 / 1e6, cache_read: 0.625 / 1e6,   cache_write: 0 },
   'claude-sonnet-4-5':  { in: 3.00 / 1e6,   out: 15.00 / 1e6, cache_read: 0.30 / 1e6,    cache_write: 3.75 / 1e6 },
   'claude-sonnet-4-6':  { in: 3.00 / 1e6,   out: 15.00 / 1e6, cache_read: 0.30 / 1e6,    cache_write: 3.75 / 1e6 },
+  'jarvis:1.0':         { in: 0,            out: 0,           cache_read: 0,             cache_write: 0 }, // pool local = gratis
 };
 
 function trackUsage(model, usage) {
@@ -463,9 +465,80 @@ async function callDeepSeek(model, system, messages, aiTools, maxTokens, options
   };
 }
 
+// ── Pool de IA local (OpenAI-compatible) ──────────────────────────────────────
+// Llama al pool local (jarvis:1.0). NO manda parámetros de thinking (el pool los
+// rechaza). max_tokens SIEMPRE. Un solo intento: ante error/timeout lanza y
+// callLLM cae a DeepSeek (el pool pide fallback inmediato ante 503/429/timeout,
+// y las peticiones van de una en una, no en ráfaga). Coste 0 (inferencia local).
+async function callPool(model, system, messages, aiTools, maxTokens, options = {}) {
+  if (!POOL_API_KEY || !POOL_URL) {
+    const e = new Error('Pool no configurado (pool_url / pool_api_key)');
+    e.noApiKey = true;
+    throw e;
+  }
+  const sanitized = sanitizeMessagesForOpenAI(messages);
+  const msgs = system ? [{ role: 'system', content: system }, ...sanitized] : [...sanitized];
+  const body = { model: POOL_MODEL, max_tokens: maxTokens || 2048, messages: msgs };
+  if (aiTools && aiTools.length > 0) {
+    body.tools = aiTools;
+    body.tool_choice = 'auto';
+  }
+  // Timeout adaptativo: interactivo 45s (cubre carga de modelo en frío), fondos más largo.
+  const timeoutMs = options.timeoutMs || (options.background ? 180000 : 45000);
+  const base = POOL_URL.replace(/\/+$/, '');
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  let response;
+  try {
+    response = await fetch(`${base}/openai/v1/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${POOL_API_KEY}` },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`pool error ${response.status}: ${err.slice(0, 200)}`);
+  }
+  const data = await response.json();
+  const choice = (data.choices || [])[0];
+  if (!choice) throw new Error('pool: respuesta sin choices');
+  const message = choice.message || {};
+  const usage = data.usage || {};
+  trackUsage(POOL_MODEL, usage);
+  return {
+    text: message.content || '',
+    toolCalls: (message.tool_calls || []).map(tc => ({
+      id: tc.id,
+      name: tc.function.name,
+      input: (() => { try { return JSON.parse(tc.function.arguments); } catch { return {}; } })()
+    })),
+    finishReason: choice.finish_reason || 'stop',
+    message,
+    usage
+  };
+}
+
 // ── Wrapper unificado ─────────────────────────────────────────────────────────
 
 async function callLLM(model, system, messages, tools, maxTokens, options = {}) {
+  // Pool de IA local (jarvis:1.0) — si está configurado, con respaldo a DeepSeek.
+  if (POOL_API_KEY && POOL_URL && model &&
+      (model === POOL_MODEL || model.startsWith('jarvis:') || model.startsWith('qwen'))) {
+    try {
+      return await callPool(model, system, messages, tools, maxTokens, options);
+    } catch (e) {
+      if (e.noApiKey) throw e;
+      console.log(`[llm] pool no disponible (${(e.message || '').slice(0, 90)}) -> fallback DeepSeek`);
+      if (DEEPSEEK_API_KEY) return callDeepSeek('deepseek-v4-pro', system, messages, tools, maxTokens, options);
+      if (OPENAI_API_KEY)   return callOpenAI('gpt-4.1-mini', system, messages, tools, maxTokens);
+      throw e;
+    }
+  }
   if (model && model.startsWith('claude-')) {
     if (!ANTHROPIC_API_KEY) {
       console.log('[llm] Anthropic no configurado -> fallback deepseek-v4-pro');

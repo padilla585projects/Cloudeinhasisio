@@ -20,6 +20,21 @@ if bashio::config.has_value 'deepseek_api_key'; then
   export DEEPSEEK_API_KEY="$(bashio::config 'deepseek_api_key')"
 fi
 
+# Pool de IA local (opcional) — chat+fondos a jarvis:1.0 con DeepSeek de respaldo.
+# Sin clave, todo sigue yendo a DeepSeek (igual que antes).
+export POOL_URL=""
+export POOL_API_KEY=""
+export POOL_MODEL="jarvis:1.0"
+if bashio::config.has_value 'pool_url'; then
+  export POOL_URL="$(bashio::config 'pool_url')"
+fi
+if bashio::config.has_value 'pool_api_key'; then
+  export POOL_API_KEY="$(bashio::config 'pool_api_key')"
+fi
+if bashio::config.has_value 'pool_model'; then
+  export POOL_MODEL="$(bashio::config 'pool_model')"
+fi
+
 # Proxmox (opcional)
 export PROXMOX_URL=""
 export PROXMOX_TOKEN=""
@@ -86,9 +101,12 @@ if bashio::config.has_value 'centinela_clave'; then
 fi
 
 
-bashio::log.info "Iniciando Jarvis AI Agent v3.38.12..."
+bashio::log.info "Iniciando Jarvis AI Agent v3.39.0..."
 bashio::log.info "Modelos cloud: DeepSeek V4 Flash (bg) + V4 Pro (principal/dev)"
 bashio::log.info "Nucleos activos:"
+if [ -n "${POOL_API_KEY:-}" ] && [ -n "${POOL_URL:-}" ]; then
+  bashio::log.info "  · Pool IA local: ACTIVO (${POOL_URL}, modelo ${POOL_MODEL}) -> chat+fondos; DeepSeek de respaldo"
+fi
 if [ -n "${DEEPSEEK_API_KEY:-}" ]; then
   bashio::log.info "  · DeepSeek V4: flash (bg/rapido) + pro (principal/dev/razonamiento)"
 else
