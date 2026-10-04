@@ -3,6 +3,26 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.39.2 - Jarvis avisa al pool de su timeout y registra quien respondio
+────────────────────────────────────────────────────────────────────────────────
+
+QUE CAMBIA: dos mejoras de cooperacion con el pool (acordadas con su Core):
+ 1. callPool manda la cabecera "X-AI-Pool-Timeout" con los segundos de mi timeout
+    (45 interactivo / 180 fondos). Cuando yo corto por timeout, el pool saca mi
+    peticion de la cola en vez de seguir calculandola para nadie -> deja de
+    encolar/retrasar las siguientes.
+ 2. Al responder el pool, se registra una linea de traza:
+    "[llm] pool OK: <modelo>@<worker> | prompt N (cache C, nuevos N-C) | out M".
+    Usa las cabeceras X-AI-Pool-Model/X-AI-Pool-Worker y usage.prompt_tokens(_details.
+    cached_tokens). Los "tokens nuevos" (prompt - cache) son los que marcan el
+    tiempo de lectura; sirve para ver de un vistazo si el pool responde y por que
+    tarda, y para calibrar el enrutado futuro (turnos cortos al pool).
+
+IMPACTO DE TOKENS (REGLA DE ORO): NEUTRO. No anade ninguna llamada LLM; solo una
+cabecera HTTP y un console.log por peticion al pool (coste 0). Ayuda a BAJAR coste:
+al no dejar peticiones colgadas, el pool atiende antes y se cae menos a DeepSeek.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.39.1 - La URL del pool se acepta con o sin /openai/v1 al final
 ────────────────────────────────────────────────────────────────────────────────
 

@@ -495,7 +495,12 @@ async function callPool(model, system, messages, aiTools, maxTokens, options = {
   try {
     response = await fetch(`${base}/openai/v1/chat/completions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${POOL_API_KEY}` },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${POOL_API_KEY}`,
+        // El Core saca la petición de la cola si cortamos: no dejamos trabajo colgado para nadie.
+        'X-AI-Pool-Timeout': String(Math.round(timeoutMs / 1000))
+      },
       body: JSON.stringify(body),
       signal: controller.signal
     });
@@ -512,6 +517,15 @@ async function callPool(model, system, messages, aiTools, maxTokens, options = {
   const message = choice.message || {};
   const usage = data.usage || {};
   trackUsage(POOL_MODEL, usage);
+  // Traza ligera para validar que el pool responde (y quién): modelo/worker reales
+  // y tokens NUEVOS leídos (prompt - cache), que es lo que marca el tiempo de lectura.
+  try {
+    const pm = response.headers.get('x-ai-pool-model') || POOL_MODEL;
+    const pw = response.headers.get('x-ai-pool-worker') || '?';
+    const pt = usage.prompt_tokens || 0;
+    const ct = (usage.prompt_tokens_details && usage.prompt_tokens_details.cached_tokens) || 0;
+    console.log(`[llm] pool OK: ${pm}@${pw} | prompt ${pt} (cache ${ct}, nuevos ${pt - ct}) | out ${usage.completion_tokens || 0}`);
+  } catch {}
   return {
     text: message.content || '',
     toolCalls: (message.tool_calls || []).map(tc => ({
