@@ -1,8 +1,28 @@
 ================================================================================
 ESTADO ACTUAL DEL PROYECTO — Jarvis AI Agent para Home Assistant
 ================================================================================
-Ultima actualizacion: 2026-09-13
-Version actual: 3.38.8
+Ultima actualizacion: 2026-10-04
+Version actual: 3.39.2
+
+--------------------------------------------------------------------------------
+AL DIA 04-10-2026 — POOL DE IA LOCAL (v3.39.0 a 3.39.2)
+--------------------------------------------------------------------------------
+* El chat principal y los procesos de fondo pueden ir al POOL DE IA LOCAL de casa
+  (modelo jarvis:1.0, servidor OpenAI-compatible en la LAN, GPU compartida con
+  otras apps), con DeepSeek V4 de RESPALDO automatico ante error/timeout/503/429.
+  Sin pool_url + pool_api_key en las opciones, todo va a DeepSeek como antes.
+  Coste del pool: $0. Los expertos de analisis y razonamiento siguen en DeepSeek.
+* v3.39.1: la URL del pool se acepta con o sin /openai/v1 (antes se doblaba el
+  sufijo -> 404 -> respaldo silencioso, con el arranque diciendo "ACTIVO").
+* v3.39.2: cabecera X-AI-Pool-Timeout (el pool descarta lo que ya cortamos) y
+  traza "[llm] pool OK: modelo@worker | prompt/cache/nuevos | out".
+* ESTADO REAL AL CIERRE: Jarvis 3.39.2 corriendo y llegando al pool, pero el pool
+  contesta 503 "no online device can run jarvis:1.0" (lado del pool: GPU ocupada
+  o modelo no cargado). El respaldo a DeepSeek funciona. Falta validar un
+  "[llm] pool OK" cuando el pool tenga equipo libre.
+* PENDIENTE: reducir los tokens nuevos por vuelta (2.000-2.900 medidos), que con
+  96 tools + estados de HA hacen 25-30 s/vuelta aun con la GPU libre. Ver
+  FUTURAS_MEJORAS.txt.
 
 --------------------------------------------------------------------------------
 AL DIA 13-09-2026 — lo que ha cambiado desde la 3.24.1 y no esta abajo

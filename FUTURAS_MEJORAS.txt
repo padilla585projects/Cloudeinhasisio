@@ -1,11 +1,32 @@
 ================================================================================
 FUTURAS MEJORAS — Jarvis AI Agent para Home Assistant
 ================================================================================
-Ultima actualizacion: 2026-05-15
-Version actual: 3.24.1
+Ultima actualizacion: 2026-10-04
+Version actual: 3.39.2
 
 Prioridad: ALTA | MEDIA | BAJA
 Orden del usuario: INTELIGENCIA primero, luego el resto.
+
+================================================================================
+SPRINT POOL — OPTIMIZAR EL PAYLOAD HACIA EL POOL LOCAL                  ALTA
+================================================================================
+Acordado con el equipo del pool el 04-10-2026. Cada vuelta del bucle agentico
+anade 2.000-2.900 tokens NUEVOS al prompt (el contexto crecio 5k -> 14k en 5
+vueltas). Las 96 tools se reutilizan de cache; lo nuevo hay que leerlo:
+25-30 s/vuelta incluso con la GPU libre (~90 tok/s). Mi timeout es 45 s.
+Orden de ataque (toca el bucle agentico: hacerlo con calma y probando):
+[ ] 1. Truncar resultados de tools (~1500 caracteres) antes de meterlos al historial
+[ ] 2. Estados de HA filtrados por dominio/area en vez del volcado completo
+[ ] 3. Historial corto (ultimas 4-6 vueltas)
+[ ] 4. Bucle de tools: prefijo IDENTICO (solo anadir el resultado nuevo, mismo
+       orden) para maximizar la cache del pool
+[ ] 5. Stopgap alternativo: enrutar al pool solo los turnos cortos (<1500 tokens
+       nuevos, estimados por caracteres, ~3,5 car/token en espanol) y DeepSeek el
+       resto. Calibrar con usage.prompt_tokens - cached_tokens de la respuesta.
+[ ] 6. Fase 2: busqueda web via /v1/tools/search del pool (DuckDuckGo/Serper de
+       respaldo); voz via Wyoming (Piper + Whisper) en CPU, baja prioridad.
+[ ] 7. Calentamiento (max_tokens:1) al detectar presencia para que la primera
+       respuesta real salga en 1-2 s.
 
 ================================================================================
 SPRINT 1 — INTELIGENCIA                                              ALTA

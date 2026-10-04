@@ -97,6 +97,11 @@ Si los archivos están en la raíz, HA no detecta actualizaciones. NUNCA mover a
 - `NAS_DISCOS_IGNORADOS` — discos del NAS que no deben generar avisos de
   nasguard, separados por comas (p.ej. `sdd`). Para un disco ya diagnosticado y
   en camino a garantía: sigue degradándose y avisar de ello es ruido
+- `POOL_URL`, `POOL_API_KEY`, `POOL_MODEL` — Pool de IA local de casa (opcionales,
+  v3.39.0). Servidor OpenAI-compatible en la LAN (modelo `jarvis:1.0`). Con URL +
+  clave, chat y fondos van al pool y DeepSeek queda de respaldo; sin ellas todo
+  va a DeepSeek como siempre. La URL puede llevar o no `/openai/v1` al final
+  (v3.39.1). La dirección concreta, en las opciones del add-on — no se publica aquí.
 
 ## Reglas del proyecto
 
@@ -419,6 +424,30 @@ responde pero el HTTPS sí, es esto.
 la pestaña vuelve al panel y lo que tecleas se convierte en ATAJOS de teclado
 (la "a" abre Assist, la "e" el buscador de entidades, la "m" Mi enlace).
 Comprobar SIEMPRE que se ve el prompt `[core-ssh ~]$` antes de escribir.
+
+### El pool de IA local: que el log diga "ACTIVO" NO significa que funcione
+`run.sh` imprime `Pool IA local: ACTIVO` solo porque las variables existen, no
+porque el pool responda. En v3.39.0 la URL llevaba ya `/openai/v1` (así la da el
+panel del pool) y `callPool` le añadía otro `/openai/v1/chat/completions` → 404
+→ caía a DeepSeek en silencio, con el arranque diciendo "ACTIVO". Se arregló en
+v3.39.1 (se acepta la URL con o sin sufijo).
+
+Para validar de verdad, mirar el log del add-on tras una petición real:
+- `[llm] pool OK: <modelo>@<worker> | prompt N (cache C, nuevos N-C) | out M` →
+  entra al pool (traza añadida en v3.39.2).
+- `[llm] pool no disponible (...) -> fallback DeepSeek` → no entra; el motivo va
+  entre paréntesis. `pool error 503: no online device can run jarvis:1.0` = el
+  pool no tiene ningún equipo libre (problema suyo, no de Jarvis);
+  `The user aborted a request` = nuestro timeout (45 s interactivo / 180 s fondos).
+
+Reglas de convivencia con el pool (la GPU es compartida, de una petición en una):
+- Un solo intento y respaldo inmediato a DeepSeek; NUNCA ráfagas en paralelo.
+- `callPool` manda `X-AI-Pool-Timeout` para que el pool saque de su cola lo que
+  ya cortamos nosotros.
+- El tiempo lo marcan los tokens NUEVOS por vuelta (`prompt_tokens − cached_tokens`),
+  a ~90 tok/s con la GPU libre. Las 96 tools se cachean; los estados de HA y los
+  resultados de tools no. Ver la optimización de payload en `FUTURAS_MEJORAS.txt`.
+- No pasar parámetros de thinking al pool (los rechaza) ni usar streaming con tools (400).
 
 ## Documentos de referencia en la raíz
 
