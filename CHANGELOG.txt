@@ -3,6 +3,37 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.42.0 - Fase 2 del pool: el trabajo de fondo va como aplazable (batch)
+────────────────────────────────────────────────────────────────────────────────
+
+QUE CAMBIA: las tareas que no espera nadie (resumen del historial, destilado y
+expansion de conocimiento, deteccion de patrones, auto-reparacion, pensamiento
+proactivo) se marcan {background:true} y usan un modelo propio de fondo:
+ - constants.js: FONDO_MODEL. Con pool = POOL_MODEL_FONDO (opcion pool_model_fondo,
+   p. ej. "jarvis-fondo:1.0": local -> v4-flash) o, si esta vacia, POOL_MODEL. Sin
+   pool = BG_MODEL, o sea EXACTAMENTE igual que antes.
+ - llm.js: las peticiones de fondo mandan X-AI-Pool-Priority: batch. El Core da
+   al modelo local hasta 60 s (en vez de 10) antes de pasar a pago, y si el
+   presupuesto del pool llega a critical/over corta primero lo aplazable y deja lo
+   que espera un usuario. Plazo de 180 s (el Core corta a 190).
+ - Presupuesto agotado: el error de bloqueo se marca budgetBlocked y la tarea se
+   OMITE; NO se cae a DeepSeek directo, porque ese gasto se saltaria el libro de
+   100 EUR/mes del pool. El chat interactivo con el mismo error SI cae al respaldo.
+ - No se tocan el router (interactivo: lo espera el usuario) ni el chat.
+ - run.sh/config.yaml: opcion nueva pool_model_fondo (opcional, vacia por defecto).
+
+PENDIENTE DEL CORE: crear el modelo virtual jarvis-fondo:1.0 (local -> v4-flash) y
+confirmar el codigo exacto con que bloquea lo aplazable (aqui se detecta 402 o un
+cuerpo con budget/presupuesto/over_budget/spend_limit). Hasta que se ponga
+pool_model_fondo, el fondo usa jarvis:1.0 (cadena local -> v4-pro) pero ya como batch.
+
+IMPACTO DE TOKENS (REGLA DE ORO): BAJA el coste del fondo. Mismas llamadas, mismas
+frecuencias (no se anade ni se quita ninguna). Con jarvis-fondo:1.0 el respaldo de
+pago pasa de v4-pro ($0.435/$0.87 /MTok) a v4-flash ($0.14/$0.28), -68%, y el local
+tiene 60 s en vez de 10 para contestar gratis. Cuando el presupuesto del pool se agota,
+el fondo se omite en vez de gastar fuera del libro.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.41.0 - Fase 1 del pool con respaldo de pago: contar el gasto y calentar bien
 ────────────────────────────────────────────────────────────────────────────────
 

@@ -34,6 +34,11 @@ fi
 if bashio::config.has_value 'pool_model'; then
   export POOL_MODEL="$(bashio::config 'pool_model')"
 fi
+# Modelo virtual del pool para trabajo de fondo (opcional, p. ej. jarvis-fondo:1.0)
+export POOL_MODEL_FONDO=""
+if bashio::config.has_value 'pool_model_fondo'; then
+  export POOL_MODEL_FONDO="$(bashio::config 'pool_model_fondo')"
+fi
 
 # Proxmox (opcional)
 export PROXMOX_URL=""
@@ -101,7 +106,7 @@ if bashio::config.has_value 'centinela_clave'; then
 fi
 
 
-bashio::log.info "Iniciando Jarvis AI Agent v3.41.0..."
+bashio::log.info "Iniciando Jarvis AI Agent v3.42.0..."
 bashio::log.info "Modelos cloud: DeepSeek V4 Flash (bg) + V4 Pro (principal/dev)"
 bashio::log.info "Nucleos activos:"
 if [ -n "${POOL_API_KEY:-}" ] && [ -n "${POOL_URL:-}" ]; then

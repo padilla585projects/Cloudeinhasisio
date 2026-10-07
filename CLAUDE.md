@@ -102,6 +102,9 @@ Si los archivos están en la raíz, HA no detecta actualizaciones. NUNCA mover a
   clave, chat y fondos van al pool y DeepSeek queda de respaldo; sin ellas todo
   va a DeepSeek como siempre. La URL puede llevar o no `/openai/v1` al final
   (v3.39.1). La dirección concreta, en las opciones del add-on — no se publica aquí.
+- `POOL_MODEL_FONDO` — modelo virtual del pool para trabajo de fondo (opcional, v3.42.0),
+  p. ej. `jarvis-fondo:1.0`. Vacío = se usa `POOL_MODEL`. Lo usan las tareas marcadas
+  `{background:true}` (`C.FONDO_MODEL`); van con `X-AI-Pool-Priority: batch`.
 
 ## Reglas del proyecto
 

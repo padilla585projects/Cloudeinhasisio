@@ -103,7 +103,7 @@ Solo información VERIFICABLE y PRÁCTICA. Nada genérico.`;
 
     let knowResult;
     try {
-      knowResult = await callLLM(C.FONDO_MODEL, 'Eres un experto técnico. Genera conocimiento estructurado y práctico. Responde SOLO con la llamada a knowledge_db. Español. Sé conciso pero completo.', [{ role: 'user', content: knowledgePrompt }], knowledgeTools, 800);
+      knowResult = await callLLM(C.FONDO_MODEL, 'Eres un experto técnico. Genera conocimiento estructurado y práctico. Responde SOLO con la llamada a knowledge_db. Español. Sé conciso pero completo.', [{ role: 'user', content: knowledgePrompt }], knowledgeTools, 800, { background: true });
     } catch (err) {
       console.log(`[knowledge] Error API: ${err.message}`);
       return;
