@@ -117,13 +117,26 @@ async function nexusRoute(message) {
       128,
       { thinking: false }
     );
-    const expert = result.text.trim().toLowerCase().split(/[\s\n]/)[0];
-    if (nexusGetAllExperts()[expert]) return { expert, source: 'llm', confidence: 0.8 };
+    const expert = parseExpertReply(result.text, nexusGetAllExperts());
+    if (expert) return { expert, source: 'llm', confidence: 0.8 };
+    console.log(`[nexus] Router LLM: respuesta no valida "${String(result.text || '').trim().slice(0, 40)}" -> fallback`);
   } catch (e) {
     console.log('[nexus] Router LLM error:', e.message);
   }
 
   return { expert: 'ha_control', source: 'fallback', confidence: 0.6 };
+}
+
+// El clasificador debe contestar UNA palabra, pero los modelos a veces la envuelven: "analisis.",
+// **analisis**, `ha_control`, "Automatización", "Experto: red"... Devuelve el nombre del experto o ''.
+function parseExpertReply(text, experts) {
+  const raw = String(text || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  if (!raw) return '';
+  const first = raw.split(/\s+/)[0].replace(/[^a-z0-9_]/g, '');
+  if (experts[first]) return first;
+  // Un nombre de experto como palabra completa en cualquier parte (el mas largo primero: "ha_control" antes que "red").
+  const names = Object.keys(experts).sort((a, b) => b.length - a.length);
+  return names.find(n => new RegExp(`(^|[^a-z0-9_])${n}($|[^a-z0-9_])`).test(raw)) || '';
 }
 
 // ── NEXUS Ensamblador de prompts (usa layers L0-L4) ───────────────────────────
@@ -158,6 +171,7 @@ function nexusLogLayerStats(expertName) {
 }
 
 module.exports = {
+  parseExpertReply,
   nexusRoute,
   nexusAssemblePrompt,
   nexusAssembleStaticPrompt,

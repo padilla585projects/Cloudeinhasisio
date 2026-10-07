@@ -486,6 +486,7 @@ function poolBreakerOpen() { return Date.now() < poolBreaker.openUntil; }
 function closePoolBreaker() {
   if (poolBreaker.openUntil) console.log('[llm] pool operativo -> cortacircuitos cerrado');
   poolBreaker.openUntil = 0;
+  _searchPausedUntil = 0;   // el Core contesta: tambien se reanuda la busqueda del pool
 }
 // Fallos que merecen pausar el pool. Un 400/401/404 es un error NUESTRO (payload,
 // clave, URL): se sigue intentando y registrando, no se silencia con una pausa.
@@ -763,8 +764,12 @@ async function callWhisper(audioBuffer, filename = 'audio.webm', language = 'es'
 // libres de casa y las resume con modelos pequenos locales (gratis). Devuelve el JSON del pool
 // ({results:[{title,url,snippet,read,summary}], devices, took_s}) o null si no se puede (sin pool,
 // cortacircuitos abierto, error, plazo): quien llama usa entonces su busqueda de siempre.
-async function poolSearch(query, { results = 8, read = 3, question, timeoutMs = 25000 } = {}) {
+// Si falla (plazo, red, error), se PAUSA 10 min: la busqueda del pool tarda 14-33 s con equipos libres
+// y un agente puede encadenar varias; sin pausa cada una perderia el plazo entero antes de usar la directa.
+let _searchPausedUntil = 0;
+async function poolSearch(query, { results = 8, read = 3, question, timeoutMs = 35000 } = {}) {
   if (!POOL_API_KEY || !POOL_URL || poolBreakerOpen() || !query) return null;
+  if (Date.now() < _searchPausedUntil) return null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -779,13 +784,16 @@ async function poolSearch(query, { results = 8, read = 3, question, timeoutMs = 
       signal: controller.signal
     });
     if (!r.ok) {
-      console.log(`[search] pool error ${r.status} -> busqueda directa`);
+      console.log(`[search] pool error ${r.status} -> busqueda directa (el pool se pausa 10 min)`);
+      _searchPausedUntil = Date.now() + 10 * 60 * 1000;
       return null;
     }
     const data = await r.json();
+    _searchPausedUntil = 0;
     return (data && Array.isArray(data.results)) ? data : null;
   } catch (e) {
-    console.log(`[search] pool no disponible (${(e.message || '').slice(0, 80)}) -> busqueda directa`);
+    console.log(`[search] pool no disponible (${(e.message || '').slice(0, 80)}) -> busqueda directa (el pool se pausa 10 min)`);
+    _searchPausedUntil = Date.now() + 10 * 60 * 1000;
     return null;
   } finally {
     clearTimeout(timer);
