@@ -9,6 +9,9 @@ const state = require('./state');
 // cache_read / cache_write: coste de tokens de prompt caching (Anthropic)
 const MODEL_PRICES = {
   'deepseek-v4-flash':  { in: 0.14 / 1e6,   out: 0.28 / 1e6,  cache_read: 0.0028 / 1e6,   cache_write: 0 },
+  // DeepSeek lista hoy su modelo rapido como 'deepseek-flash' (v4-flash es un alias que puede desaparecer);
+  // el Core del pool lo usa asi en sus cadenas. Mismo precio.
+  'deepseek-flash':     { in: 0.14 / 1e6,   out: 0.28 / 1e6,  cache_read: 0.0028 / 1e6,   cache_write: 0 },
   'deepseek-v4-pro':    { in: 0.435 / 1e6,  out: 0.87 / 1e6,  cache_read: 0.003625 / 1e6, cache_write: 0 },
   'deepseek-chat':      { in: 0.27 / 1e6,   out: 1.10 / 1e6,  cache_read: 0, cache_write: 0 },
   'deepseek-reasoner':  { in: 0.55 / 1e6,   out: 2.19 / 1e6,  cache_read: 0, cache_write: 0 },
@@ -624,9 +627,11 @@ async function callPool(model, system, messages, aiTools, maxTokens, options = {
   // y tokens NUEVOS leídos (prompt - cache), que es lo que marca el tiempo de lectura.
   try {
     const pm = poolModelUsed;
-    const pw = response.headers.get('x-ai-pool-worker') || '?';
+    // Local: X-AI-Pool-Worker (el equipo). Pago: no hay worker, esta X-AI-Pool-Provider.
+    const pw = response.headers.get('x-ai-pool-worker') || response.headers.get('x-ai-pool-provider') || '?';
     const pt = usage.prompt_tokens || 0;
-    const ct = (usage.prompt_tokens_details && usage.prompt_tokens_details.cached_tokens) || 0;
+    // Local (llama.cpp): prompt_tokens_details.cached_tokens. DeepSeek: prompt_cache_hit_tokens.
+    const ct = (usage.prompt_tokens_details && usage.prompt_tokens_details.cached_tokens) || usage.prompt_cache_hit_tokens || 0;
     console.log(`[llm] pool OK (${poolSource}): ${pm}@${pw} | prompt ${pt} (cache ${ct}, nuevos ${pt - ct}) | out ${usage.completion_tokens || 0}`);
   } catch {}
   return {

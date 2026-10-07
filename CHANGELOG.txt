@@ -3,6 +3,22 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.43.2 - Precio de deepseek-flash y traza del pool mas fiel
+────────────────────────────────────────────────────────────────────────────────
+
+ - DeepSeek lista hoy su modelo rapido como "deepseek-flash" ("deepseek-v4-flash" sigue
+   respondiendo pero es un alias que puede desaparecer). El Core del pool cambio sus
+   cadenas jarvis:1.0 y jarvis-fondo:1.0 a paid:deepseek/deepseek-flash. Sin conocer ese
+   nombre, poolPriceKey lo contaba al precio de v4-pro (3x mas caro) en el guarda diario.
+   Ahora MODEL_PRICES incluye deepseek-flash al mismo precio que v4-flash.
+ - Traza "[llm] pool OK (...)": en pago no hay X-AI-Pool-Worker, se muestra el proveedor
+   (X-AI-Pool-Provider) en vez de "@?", y la cache de DeepSeek (prompt_cache_hit_tokens)
+   se muestra como "cache N" en lugar de 0. Solo es cosmetico: el coste ya usaba esos campos.
+
+IMPACTO DE TOKENS (REGLA DE ORO): NEUTRO o a la baja. No cambia ninguna llamada; solo corrige
+una sobreestimacion del gasto (flash contado como pro) y el texto de un log.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.43.1 - Ajustes tras confirmar el contrato con el Core del pool
 ────────────────────────────────────────────────────────────────────────────────
 
