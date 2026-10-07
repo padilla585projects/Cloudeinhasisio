@@ -75,9 +75,10 @@ const state = {
 
   // ── Tareas programadas ───────────────────────────────────────────────────
   scheduledTasks: {},
+  poolSpend: null,   // ultimo gasto leido del pool (spendwatch): para /api/cost
 
   // ── Versión ──────────────────────────────────────────────────────────────
-  JARVIS_VERSION: '3.44.2',
+  JARVIS_VERSION: '3.45.0',
 };
 
 module.exports = state;

@@ -335,6 +335,35 @@ function poolUseLabel(use) {
   return String(use).replace(/[^a-zA-Z0-9_.:-]/g, '_').slice(0, 40);
 }
 
+// Aviso (como mucho cada 6 h) de que el pool ha cortado el gasto de pago de Jarvis. Lazy-require: evita ciclos.
+let _ultimoAvisoTope = 0;
+function avisoTopeAlcanzado() {
+  if (Date.now() - _ultimoAvisoTope < 6 * 3600_000) return;
+  _ultimoAvisoTope = Date.now();
+  try {
+    require('./notify').notify('💶 El pool ha cortado el gasto de IA de pago de Jarvis: se alcanzo el tope mensual del proyecto. Hasta el mes siguiente (o hasta que se suba el tope) solo funciona la IA local, y el ASUS va justo.',
+      { title: 'Jarvis — tope de gasto alcanzado', source: 'spendwatch' }).catch(() => {});
+  } catch (_) {}
+}
+
+// Gasto del mes de Jarvis segun el pool (GET /v1/spend/me): {state, month_eur, budget_eur, project_month_eur,
+// project_cap_eur}. null si no se puede leer (se registra el motivo). No cuenta como gasto.
+async function poolSpendMe() {
+  if (!POOL_API_KEY || !POOL_URL) return null;
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), 10000);
+  try {
+    const r = await fetch(`${poolBase()}/v1/spend/me`, { headers: { 'Authorization': `Bearer ${POOL_API_KEY}` }, signal: controller.signal });
+    if (!r.ok) { console.log(`[spend] /v1/spend/me -> ${r.status}`); return null; }
+    return await r.json();
+  } catch (e) {
+    console.log(`[spend] /v1/spend/me no disponible (${(e.message || '').slice(0, 80)})`);
+    return null;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 function poolBase() {
   // Acepta la URL como la da el panel del pool: con o sin /openai/v1 (o /v1) al final.
   return POOL_URL.replace(/\/+$/, '').replace(/\/(openai\/v1|openai|v1)$/i, '');
@@ -426,6 +455,14 @@ async function callPool(model, system, messages, aiTools, maxTokens, options = {
   }
   if (!response.ok) {
     const err = await response.text();
+    // Tope mensual POR PROYECTO del Core (corte duro, 429 project_budget_exceeded): el texto NO lleva "429"
+    // a proposito, para que el bucle del agente no lo reintente como un limite pasajero.
+    if (/project_budget_exceeded/.test(err)) {
+      const eTope = new Error('tope mensual de gasto de Jarvis en el pool alcanzado (project_budget_exceeded): el pool no hace llamadas de pago hasta el mes siguiente o hasta que se suba el tope; solo funciona la IA local');
+      eTope.projectBudgetExceeded = true;
+      avisoTopeAlcanzado();
+      throw eTope;
+    }
     const e = new Error(`pool error ${response.status}: ${err.slice(0, 200)}`);
     // Con el presupuesto del pool en critical/over, el Core bloquea SOLO lo marcado batch con HTTP 429
     // y {"error":{"type":"rate_limit_error","code":"budget_deferred"}} (confirmado por el Core). NO es
@@ -624,5 +661,6 @@ module.exports = {
   stripImagesFromHistory,
   persistApiUsage,
   poolWarm,
-  poolSearch
+  poolSearch,
+  poolSpendMe
 };

@@ -33,6 +33,8 @@ const VISION_MODEL      = USE_POOL ? (process.env.POOL_MODEL_VISION || 'jarvis-v
 // ¿Hay ALGUN proveedor de IA configurado? Los bucles de fondo se saltan si no. Antes miraban solo la
 // clave de Anthropic (un resto de cuando Jarvis usaba Claude, hasta v3.36.0): sin ella, p. ej. el
 // analisis de patrones no se ejecutaba nunca aunque el pool o DeepSeek funcionaran.
+// Cifra mensual (EUR) para los avisos de gasto en el pool cuando el Core aun no tiene un tope por proyecto. Adrian: 15.
+const POOL_SPEND_ALERT_EUR = Number(process.env.POOL_SPEND_ALERT_EUR) || 15;
 const HAS_LLM           = USE_POOL || !!(process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY);
 const HA_TOKEN          = process.env.HA_TOKEN;
 const HA_URL            = process.env.HA_URL  || 'http://supervisor/core';
@@ -76,7 +78,7 @@ const API_USAGE_FILE         = path.join(DATA_DIR, 'api_usage.json');
 
 module.exports = {
   ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, SERPER_API_KEY,
-  MODEL, BG_MODEL, CLAUDE_MODEL, FONDO_MODEL, VISION_MODEL, HAS_LLM,
+  MODEL, BG_MODEL, CLAUDE_MODEL, FONDO_MODEL, VISION_MODEL, HAS_LLM, POOL_SPEND_ALERT_EUR,
   DEEPSEEK_API_KEY, DEEPSEEK_URL, DEEPSEEK_MODEL, DEEPSEEK_R1_MODEL,
   POOL_URL, POOL_API_KEY, POOL_MODEL, POOL_MODEL_FONDO, USE_POOL,
   HA_TOKEN, HA_URL, LANGUAGE,

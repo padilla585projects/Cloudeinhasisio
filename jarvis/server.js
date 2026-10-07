@@ -33,6 +33,7 @@ const { infraGuardLoop } = require('./background/infraguard');
 const { watchGuardLoop } = require('./background/watchguard');
 const { nasGuardLoop } = require('./background/nasguard');
 const { latidoLoop } = require('./background/latido');
+const { spendWatchLoop } = require('./background/spendwatch');
 const { startTelegramBot } = require('./background/telegram_bot');
 const { init: initNotifications, queueNotification, getRecentNotifications } = require('./background/notifications');
 
@@ -1330,7 +1331,12 @@ app.get('/api/cost', (req, res) => {
       cache_creation_tokens: state.apiUsage.cacheCreationTokens,
       saver_mode: state.saverMode,
       model: state.saverMode ? C.BG_MODEL : C.MODEL,
-      since: state.apiUsage.lastReset
+      since: state.apiUsage.lastReset,
+      // Gasto de pago del mes segun el pool (spendwatch; null hasta la primera lectura)
+      pool_project_month_eur: state.poolSpend ? state.poolSpend.project_month_eur : null,
+      pool_cap_eur: state.poolSpend ? state.poolSpend.cap_eur : null,
+      pool_cap_pct: state.poolSpend ? state.poolSpend.pct : null,
+      pool_state: state.poolSpend ? state.poolSpend.state : null
     }
   });
 });
@@ -1872,6 +1878,13 @@ app.listen(PORT, '0.0.0.0', () => {
   //    y avisa: es lo único que funciona cuando HA, el NAS o la luz se caen.
   setInterval(latidoLoop, 5 * 60_000);
   setTimeout(latidoLoop, 60_000);
+
+  // ── SPENDWATCH — avisos del gasto de IA de pago de Jarvis en el pool (código puro, sin IA):
+  //    cada 2 h lee su gasto del mes y avisa al 70/90/100 % del tope (15 €). Primer chequeo a los 10 min.
+  if (POOL_MODE) {
+    setInterval(spendWatchLoop, 2 * 3600_000);
+    setTimeout(spendWatchLoop, 10 * 60_000);
+  }
 
   // ── Proactive device health scan (cada 4h, primer chequeo a los 10 min)
   //    OJO: esto solo registra baterías bajas en device_health_log.json. Lo de

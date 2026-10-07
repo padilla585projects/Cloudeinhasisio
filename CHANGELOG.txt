@@ -3,6 +3,32 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.45.0 - Avisos del gasto de IA de pago en el pool (tope de Jarvis: 15 EUR/mes)
+────────────────────────────────────────────────────────────────────────────────
+
+POR QUE: con "todo por el pool, sin respaldos" el gasto de pago lo lleva el Core (100 EUR/mes entre todas
+las apps) y puede fijar un tope DURO por proyecto: al alcanzarlo, TODA llamada de pago de Jarvis (chat y voz
+incluidos) recibe 429 `project_budget_exceeded` y Jarvis se queda sin IA de pago hasta el mes siguiente.
+Adrian fijo 15 EUR/mes para Jarvis (07-10-2026; el Core lo pondra cuando se lo confirme en su chat).
+
+QUE CAMBIA
+ - background/spendwatch.js (nuevo): cada 2 h (primer chequeo a los 10 min) lee GET /v1/spend/me del pool con
+   la clave de Jarvis y avisa por utils/notify.js (Telegram + HA) UNA vez al mes al 70 %, 90 % y 100 % del
+   tope. Tope = project_cap_eur del Core si existe; si aun no, la cifra acordada POOL_SPEND_ALERT_EUR (15).
+   Si se cruzan varios umbrales de golpe, un solo aviso (el mas alto). Tambien avisa una vez por estado del
+   gasto GLOBAL del pool (warn / critical / over). Si ningun canal entrega el aviso NO se marca como enviado
+   y se reintenta en 2 h. Registro en /data/spend_alerts.json (se reinicia cada mes).
+ - llm.js: poolSpendMe() (GET /v1/spend/me, 10 s). Error claro cuando el pool corta por el tope de proyecto
+   (project_budget_exceeded): "tope mensual de gasto de Jarvis en el pool alcanzado ... solo funciona la IA
+   local"; el texto no lleva "429" para que el bucle del agente no lo reintente como un limite pasajero, y
+   manda un aviso (como mucho cada 6 h).
+ - /api/cost: nuevos atributos pool_project_month_eur, pool_cap_eur, pool_cap_pct, pool_state (null hasta la
+   primera lectura).
+
+IMPACTO DE TOKENS (REGLA DE ORO): CERO tokens. Ninguna llamada a un LLM: un GET de unos cientos de bytes cada
+2 h (12 al dia, sin coste en el libro del pool).
+
+────────────────────────────────────────────────────────────────────────────────
 v3.44.2 - Historial sin mensajes `tool` huerfanos (error 502 "unexpected tool_use_id found")
 ────────────────────────────────────────────────────────────────────────────────
 

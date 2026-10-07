@@ -77,6 +77,7 @@ Si los archivos están en la raíz, HA no detecta actualizaciones. NUNCA mover a
         ├── infraguard.js     # Monitor de add-ons/infra vía Supervisor
         ├── nasguard.js       # Monitor del NAS OpenMediaVault (cada 6h)
         ├── latido.js         # Señal de vida al centinela externo (cada 5 min)
+        ├── spendwatch.js     # Avisos del gasto de IA de pago en el pool (cada 2 h, sin IA)
         ├── notifications.js  # Batching de notificaciones
         └── telegram_bot.js   # Bot de Telegram
 ```
@@ -105,6 +106,8 @@ Si los archivos están en la raíz, HA no detecta actualizaciones. NUNCA mover a
   clave, TODO va por el pool y NO hay respaldos propios (v3.44.0); sin ellas, modo
   directo (DeepSeek/OpenAI con sus claves) como antes del pool. La URL puede llevar o no `/openai/v1` al final
   (v3.39.1). La dirección concreta, en las opciones del add-on — no se publica aquí.
+- `POOL_SPEND_ALERT_EUR` — cifra mensual (EUR) de los avisos de gasto en el pool cuando el Core aún no
+  tiene tope por proyecto (v3.45.0; 15 por defecto = lo que fijó Adrián). Sin opción en el add-on.
 - `POOL_MODEL_FONDO` — modelo virtual del pool para trabajo de fondo (opcional, v3.42.0),
   p. ej. `jarvis-fondo:1.0`. Vacío = se usa `POOL_MODEL`. Lo usan las tareas marcadas
   `{background:true}` (`C.FONDO_MODEL`); van con `X-AI-Pool-Priority: batch`.
@@ -484,6 +487,9 @@ de pago. Cada respuesta trae `X-AI-Pool-Source: local|paid` y `X-AI-Pool-Model` 
 - Con el presupuesto en critical/over el Core bloquea SOLO lo `batch`: HTTP 429 con
   `code: "budget_deferred"`. Esa tarea se omite (`e.budgetBlocked`); no hay respaldo.
 - `X-AI-Pool-Model` en pago llega como `paid:proveedor/modelo` (p. ej. `paid:deepseek/deepseek-v4-pro`).
+- Tope POR PROYECTO del Core = corte DURO: al alcanzarlo toda llamada de pago de Jarvis recibe 429
+  `project_budget_exceeded` (distinto del global de 100 €, que solo aplaza lo `batch`). `spendwatch.js` avisa al
+  70/90/100 % leyendo `GET /v1/spend/me`; el error del tope no lleva "429" en el texto para que el bucle no lo reintente.
 - Contrato del Core: `ai-pool/pool/docs/plan-ia-de-pago-en-el-pool.md` (§8) y `contrato-modo-pool.md`.
 
 ### Con el pool, el prompt tiene que ser un PREFIJO ESTABLE (v3.40.0)
