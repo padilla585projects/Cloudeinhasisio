@@ -226,7 +226,7 @@ REGLAS DE ORO:
     for (let iter = 0; iter < MAX_ITER; iter++) {
       let result;
       try {
-        result = await callLLM(model, system, messages, tools, 1500, { background: true });
+        result = await callLLM(model, system, messages, tools, 1500, { background: true, use: 'proactivo' });
       } catch (err) {
         console.log(`[proactive] Error API iter=${iter}: ${err.message}`);
         break;

@@ -1,7 +1,7 @@
 'use strict';
 const fs = require('fs');
 const fetch = require('node-fetch');
-const { OPENAI_API_KEY, ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, DEEPSEEK_URL, API_USAGE_FILE,
+const { OPENAI_API_KEY, DEEPSEEK_API_KEY, DEEPSEEK_URL, API_USAGE_FILE,
         POOL_URL, POOL_API_KEY, POOL_MODEL, POOL_MODEL_FONDO } = require('./constants');
 const state = require('./state');
 
@@ -114,114 +114,6 @@ function stripImagesFromHistory() {
   });
 }
 
-// ── Conversión OpenAI → Anthropic ────────────────────────────────────────────
-
-function convertMessagesToAnthropic(openAIMessages) {
-  const result = [];
-  let i = 0;
-  while (i < openAIMessages.length) {
-    const msg = openAIMessages[i];
-
-    if (msg.role === 'system') {
-      // Los system messages van como system param en Anthropic, no en messages[]
-      i++; continue;
-    }
-
-    if (msg.role === 'tool') {
-      // Agrupar todos los tool_results consecutivos en un único user message
-      const toolResults = [];
-      while (i < openAIMessages.length && openAIMessages[i].role === 'tool') {
-        toolResults.push({
-          type: 'tool_result',
-          tool_use_id: openAIMessages[i].tool_call_id,
-          content: String(openAIMessages[i].content || '')
-        });
-        i++;
-      }
-      result.push({ role: 'user', content: toolResults });
-      continue;
-    }
-
-    if (msg.role === 'user') {
-      if (typeof msg.content === 'string') {
-        result.push({ role: 'user', content: [{ type: 'text', text: msg.content }] });
-      } else if (Array.isArray(msg.content)) {
-        const content = [];
-        for (const block of msg.content) {
-          if (block.type === 'text') {
-            content.push(block);
-          } else if (block.type === 'image_url') {
-            const url = block.image_url?.url || '';
-            const m = url.match(/^data:([^;]+);base64,(.+)$/s);
-            if (m) {
-              content.push({ type: 'image', source: { type: 'base64', media_type: m[1], data: m[2] } });
-            } else {
-              content.push({ type: 'text', text: `[imagen: ${url.slice(0, 80)}]` });
-            }
-          } else if (block.type === 'tool_result') {
-            content.push(block);
-          } else {
-            content.push({ type: 'text', text: block.text || JSON.stringify(block) });
-          }
-        }
-        if (content.length === 0) content.push({ type: 'text', text: '[mensaje vacío]' });
-        result.push({ role: 'user', content });
-      }
-      i++; continue;
-    }
-
-    if (msg.role === 'assistant') {
-      const content = [];
-      // Texto
-      const text = typeof msg.content === 'string' ? msg.content : (Array.isArray(msg.content) ? msg.content.find(b => b.type === 'text')?.text : null);
-      if (text) content.push({ type: 'text', text });
-      // Tool calls
-      if (msg.tool_calls && msg.tool_calls.length > 0) {
-        for (const tc of msg.tool_calls) {
-          let input = {};
-          try { input = JSON.parse(tc.function?.arguments || '{}'); } catch {}
-          content.push({ type: 'tool_use', id: tc.id, name: tc.function?.name || 'unknown', input });
-        }
-      }
-      if (content.length === 0) content.push({ type: 'text', text: '' });
-      result.push({ role: 'assistant', content });
-      i++; continue;
-    }
-
-    i++;
-  }
-
-  // Anthropic requiere que el primer mensaje sea 'user' y que no haya dos del mismo rol seguidos
-  // Asegurar alternancia básica
-  const cleaned = [];
-  for (const m of result) {
-    if (cleaned.length > 0 && cleaned[cleaned.length - 1].role === m.role) {
-      // Combinar con el anterior si es el mismo rol
-      const prev = cleaned[cleaned.length - 1];
-      const combined = Array.isArray(prev.content) ? prev.content : [{ type: 'text', text: String(prev.content) }];
-      const addContent = Array.isArray(m.content) ? m.content : [{ type: 'text', text: String(m.content) }];
-      cleaned[cleaned.length - 1] = { role: m.role, content: [...combined, ...addContent] };
-    } else {
-      cleaned.push(m);
-    }
-  }
-
-  if (cleaned.length > 0 && cleaned[0].role !== 'user') {
-    cleaned.unshift({ role: 'user', content: [{ type: 'text', text: '[inicio de conversación]' }] });
-  }
-
-  return cleaned;
-}
-
-function convertToolsToAnthropic(openAITools) {
-  if (!openAITools || openAITools.length === 0) return [];
-  return openAITools.map(t => ({
-    name: t.function.name,
-    description: t.function.description,
-    input_schema: t.function.parameters || { type: 'object', properties: {} }
-  }));
-}
-
 // ── Llamada a OpenAI ──────────────────────────────────────────────────────────
 
 // ── Retry con backoff exponencial para errores transitorios ──────────────────
@@ -288,99 +180,6 @@ async function callOpenAI(model, system, messages, aiTools, maxTokens) {
     message,
     usage
   };
-}
-
-// ── Llamada a Anthropic Claude ────────────────────────────────────────────────
-
-async function callAnthropic(model, system, messages, aiTools, maxTokens) {
-  if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY no configurada');
-
-  const anthropicMsgs = convertMessagesToAnthropic(messages);
-  const anthropicTools = convertToolsToAnthropic(aiTools);
-
-  // Split semántico para prompt caching: buscar delimitador entre parte estática y dinámica
-  const systemBlocks = [];
-  if (system) {
-    const dynamicMarkers = ['CONTEXTO ACTUAL:', 'ESTADO EN TIEMPO REAL:', 'MEMORIA'];
-    let splitIdx = -1;
-    for (const marker of dynamicMarkers) {
-      const idx = system.indexOf(marker);
-      if (idx > 0) { splitIdx = idx; break; }
-    }
-    if (splitIdx < 0) splitIdx = Math.floor(system.length * 0.6);
-    const staticPart = system.slice(0, splitIdx);
-    const dynamicPart = system.slice(splitIdx);
-    if (staticPart) systemBlocks.push({ type: 'text', text: staticPart, cache_control: { type: 'ephemeral' } });
-    if (dynamicPart) systemBlocks.push({ type: 'text', text: dynamicPart });
-  }
-
-  const body = {
-    model,
-    max_tokens: maxTokens,
-    system: systemBlocks.length > 0 ? systemBlocks : undefined,
-    messages: anthropicMsgs
-  };
-  if (anthropicTools.length > 0) body.tools = anthropicTools;
-
-  const data = await withRetry(async () => {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 90000);
-    let response;
-    try {
-      response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01',
-          'anthropic-beta': 'prompt-caching-2024-07-31'
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal
-      });
-    } finally {
-      clearTimeout(timeoutId);
-    }
-    if (!response.ok) {
-      const err = await response.text();
-      const sanitizedErr = err.slice(0, 300).replace(/sk-ant-[a-zA-Z0-9\-]+/g, '[KEY_REDACTED]');
-      throw new Error(`Anthropic error ${response.status}: ${sanitizedErr}`);
-    }
-    return response.json();
-  });
-
-  // Convertir respuesta Anthropic → formato OpenAI (para que server.js no cambie)
-  let text = '';
-  const toolCalls = [];
-  for (const block of (data.content || [])) {
-    if (block.type === 'text') text += block.text;
-    if (block.type === 'tool_use') {
-      toolCalls.push({ id: block.id, name: block.name, input: block.input || {} });
-    }
-  }
-
-  const finishReason = data.stop_reason === 'tool_use' ? 'tool_calls' : 'stop';
-
-  // Reconstruir message en formato OpenAI para que el loop pueda pushearlo de vuelta
-  const openAIMessage = {
-    role: 'assistant',
-    content: text || null,
-    tool_calls: toolCalls.map(tc => ({
-      id: tc.id,
-      type: 'function',
-      function: { name: tc.name, arguments: JSON.stringify(tc.input) }
-    }))
-  };
-  if (openAIMessage.tool_calls.length === 0) delete openAIMessage.tool_calls;
-
-  const usage = {
-    prompt_tokens: data.usage?.input_tokens || 0,
-    completion_tokens: data.usage?.output_tokens || 0,
-    cache_read_input_tokens: data.usage?.cache_read_input_tokens || 0,
-    cache_creation_input_tokens: data.usage?.cache_creation_input_tokens || 0
-  };
-  trackUsage(model, usage);
-  return { text, toolCalls, finishReason, message: openAIMessage, usage };
 }
 
 // ── DeepSeek (V3 + R1) ────────────────────────────────────────────────────────
@@ -469,40 +268,6 @@ async function callDeepSeek(model, system, messages, aiTools, maxTokens, options
   };
 }
 
-// ── Cortacircuitos del pool ──────────────────────────────────────────────────
-// Con la caché del pool fría (tras reiniciar el ASUS), leer el prompt entero
-// (~8k tokens medidos por el pool) tarda 90-190+ s según la carga de la GPU, y mi
-// timeout interactivo es de 45 s: cada intento se aborta y cada mensaje del usuario
-// espera 45 s antes de caer a DeepSeek. Ante un fallo transitorio
-// (timeout, red, 429, 5xx) se ABRE el cortacircuitos: las peticiones van directas a
-// DeepSeek y se lanza un calentamiento en segundo plano (hook registrado por
-// server.js) con timeout largo. Al terminar bien, se cierra. Tope: 10 min.
-const POOL_BREAKER_MAX_MS = 10 * 60 * 1000;
-const poolBreaker = { openUntil: 0 };
-let poolWarmupHook = null;
-
-function setPoolWarmupHook(fn) { poolWarmupHook = fn; }
-function poolBreakerOpen() { return Date.now() < poolBreaker.openUntil; }
-function closePoolBreaker() {
-  if (poolBreaker.openUntil) console.log('[llm] pool operativo -> cortacircuitos cerrado');
-  poolBreaker.openUntil = 0;
-  _searchPausedUntil = 0;   // el Core contesta: tambien se reanuda la busqueda del pool
-}
-// Fallos que merecen pausar el pool. Un 400/401/404 es un error NUESTRO (payload,
-// clave, URL): se sigue intentando y registrando, no se silencia con una pausa.
-function isPoolTransient(e) {
-  const msg = (e && e.message) || '';
-  return (e && e.name === 'AbortError') ||
-    /aborted|timeout|timed out|ECONNREFUSED|ECONNRESET|ENOTFOUND|EHOSTUNREACH|fetch failed|socket/i.test(msg) ||
-    /pool error (429|5\d\d)/.test(msg);
-}
-function openPoolBreaker(reason) {
-  const wasOpen = poolBreakerOpen();
-  poolBreaker.openUntil = Date.now() + POOL_BREAKER_MAX_MS;
-  if (!wasOpen) console.log(`[llm] pool en pausa hasta calentar (máx 10 min): ${reason}`);
-  if (poolWarmupHook) { try { poolWarmupHook(); } catch (_) {} }
-}
-
 // Clave de precio de un modelo servido por el pool de pago. X-AI-Pool-Model trae el
 // modelo real, p. ej. "deepseek-v4-pro", "claude-haiku-4-5-20251001" o con proveedor
 // delante ("paid:deepseek/deepseek-v4-pro"). Si no lo conocemos, trackUsage usa el
@@ -514,15 +279,20 @@ function poolPriceKey(modelHeader) {
   return hit || 'deepseek-v4-pro';
 }
 
-// ¿Este nombre de modelo lo sirve el pool? (jarvis:1.0, el modelo de fondo configurado, o qwen*).
+// ¿Este nombre de modelo lo sirve el pool? Los modelos virtuales empiezan por "jarvis" (jarvis:1.0,
+// jarvis-fondo:1.0, jarvis-analisis:1.0, jarvis-razonamiento:1.0, jarvis-vision:1.0) y qwen* es local.
 function isPoolModel(model) {
   if (!model) return false;
-  return model === POOL_MODEL || (!!POOL_MODEL_FONDO && model === POOL_MODEL_FONDO) ||
-         model.startsWith('jarvis:') || model.startsWith('jarvis-') || model.startsWith('qwen');
+  return model.startsWith('jarvis') || model.startsWith('qwen') ||
+         model === POOL_MODEL || (!!POOL_MODEL_FONDO && model === POOL_MODEL_FONDO);
 }
-// Nombre real que se pide al pool: el de fondo si se llamo con el, y si no el principal.
+// Nombre real que se pide al pool: los virtuales por su nombre; cualquier otro, el principal.
 function resolvePoolModel(model) {
-  return (POOL_MODEL_FONDO && model === POOL_MODEL_FONDO) ? POOL_MODEL_FONDO : POOL_MODEL;
+  return (model && model.startsWith('jarvis')) ? model : POOL_MODEL;
+}
+// Etiqueta X-AI-Pool-Use (<=40 car., solo [a-zA-Z0-9_.:-]) para el desglose del gasto por ruta en el Core.
+function poolUseLabel(use) {
+  return String(use).replace(/[^a-zA-Z0-9_.:-]/g, '_').slice(0, 40);
 }
 
 function poolBase() {
@@ -558,10 +328,10 @@ async function poolWarm({ minIntervalMs = 0 } = {}) {
 }
 
 // ── Pool de IA local (OpenAI-compatible) ──────────────────────────────────────
-// Llama al pool local (jarvis:1.0). NO manda parámetros de thinking (el pool los
-// rechaza). max_tokens SIEMPRE. Un solo intento: ante error/timeout lanza y
-// callLLM cae a DeepSeek (el pool pide fallback inmediato ante 503/429/timeout,
-// y las peticiones van de una en una, no en ráfaga). Coste 0 (inferencia local).
+// Llama al pool (jarvis:1.0 y demas modelos virtuales). El Core enruta local -> pago y es quien
+// lleva el respaldo: Jarvis NO tiene respaldo propio. Un solo intento; ante error o plazo lanza.
+// max_tokens SIEMPRE. NO manda thinking al local (lo rechaza); solo a los alias sin tramo local
+// (jarvis-analisis / jarvis-razonamiento) y solo si es booleano: el Core lo traduce para DeepSeek.
 async function callPool(model, system, messages, aiTools, maxTokens, options = {}) {
   if (!POOL_API_KEY || !POOL_URL) {
     const e = new Error('Pool no configurado (pool_url / pool_api_key)');
@@ -575,8 +345,11 @@ async function callPool(model, system, messages, aiTools, maxTokens, options = {
     body.tools = aiTools;
     body.tool_choice = 'auto';
   }
-  // Timeout adaptativo: interactivo 45s (cubre carga de modelo en frío), fondos más largo.
-  const timeoutMs = options.timeoutMs || (options.background ? 180000 : 45000);
+  // Los alias de analisis y razonamiento son solo de pago: aqui si se puede pedir razonar o no.
+  if (typeof options.thinking === 'boolean' && /^jarvis-(analisis|razonamiento)/.test(body.model)) body.thinking = options.thinking;
+  // Plazo: interactivo 120 s, fondo 180 s (el Core corta a los 190). Sin respaldo propio, es mejor
+  // esperar a que el pool conteste (local <=10 s y luego pago) que cortar y dejar al usuario sin respuesta.
+  const timeoutMs = options.timeoutMs || (options.background ? 180000 : 120000);
   // Siempre reconstruimos el endpoint canónico, así no importa cómo se pegue la URL.
   const base = poolBase();
 
@@ -594,7 +367,9 @@ async function callPool(model, system, messages, aiTools, maxTokens, options = {
         // Trabajo de fondo = aplazable: el local tiene hasta 60 s (en vez de 10) antes de pasar a
         // pago, y si el presupuesto del pool llega a critical/over, el Core lo corta antes que a
         // lo que espera un usuario.
-        ...(options.background ? { 'X-AI-Pool-Priority': 'batch' } : {})
+        ...(options.background ? { 'X-AI-Pool-Priority': 'batch' } : {}),
+        // Ruta de la llamada (chat_ha_control, router, fondo_resumen...) para el desglose en el contador del Core.
+        ...(options.use ? { 'X-AI-Pool-Use': poolUseLabel(options.use) } : {})
       },
       body: JSON.stringify(body),
       signal: controller.signal
@@ -651,53 +426,20 @@ async function callPool(model, system, messages, aiTools, maxTokens, options = {
 // ── Wrapper unificado ─────────────────────────────────────────────────────────
 
 async function callLLM(model, system, messages, tools, maxTokens, options = {}) {
-  // Pool de IA local (jarvis:1.0) — si está configurado, con respaldo a DeepSeek.
-  if (POOL_API_KEY && POOL_URL && isPoolModel(model)) {
-    // Respaldo: sin tools (clasificar, resumir, destilar) basta flash; con tools, pro.
-    const fallback = (cause) => {
-      const fbModel = (options.background || !tools || tools.length === 0) ? 'deepseek-v4-flash' : 'deepseek-v4-pro';
-      if (DEEPSEEK_API_KEY) return callDeepSeek(fbModel, system, messages, tools, maxTokens, options);
-      if (OPENAI_API_KEY)   return callOpenAI('gpt-4.1-mini', system, messages, tools, maxTokens);
-      throw cause;
-    };
-
-    if (poolBreakerOpen()) {
-      // Pool frío/caído: ir directo a DeepSeek en vez de esperar 45 s en cada mensaje.
-      return fallback(new Error('pool en pausa (calentando) y sin respaldo configurado'));
-    }
+  // Con el pool configurado TODO va por el pool, sin respaldos: el Core enruta local -> pago y es
+  // el unico que habla con los proveedores. Si el pool falla, la llamada falla (y se ve en el log).
+  if (POOL_API_KEY && POOL_URL) {
+    const target = isPoolModel(model) ? model : POOL_MODEL;
     try {
-      return await callPool(model, system, messages, tools, maxTokens, options);
+      return await callPool(target, system, messages, tools, maxTokens, options);
     } catch (e) {
-      if (e.noApiKey) throw e;
-      if (e.budgetBlocked) {
-        console.log(`[llm] pool: presupuesto agotado, tarea aplazable omitida (${(e.message || '').slice(0, 90)})`);
-        throw e;
-      }
-      console.log(`[llm] pool no disponible (${(e.message || '').slice(0, 90)}) -> fallback DeepSeek`);
-      if (isPoolTransient(e)) openPoolBreaker((e.message || '').slice(0, 60));
-      return fallback(e);
-    }
-  }
-  if (model && model.startsWith('claude-')) {
-    if (!ANTHROPIC_API_KEY) {
-      console.log('[llm] Anthropic no configurado -> fallback deepseek-v4-pro');
-      return callDeepSeek('deepseek-v4-pro', system, messages, tools, maxTokens, options);
-    }
-    try {
-      return await callAnthropic(model, system, messages, tools, maxTokens);
-    } catch (e) {
-      const isCreditsErr = e.message && (
-        e.message.includes('credit') || e.message.includes('balance') ||
-        e.message.includes('quota') || e.message.includes('rate_limit') ||
-        e.message.includes('invalid_api_key') || e.message.includes('401')
-      );
-      if (isCreditsErr) {
-        console.log(`[llm] Anthropic no disponible (${e.message.slice(0,80)}) -> fallback deepseek-v4-pro`);
-        return callDeepSeek('deepseek-v4-pro', system, messages, tools, maxTokens, options);
-      }
+      if (e.budgetBlocked) console.log(`[llm] pool: presupuesto agotado, tarea aplazable omitida (${(e.message || '').slice(0, 90)})`);
+      else console.log(`[llm] pool ERROR (${options.use || target}): ${(e.message || '').slice(0, 140)}`);
       throw e;
     }
   }
+  // Modo directo (sin pool configurado): DeepSeek / OpenAI con sus claves, como antes del pool.
+  if (model && model.startsWith('claude-')) throw new Error('Anthropic ya no esta soportado en Jarvis (v3.44.0): usa el pool');
   if (model && model.startsWith('deepseek-'))  return callDeepSeek(model, system, messages, tools, maxTokens, options);
   return callOpenAI(model, system, messages, tools, maxTokens);
 }
@@ -743,33 +485,24 @@ async function whisperRequest(url, apiKey, audioBuffer, filename, language, extr
   }
 }
 
-// Voz a texto. Con el pool configurado va PRIMERO por el (POST /openai/v1/audio/transcriptions,
-// whisper-1 de pago por ahora, el Core lo apunta en su libro de gasto); si el pool no esta
-// disponible o falla, se usa OpenAI directo como antes. Sin pool: igual que antes.
+// Voz a texto. Con el pool configurado va SOLO por el (POST /openai/v1/audio/transcriptions, whisper-1
+// de pago por ahora; el Core lo apunta en su libro): sin respaldo. Plazo 30 s. Sin pool: OpenAI directo.
 async function callWhisper(audioBuffer, filename = 'audio.webm', language = 'es') {
-  if (POOL_API_KEY && POOL_URL && !poolBreakerOpen()) {
-    try {
-      return await whisperRequest(`${poolBase()}/openai/v1/audio/transcriptions`, POOL_API_KEY,
-        audioBuffer, filename, language, { 'X-AI-Pool-Timeout': '15' }, 15000);
-    } catch (e) {
-      console.log(`[whisper] pool no disponible (${(e.message || '').slice(0, 90)}) -> ${OPENAI_API_KEY ? 'OpenAI directo' : 'sin respaldo'}`);
-      if (!OPENAI_API_KEY) throw e;
-    }
+  if (POOL_API_KEY && POOL_URL) {
+    return whisperRequest(`${poolBase()}/openai/v1/audio/transcriptions`, POOL_API_KEY,
+      audioBuffer, filename, language, { 'X-AI-Pool-Timeout': '30', 'X-AI-Pool-Use': 'voz' }, 30000);
   }
   if (!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY no configurada');
   return whisperRequest('https://api.openai.com/v1/audio/transcriptions', OPENAI_API_KEY, audioBuffer, filename, language);
 }
 
-// Busqueda web del pool (POST /v1/tools/search): el pool busca, descarga las paginas con equipos
-// libres de casa y las resume con modelos pequenos locales (gratis). Devuelve el JSON del pool
-// ({results:[{title,url,snippet,read,summary}], devices, took_s}) o null si no se puede (sin pool,
-// cortacircuitos abierto, error, plazo): quien llama usa entonces su busqueda de siempre.
-// Si falla (plazo, red, error), se PAUSA 10 min: la busqueda del pool tarda 14-33 s con equipos libres
-// y un agente puede encadenar varias; sin pausa cada una perderia el plazo entero antes de usar la directa.
-let _searchPausedUntil = 0;
-async function poolSearch(query, { results = 8, read = 3, question, timeoutMs = 35000 } = {}) {
-  if (!POOL_API_KEY || !POOL_URL || poolBreakerOpen() || !query) return null;
-  if (Date.now() < _searchPausedUntil) return null;
+// Busqueda web del pool (POST /v1/tools/search): el pool busca, descarga las paginas con equipos libres
+// de casa y las resume con modelos pequenos locales (gratis). Devuelve el JSON del pool
+// ({results:[{title,url,snippet,read,summary}], devices, took_s}) o null si falla (se registra en el log);
+// quien llama devuelve entonces un error al agente: no hay busqueda de respaldo. Plazo 40 s (la
+// herramienta corta a los 45 s en el bucle del agente; el pool tarda 14-33 s con equipos libres).
+async function poolSearch(query, { results = 8, read = 3, question, timeoutMs = 40000 } = {}) {
+  if (!POOL_API_KEY || !POOL_URL || !query) return null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -778,22 +511,20 @@ async function poolSearch(query, { results = 8, read = 3, question, timeoutMs = 
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${POOL_API_KEY}`,
-        'X-AI-Pool-Timeout': String(Math.round(timeoutMs / 1000))
+        'X-AI-Pool-Timeout': String(Math.round(timeoutMs / 1000)),
+        'X-AI-Pool-Use': 'busqueda'
       },
       body: JSON.stringify({ query, results, read, ...(question ? { question } : {}) }),
       signal: controller.signal
     });
     if (!r.ok) {
-      console.log(`[search] pool error ${r.status} -> busqueda directa (el pool se pausa 10 min)`);
-      _searchPausedUntil = Date.now() + 10 * 60 * 1000;
+      console.log(`[search] pool error ${r.status}`);
       return null;
     }
     const data = await r.json();
-    _searchPausedUntil = 0;
     return (data && Array.isArray(data.results)) ? data : null;
   } catch (e) {
-    console.log(`[search] pool no disponible (${(e.message || '').slice(0, 80)}) -> busqueda directa (el pool se pausa 10 min)`);
-    _searchPausedUntil = Date.now() + 10 * 60 * 1000;
+    console.log(`[search] pool no disponible (${(e.message || '').slice(0, 80)})`);
     return null;
   } finally {
     clearTimeout(timer);
@@ -837,20 +568,13 @@ async function callImageEdit(imageBuffer, prompt, maskBuffer = null, size = '102
 
 module.exports = {
   callOpenAI,
-  callAnthropic,
   callDeepSeek,
   callLLM,
   callWhisper,
   callImageEdit,
   sanitizeMessagesForOpenAI,
   stripImagesFromHistory,
-  convertMessagesToAnthropic,
-  convertToolsToAnthropic,
   persistApiUsage,
-  setPoolWarmupHook,
   poolWarm,
-  poolSearch,
-  openPoolBreaker,
-  closePoolBreaker,
-  poolBreakerOpen
+  poolSearch
 };

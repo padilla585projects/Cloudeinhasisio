@@ -106,11 +106,11 @@ if bashio::config.has_value 'centinela_clave'; then
 fi
 
 
-bashio::log.info "Iniciando Jarvis AI Agent v3.43.3..."
+bashio::log.info "Iniciando Jarvis AI Agent v3.44.0..."
 bashio::log.info "Modelos cloud: DeepSeek V4 Flash (bg) + V4 Pro (principal/dev)"
 bashio::log.info "Nucleos activos:"
 if [ -n "${POOL_API_KEY:-}" ] && [ -n "${POOL_URL:-}" ]; then
-  bashio::log.info "  · Pool IA local: ACTIVO (${POOL_URL}, modelo ${POOL_MODEL}) -> chat+fondos; DeepSeek de respaldo"
+  bashio::log.info "  · Pool IA local: ACTIVO (${POOL_URL}, modelo ${POOL_MODEL}) -> TODO por el pool, sin respaldos"
 fi
 if [ -n "${DEEPSEEK_API_KEY:-}" ]; then
   bashio::log.info "  · DeepSeek V4: flash (bg/rapido) + pro (principal/dev/razonamiento)"

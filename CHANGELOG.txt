@@ -3,6 +3,57 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.44.0 - TODO por el pool, sin respaldos propios (decision de Adrian, 07-10-2026)
+────────────────────────────────────────────────────────────────────────────────
+
+DECISION: "todo al pool, nada de respaldos, el pool se encarga de todo; luego se desactivaran las
+claves directas que no hagan falta". El Core del pool enruta local -> pago, lleva el libro de gasto
+(100 EUR/mes) y es el unico que habla con los proveedores. Si el pool cae del todo, Jarvis se queda
+sin IA: es lo decidido. Todo lo siguiente aplica CON el pool configurado; sin pool_url/pool_api_key
+Jarvis sigue en modo directo (DeepSeek/OpenAI con sus claves), como antes.
+
+QUE CAMBIA
+ - callLLM (llm.js): sin respaldo a DeepSeek ni OpenAI. Si el pool falla, la llamada lanza y se ve en
+   el log ("[llm] pool ERROR (<ruta>): ..."). Fuera el cortacircuitos y el calentamiento con reintentos.
+ - Plazo interactivo 45 s -> 120 s (sin respaldo es mejor esperar a que el pool conteste, local <=10 s y
+   luego pago, que cortar y dejar al usuario sin respuesta). Fondo 180 s (el Core corta a 190).
+ - Analisis y razonamiento tambien por el pool: jarvis-analisis:1.0 y jarvis-razonamiento:1.0 (alias solo
+   de pago, sin tramo local). A estos dos se les manda thinking:false/true (booleano; el Core lo traduce
+   para DeepSeek). Al local NO se manda thinking (lo rechaza).
+ - Camara (camera_analyze) por el pool: jarvis-vision:1.0 (gpt-4o-mini -> haiku -> gemini, solo pago) con la
+   foto como image_url base64.
+ - Voz (Whisper) y busqueda web (web_search, web_search_native) SOLO por el pool, sin OpenAI directo, sin
+   Serper ni DuckDuckGo, sin gpt-4.1. web_search_native responde con los resumenes de las paginas leidas
+   (con una basta) o, si no se leyo ninguna, con los fragmentos. Si el pool no contesta, la herramienta
+   devuelve un error claro al agente. Plazos: voz 30 s, busqueda 40 s. Fuera la pausa de busqueda.
+ - X-AI-Pool-Use por ruta, para el desglose del gasto en el contador del Core (GET /v1/spend/usage?by=use,
+   aparece como "jarvis/<etiqueta>"): chat_<experto>, router, fondo_resumen, fondo_conocimiento,
+   fondo_destilado, fondo_patrones, fondo_reparacion, proactivo, voz, busqueda, camara. Maximo 40
+   caracteres, solo [a-zA-Z0-9_.:-].
+ - Un modelo que no es del pool (p. ej. un experto antiguo con modelo directo) se manda a jarvis:1.0.
+ - Bucle del agente: tras 3 errores 429/503 seguidos del pool avisa con un mensaje claro (antes agotaba las
+   iteraciones y acababa con "tarea muy larga").
+ - Eliminado el codigo muerto de Anthropic (callAnthropic, conversores, buildAnthropicSystemBlocks): ningun
+   modelo de Jarvis es claude-* desde la v3.36.0. Pedir un claude-* en modo directo da un error explicito.
+ - NO se tocan (el pool no los sirve): imagenes (DALL-E, Gemini), tts-1 (voz de salida), fetch_url.
+
+CLAVES DIRECTAS: con el pool configurado Jarvis ya NO usa la de Anthropic, la de DeepSeek ni la de
+Serper. La de OpenAI solo sirve ya para imagenes (DALL-E / edicion) y tts-1; la de Gemini, para imagenes.
+Las opciones siguen existiendo en el add-on (quitarlas del esquema exige cuidado: un cambio de esquema
+puede hacer que el Supervisor descarte opciones). Se pueden vaciar desde ya las que no se usan.
+
+IMPACTO DE TOKENS (REGLA DE ORO): NEUTRO en tokens; el coste pasa a verse en UN solo sitio.
+ - Mismo numero de llamadas LLM que antes; solo cambia por donde salen. Analisis y razonamiento pasan de
+   DeepSeek directo (v4-flash / v4-pro) a las mismas familias via el pool (v4-pro -> flash -> haiku): el
+   analisis, que era v4-flash sin razonar, ahora pide v4-pro con thinking:false -> algo mas caro por token
+   ($0.435/$0.87 frente a $0.14/$0.28 por MTok); su uso es esporadico (investigar). Si molesta, el Core
+   puede poner flash primero en jarvis-analisis:1.0.
+ - Camara: de gpt-4o-mini directo a jarvis-vision:1.0 (gpt-4o-mini primero): mismo coste, solo bajo demanda.
+ - Busqueda: menos coste (ya no gpt-4.1 ni Serper).
+ - El gasto de pago de Jarvis lo limita el pool: 100 EUR/mes en total, y un tope por proyecto cuando
+   Adrian de la cifra (propuesto 15 EUR/mes). Mi guarda diario sigue contando lo de pago al precio real.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.43.3 - Busqueda del pool con pausa, router tolerante y sin depender de la clave de Anthropic
 ────────────────────────────────────────────────────────────────────────────────
 

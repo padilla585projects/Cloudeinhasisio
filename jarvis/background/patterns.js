@@ -111,7 +111,7 @@ async function analyzePatterns() {
 
     let patResult;
     try {
-      patResult = await callLLM(C.FONDO_MODEL, 'Eres Jarvis analizando patrones de vida del hogar. Detecta rutinas de los habitantes. Si encuentras un patrón claro y accionable (se podría automatizar), usa proactive_thought para sugerir la automatización. Si detectas algo que memorizar, usa save_memory. Solo patrones CLAROS con >60% de consistencia. Español. Breve.', [{ role: 'user', content: summary }], patternTools, 600, { background: true });
+      patResult = await callLLM(C.FONDO_MODEL, 'Eres Jarvis analizando patrones de vida del hogar. Detecta rutinas de los habitantes. Si encuentras un patrón claro y accionable (se podría automatizar), usa proactive_thought para sugerir la automatización. Si detectas algo que memorizar, usa save_memory. Solo patrones CLAROS con >60% de consistencia. Español. Breve.', [{ role: 'user', content: summary }], patternTools, 600, { background: true, use: 'fondo_patrones' });
     } catch (err) {
       console.log(`[patterns] Error API: ${err.message}`);
       return;

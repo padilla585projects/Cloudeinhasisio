@@ -12,7 +12,7 @@ let yaml; try { yaml = require('js-yaml'); } catch { yaml = null; }
 const state = require('../utils/state');
 const { loadJSON, saveJSON, validateYamlSyntax, validateHAStructure, autoBackup } = require('../utils/persistence');
 const { haGet, haPost, supervisorGet, getSelfSlug } = require('../utils/ha-api');
-const { callOpenAI, callImageEdit, poolSearch } = require('../utils/llm');
+const { callOpenAI, callLLM, callImageEdit, poolSearch } = require('../utils/llm');
 const { execSync, spawnSync } = require('child_process');
 const C = require('../utils/constants');
 const { scanInstallation } = require('../utils/scan');
@@ -383,17 +383,16 @@ async function executeTool(name, input) {
 
       // ─── Internet ───
       case 'web_search': {
-        // Con pool: primero la busqueda del pool (busca, lee y resume paginas con equipos locales,
-        // gratis). Si no esta disponible o no trae nada: Serper (Google) y luego DuckDuckGo, como siempre.
+        // Con pool: SOLO la busqueda del pool (busca, lee y resume paginas con equipos locales, gratis);
+        // sin respaldo. Sin pool (modo directo): Serper (Google) y luego DuckDuckGo, como antes.
         if (C.USE_POOL) {
           const ps = await poolSearch(input.query, { results: 8, read: 3 });
-          if (ps && ps.results.length) {
-            const results = ps.results.slice(0, 8).map(r => ({
-              url: r.url, title: r.title, snippet: r.snippet || '',
-              ...(r.read && r.summary ? { summary: String(r.summary).slice(0, 700) } : {})
-            }));
-            return { query: input.query, results, source: 'pool', count: results.length };
-          }
+          if (!ps) return { error: 'El pool de IA no pudo hacer la busqueda web ahora mismo. Reintentalo en un momento.', query: input.query };
+          const results = ps.results.slice(0, 8).map(r => ({
+            url: r.url, title: r.title, snippet: r.snippet || '',
+            ...(r.read && r.summary ? { summary: String(r.summary).slice(0, 700) } : {})
+          }));
+          return { query: input.query, results, source: 'pool', count: results.length };
         }
         // Primario: Serper (Google). Fallback: DuckDuckGo
         if (C.SERPER_API_KEY) {
@@ -3580,19 +3579,21 @@ ${dots}`;
         const { query, context: ctx } = input;
         if (!query) return { error: 'query requerido' };
 
-        // Con pool: si el pool leyo y resumio al menos 2 paginas, se responde con eso (gratis, sin
-        // gpt-4.1). Con menos, o si falla, se sigue con la busqueda nativa de OpenAI de siempre.
+        // Con pool: SOLO la busqueda del pool, sin gpt-4.1 ni respaldo. Se responde con los resumenes de
+        // las paginas leidas y, si no se pudo leer ninguna, con los fragmentos de los resultados.
+        // Sin pool (modo directo): busqueda nativa de OpenAI, como antes.
         if (C.USE_POOL) {
           const ps = await poolSearch(query, { results: 6, read: 3, question: ctx ? `${ctx} — ${query}` : query });
-          const leidas = ps ? ps.results.filter(r => r.read && r.summary) : [];
-          if (leidas.length >= 2) {
-            return {
-              success: true,
-              answer: leidas.map((r, i) => `[${i + 1}] ${r.title}\n${String(r.summary).slice(0, 700)}`).join('\n\n'),
-              citations: leidas.map(r => ({ url: r.url, title: r.title })),
-              source: 'pool (resumenes de paginas leidas)'
-            };
-          }
+          if (!ps) return { error: 'El pool de IA no pudo hacer la busqueda web ahora mismo. Reintentalo en un momento.', query };
+          const leidas = ps.results.filter(r => r.read && r.summary);
+          const base = leidas.length ? leidas : ps.results.filter(r => r.snippet);
+          if (!base.length) return { error: 'La busqueda no devolvio resultados utiles.', query };
+          return {
+            success: true,
+            answer: base.map((r, i) => `[${i + 1}] ${r.title}\n${String(leidas.length ? r.summary : r.snippet).slice(0, 700)}`).join('\n\n'),
+            citations: base.map(r => ({ url: r.url, title: r.title })),
+            source: leidas.length ? 'pool (resumenes de paginas leidas)' : 'pool (fragmentos de resultados)'
+          };
         }
         if (!C.OPENAI_API_KEY) return { error: 'OPENAI_API_KEY no configurada' };
 
@@ -5124,9 +5125,11 @@ ${input.message}` : input.message;
               { type: 'text', text: question }
             ]
           }];
-          // Vision requiere un modelo multimodal OpenAI — BG_MODEL (DeepSeek) no soporta imágenes
-          const { callOpenAI } = require('../utils/llm');
-          const result = await callOpenAI('gpt-4o-mini', 'Eres un sistema de análisis de cámaras de seguridad. Responde en español, sé conciso y preciso.', visionMessages, null, 500);
+          // Vision: con pool, por el pool (alias jarvis-vision con imagenes -> pago, sin respaldo);
+          // sin pool, OpenAI directo (gpt-4o-mini), como antes.
+          const result = C.USE_POOL
+            ? await callLLM(C.VISION_MODEL, 'Eres un sistema de análisis de cámaras de seguridad. Responde en español, sé conciso y preciso.', visionMessages, null, 500, { use: 'camara' })
+            : await callOpenAI('gpt-4o-mini', 'Eres un sistema de análisis de cámaras de seguridad. Responde en español, sé conciso y preciso.', visionMessages, null, 500);
           return { camera: input.entity_id, analysis: result.text, timestamp: new Date().toISOString() };
         } catch (e) {
           return { error: `Error analizando cámara: ${e.message}` };

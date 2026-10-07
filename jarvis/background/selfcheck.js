@@ -234,7 +234,7 @@ Responde ÚNICAMENTE con este JSON (sin texto extra):
 
     let repairResult;
     try {
-      repairResult = await callLLM(C.FONDO_MODEL, null, [{ role: 'user', content: repairPrompt }], null, 1024, { background: true });
+      repairResult = await callLLM(C.FONDO_MODEL, null, [{ role: 'user', content: repairPrompt }], null, 1024, { background: true, use: 'fondo_reparacion' });
     } catch (err) {
       console.log(`[self-repair] API error: ${err.message}`);
       return;
@@ -384,7 +384,7 @@ Solo la llamada a knowledge_db. Español.`;
         const result = await callLLM(C.FONDO_MODEL,
           'Eres Jarvis, experto en Home Assistant. Extrae conocimiento práctico de documentación técnica. Responde SOLO con knowledge_db. Español.',
           [{ role: 'user', content: extractPrompt }],
-          knowledgeTools, 1000, { background: true }
+          knowledgeTools, 1000, { background: true, use: 'fondo_conocimiento' }
         );
 
         for (const tc of result.toolCalls) {

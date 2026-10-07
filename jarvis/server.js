@@ -13,7 +13,7 @@ const { loadJSON, saveJSON, autoBackup } = require('./utils/persistence');
 const { haGet, haPost }      = require('./utils/ha-api');
 const { scanInstallation }   = require('./utils/scan');
 const { callLLM, callOpenAI, callWhisper, callImageEdit, sanitizeMessagesForOpenAI, stripImagesFromHistory, persistApiUsage,
-        setPoolWarmupHook, poolWarm, closePoolBreaker } = require('./utils/llm');
+        poolWarm } = require('./utils/llm');
 const { updateLiveContext, buildDynamicContext, buildTurnSnapshot } = require('./utils/context');
 const { tools, openAITools } = require('./tools/definitions');
 const { executeTool }        = require('./tools/executor');
@@ -164,7 +164,7 @@ async function summarizeOldHistory() {
       ? `Resumen anterior:\n${prevSummary}\n\nNuevos mensajes:\n${digest}\n\nActualiza el resumen incluyendo lo nuevo. Máx 200 palabras. Solo hechos: qué pidió el usuario, qué hizo Jarvis, qué tools usó, resultados clave. Español.`
       : `Mensajes:\n${digest}\n\nResume esta conversación en máx 150 palabras. Solo hechos: qué pidió el usuario, qué hizo Jarvis, qué tools usó, resultados clave. Español.`;
 
-    const result = await callLLM(C.FONDO_MODEL, 'Eres un resumidor conciso. Solo hechos, sin opiniones.', [{ role: 'user', content: prompt }], [], 300, { background: true });
+    const result = await callLLM(C.FONDO_MODEL, 'Eres un resumidor conciso. Solo hechos, sin opiniones.', [{ role: 'user', content: prompt }], [], 300, { background: true, use: 'fondo_resumen' });
 
     if (result.text) {
       const summaryMsg = { role: 'user', content: `[RESUMEN AUTOMÁTICO DE CONVERSACIÓN ANTERIOR — no es un mensaje real del usuario]\n${result.text}`, _summary: true };
@@ -504,12 +504,14 @@ async function handleChat(req, res, messages, files) {
     if (expertThinking !== undefined) {
       llmOptions.thinking = expertThinking;
     }
+    llmOptions.use = `chat_${nexusExpertName}`;   // ruta para el desglose de gasto del pool
 
     let currentMessages = expandTurnCtx(state.conversationHistory);
     let finalText = '';
     let iterations = 0;
     const MAX_ITERATIONS = state.saverMode ? 8 : activeMaxIter;
     let consecutiveTextOnly = 0;
+    let apiRetries = 0;   // 429/503 seguidos del pool: sin respaldos, se avisa tras 3
     let lastToolSignature = '';
     // Bloque B: assembleSystemPrompt ya integra L0-L4 (incluye buildDynamicContext via L2)
     // Con pool: prompt estable (prefijo cacheable). Sin pool: el de siempre.
@@ -527,6 +529,12 @@ async function handleChat(req, res, messages, files) {
       } catch (err) {
         console.log(`[jarvis] Error API iter=${iterations}: ${err.message}`);
         if (err.message.includes('429') || err.message.includes('503')) {
+          // Sin respaldos propios: si el pool sigue sin contestar, se dice claro en vez de agotar las
+          // iteraciones y acabar con el engañoso "tarea muy larga".
+          if (++apiRetries > 3) {
+            sendEvent({ type: 'error', error: `El pool de IA no responde ahora mismo (${err.message.slice(0, 140)}). Inténtalo de nuevo en un momento.` });
+            break;
+          }
           await new Promise(r => setTimeout(r, 3000));
           continue;
         }
@@ -1701,42 +1709,20 @@ async function proactiveDeviceHealthScan() {
 }
 
 // ── Calentamiento del pool ────────────────────────────────────────────────────
-// El Core del pool enruta jarvis:1.0 con una cadena local -> modelos de pago: si el
-// modelo local no responde en ~10 s (o no está en memoria) contesta con el de pago, y
-// él mismo cuenta el gasto. Lo que sí le sirve a Jarvis es que el modelo local esté
-// CARGADO cuando llega el mensaje (el ASUS apaga su servidor de modelos a los 30 min
-// de reposo y arrancarlo tarda ~70 s). Para eso el Core ofrece POST /v1/inference/warm:
-// responde al instante, calienta en segundo plano y no cuenta como gasto.
-// (Antes se mandaba el prefijo entero con max_tokens:1 y timeout largo: con la cadena
-// de pago dentro del Core esa petición la contestaría el modelo de PAGO tras 10 s
-// locales, costaría dinero y daría la caché por caliente sin estarlo.)
-// Mientras el cortacircuitos esté abierto se reintenta: si el Core contesta, se cierra.
-let _poolWarming = false;
-const _sleep = ms => new Promise(r => setTimeout(r, ms));
-
+// El Core del pool enruta jarvis:1.0 con una cadena local -> modelos de pago y es quien lleva el respaldo.
+// Lo unico que le sirve a Jarvis es que el modelo local este CARGADO cuando llega el mensaje (el ASUS
+// apaga su servidor de modelos a los 30 min de reposo y arrancarlo tarda ~70 s): POST /v1/inference/warm
+// responde al instante, calienta en segundo plano y no cuenta como gasto. Se pide al arrancar y, como
+// mucho cada 5 min, al abrirse una conversacion (ver handleChat). No hay reintentos ni cortacircuitos.
 async function warmPool() {
-  if (!POOL_MODE || _poolWarming) return;
-  _poolWarming = true;
-  try {
-    for (let attempt = 1; attempt <= 12; attempt++) {
-      const r = await poolWarm();
-      if (r.ok) {
-        console.log(`[pool] modelo local pedido en caliente (${r.status})`);
-        closePoolBreaker();
-        return;
-      }
-      console.log(`[pool] calentamiento, intento ${attempt}/12 falló: ${r.status || r.error || 'sin respuesta'}`);
-      await _sleep(60_000);
-    }
-    console.log('[pool] el Core no responde tras 12 intentos; el chat sigue en DeepSeek directo');
-  } finally {
-    _poolWarming = false;
-  }
+  if (!POOL_MODE) return;
+  const r = await poolWarm();
+  console.log(r.ok ? `[pool] modelo local pedido en caliente (${r.status})`
+                   : `[pool] el Core no respondio al calentamiento (${r.status || r.error || 'sin respuesta'})`);
 }
 
 const PORT = 3000;
 app.listen(PORT, '0.0.0.0', () => {
-  if (POOL_MODE) setPoolWarmupHook(() => { warmPool().catch(() => {}); });
   console.log(`Jarvis AI Agent v${state.JARVIS_VERSION} corriendo en puerto ${PORT}`);
   console.log(`Modelo: ${C.MODEL} (DeepSeek V4) | Config: ${C.HA_CONFIG} | Data: ${C.DATA_DIR}`);
   console.log(`API Key: ${C.DEEPSEEK_API_KEY ? 'configurada' : 'NO CONFIGURADA'}`);

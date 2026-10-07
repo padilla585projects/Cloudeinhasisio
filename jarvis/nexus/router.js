@@ -115,7 +115,7 @@ async function nexusRoute(message) {
       // 128 y no 10: si el pool responde con DeepSeek v4-pro, este razona antes de contestar y el
       // razonamiento cuenta en max_tokens; con 10 saldria vacio. Solo se factura lo que genera.
       128,
-      { thinking: false }
+      { thinking: false, use: 'router' }
     );
     const expert = parseExpertReply(result.text, nexusGetAllExperts());
     if (expert) return { expert, source: 'llm', confidence: 0.8 };

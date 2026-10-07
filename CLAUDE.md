@@ -48,7 +48,7 @@ Si los archivos están en la raíz, HA no detecta actualizaciones. NUNCA mover a
     ├── package.json         # Dependencias npm
     ├── utils/
     │   ├── constants.js     # Todas las constantes (modelos, rutas, API keys)
-    │   ├── llm.js           # callOpenAI, callAnthropic, callDeepSeek, callLLM
+    │   ├── llm.js           # callOpenAI, callDeepSeek, callPool, callLLM, callWhisper, poolSearch, poolWarm
     │   ├── state.js         # Estado global compartido (JARVIS_VERSION, etc.)
     │   ├── context.js       # buildDynamicContext, updateLiveContext
     │   ├── ha-api.js        # haGet, haPost, supervisorGet, supervisorPost
@@ -102,8 +102,8 @@ Si los archivos están en la raíz, HA no detecta actualizaciones. NUNCA mover a
   en camino a garantía: sigue degradándose y avisar de ello es ruido
 - `POOL_URL`, `POOL_API_KEY`, `POOL_MODEL` — Pool de IA local de casa (opcionales,
   v3.39.0). Servidor OpenAI-compatible en la LAN (modelo `jarvis:1.0`). Con URL +
-  clave, chat y fondos van al pool y DeepSeek queda de respaldo; sin ellas todo
-  va a DeepSeek como siempre. La URL puede llevar o no `/openai/v1` al final
+  clave, TODO va por el pool y NO hay respaldos propios (v3.44.0); sin ellas, modo
+  directo (DeepSeek/OpenAI con sus claves) como antes del pool. La URL puede llevar o no `/openai/v1` al final
   (v3.39.1). La dirección concreta, en las opciones del add-on — no se publica aquí.
 - `POOL_MODEL_FONDO` — modelo virtual del pool para trabajo de fondo (opcional, v3.42.0),
   p. ej. `jarvis-fondo:1.0`. Vacío = se usa `POOL_MODEL`. Lo usan las tareas marcadas
@@ -155,7 +155,10 @@ Toda modificación o mejora debe incluir análisis de impacto de consumo de toke
 
 ### callLLM — routing por modelo
 ```javascript
-if (model.startsWith('claude-'))   → callAnthropic
+// CON pool configurado (v3.44.0): TODO → callPool, sin respaldos. Un modelo que no es del
+// pool (jarvis*/qwen*) se manda a jarvis:1.0. Si falla, lanza.
+// SIN pool (modo directo):
+if (model.startsWith('claude-'))   → error (Anthropic ya no existe en Jarvis)
 if (model.startsWith('deepseek-')) → callDeepSeek  // R1 no usa tools
 default                            → callOpenAI
 ```
@@ -441,19 +444,24 @@ v3.39.1 (se acepta la URL con o sin sufijo).
 Para validar de verdad, mirar el log del add-on tras una petición real:
 - `[llm] pool OK: <modelo>@<worker> | prompt N (cache C, nuevos N-C) | out M` →
   entra al pool (traza añadida en v3.39.2).
-- `[llm] pool no disponible (...) -> fallback DeepSeek` → no entra; el motivo va
-  entre paréntesis. `pool error 503: no online device can run jarvis:1.0` = el
-  pool no tiene ningún equipo libre (problema suyo, no de Jarvis);
-  `The user aborted a request` = nuestro timeout (45 s interactivo / 180 s fondos).
+- `[llm] pool ERROR (<ruta>): ...` → falló (v3.44.0: SIN respaldo, la llamada falla); el
+  motivo va detrás. `pool error 503: no online device...` = el pool no tiene equipo libre;
+  `The user aborted a request` = nuestro plazo (120 s interactivo / 180 s fondo).
 
 Reglas de convivencia con el pool (la GPU es compartida, de una petición en una):
-- Un solo intento y respaldo inmediato a DeepSeek; NUNCA ráfagas en paralelo.
+- Un solo intento, SIN respaldos propios (el Core lleva local → pago); NUNCA ráfagas en paralelo.
 - `callPool` manda `X-AI-Pool-Timeout` para que el pool saque de su cola lo que
-  ya cortamos nosotros.
+  ya cortamos nosotros, y `X-AI-Pool-Use` (chat_<experto>, router, fondo_*, proactivo, voz,
+  busqueda, camara) para el desglose de gasto en `GET /v1/spend/usage?by=use` del Core.
 - El tiempo lo marcan los tokens NUEVOS por vuelta (`prompt_tokens − cached_tokens`),
   a ~90 tok/s con la GPU libre. Las 96 tools se cachean; los estados de HA y los
   resultados de tools no. Ver la optimización de payload en `FUTURAS_MEJORAS.txt`.
-- No pasar parámetros de thinking al pool (los rechaza) ni usar streaming con tools (400).
+- No pasar thinking al LOCAL (lo rechaza) ni usar streaming con tools (400). Solo a los alias sin
+  tramo local (`jarvis-analisis:1.0`, `jarvis-razonamiento:1.0`) y solo booleano: el Core lo traduce a
+  `{"type":"enabled|disabled"}` para DeepSeek. Con `max_tokens` ≤256 el Core lo apaga solo.
+- Modelos virtuales: `jarvis:1.0` (chat), `jarvis-fondo:1.0` (fondo, batch), `jarvis-analisis:1.0`,
+  `jarvis-razonamiento:1.0` y `jarvis-vision:1.0` (cámaras, solo pago). Voz, búsqueda web y visión
+  también por el pool; quedan directos (el pool no los sirve): imágenes, tts-1 y `fetch_url`.
 
 ### El Core del pool también enruta a modelos de PAGO (v3.41.0)
 `jarvis:1.0` = cadena local (qwen3.6 → gemma4 → prisma) → de pago (deepseek-v4-pro →
@@ -468,7 +476,7 @@ de pago. Cada respuesta trae `X-AI-Pool-Source: local|paid` y `X-AI-Pool-Model` 
   apuntarla en su libro, aunque el proveedor puede cobrar los tokens de razonar). Por eso el router
   de expertos pide max_tokens 128 y no 10. El Core aún NO desactiva el razonamiento de DeepSeek.
 - Con el presupuesto en critical/over el Core bloquea SOLO lo `batch`: HTTP 429 con
-  `code: "budget_deferred"`. Esa tarea se omite (`e.budgetBlocked`); NO se cae a DeepSeek directo.
+  `code: "budget_deferred"`. Esa tarea se omite (`e.budgetBlocked`); no hay respaldo.
 - `X-AI-Pool-Model` en pago llega como `paid:proveedor/modelo` (p. ej. `paid:deepseek/deepseek-v4-pro`).
 - Contrato del Core: `ai-pool/pool/docs/plan-ia-de-pago-en-el-pool.md` (§8) y `contrato-modo-pool.md`.
 
@@ -483,11 +491,11 @@ Reglas que NO hay que romper al tocar `server.js`, `nexus/layers.js` o `utils/co
   siguiente no coincide con el anterior.
 - No acortar el historial con una ventana deslizante: mueve el comienzo en cada turno.
   Lo recorta el resumen automático, que reescribe el inicio de golpe y pocas veces.
-- Tras una caída, `llm.js` pausa el pool (cortacircuitos, máx 10 min) y `warmPool()`
-  en `server.js` lo reintenta con `POST /v1/inference/warm` (instantáneo, sin coste):
-  al contestar el Core, se cierra el cortacircuitos. NO calentar mandando el prefijo
-  entero por `chat/completions`: con la cadena de pago del Core lo contestaría un
-  modelo de PAGO tras ~10 s locales (gasto + caché local sin calentar).
+- `warmPool()` (arranque) y `poolWarm()` (al abrir conversación, máx cada 5 min) piden el
+  modelo local en caliente con `POST /v1/inference/warm` (instantáneo, sin coste). Ya NO hay
+  cortacircuitos ni reintentos (v3.44.0). NO calentar mandando el prefijo entero por
+  `chat/completions`: con la cadena de pago del Core lo contestaría un modelo de PAGO tras ~10 s
+  locales (gasto + caché local sin calentar).
 
 ## Documentos de referencia en la raíz
 

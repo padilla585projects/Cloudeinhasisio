@@ -8,8 +8,6 @@ const GEMINI_API_KEY     = process.env.GEMINI_API_KEY     || '';
 const SERPER_API_KEY     = process.env.SERPER_API_KEY     || '';
 const DEEPSEEK_API_KEY   = process.env.DEEPSEEK_API_KEY   || '';
 const DEEPSEEK_URL       = 'https://api.deepseek.com/v1';
-const DEEPSEEK_MODEL     = 'deepseek-v4-flash';   // V4 Flash — análisis + tools (non-thinking)
-const DEEPSEEK_R1_MODEL  = 'deepseek-v4-pro';     // V4 Pro — razonamiento profundo (thinking mode)
 // ── Pool de IA local (opcional) ──────────────────────────────────────────────
 // Si hay clave del pool, el chat principal y los fondos van al pool local
 // (jarvis:1.0) con DeepSeek de respaldo. Sin clave, TODO a DeepSeek (igual que
@@ -27,6 +25,11 @@ const BG_MODEL          = USE_POOL ? POOL_MODEL : 'deepseek-v4-flash'; // Backgr
 const CLAUDE_MODEL      = USE_POOL ? POOL_MODEL : 'deepseek-v4-pro';   // Dev expert
 // Trabajo de fondo (resumenes, patrones, destilado, vigilancia...). Sin pool == BG_MODEL (igual que antes).
 const FONDO_MODEL       = USE_POOL ? (POOL_MODEL_FONDO || POOL_MODEL) : BG_MODEL;
+// Con pool, analisis y razonamiento tambien van por el pool (alias solo de pago del Core); sin pool, DeepSeek directo.
+const DEEPSEEK_MODEL    = USE_POOL ? (process.env.POOL_MODEL_ANALISIS || 'jarvis-analisis:1.0')           : 'deepseek-v4-flash'; // analisis + tools (non-thinking)
+const DEEPSEEK_R1_MODEL = USE_POOL ? (process.env.POOL_MODEL_RAZONAMIENTO || 'jarvis-razonamiento:1.0')   : 'deepseek-v4-pro';   // razonamiento profundo (thinking)
+// Vision de camaras: el pool (alias con imagenes -> pago) o, sin pool, OpenAI directo.
+const VISION_MODEL      = USE_POOL ? (process.env.POOL_MODEL_VISION || 'jarvis-vision:1.0') : 'gpt-4o-mini';
 // ¿Hay ALGUN proveedor de IA configurado? Los bucles de fondo se saltan si no. Antes miraban solo la
 // clave de Anthropic (un resto de cuando Jarvis usaba Claude, hasta v3.36.0): sin ella, p. ej. el
 // analisis de patrones no se ejecutaba nunca aunque el pool o DeepSeek funcionaran.
@@ -73,7 +76,7 @@ const API_USAGE_FILE         = path.join(DATA_DIR, 'api_usage.json');
 
 module.exports = {
   ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, SERPER_API_KEY,
-  MODEL, BG_MODEL, CLAUDE_MODEL, FONDO_MODEL, HAS_LLM,
+  MODEL, BG_MODEL, CLAUDE_MODEL, FONDO_MODEL, VISION_MODEL, HAS_LLM,
   DEEPSEEK_API_KEY, DEEPSEEK_URL, DEEPSEEK_MODEL, DEEPSEEK_R1_MODEL,
   POOL_URL, POOL_API_KEY, POOL_MODEL, POOL_MODEL_FONDO, USE_POOL,
   HA_TOKEN, HA_URL, LANGUAGE,

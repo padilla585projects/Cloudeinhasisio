@@ -91,7 +91,6 @@ function buildL4(expertName) {
 /**
  * Devuelve el prompt de sistema completo para un experto.
  * Para OpenAI: string único.
- * Para Anthropic: ver buildAnthropicSystemBlocks().
  */
 function assembleSystemPrompt(expertName) {
   const L0 = buildL0();
@@ -115,25 +114,6 @@ function assembleStaticPrompt(expertName) {
   const L0 = buildL0();
   const L1 = buildL1(expertName);
   return [L0, L1, buildStableContext()].filter(Boolean).join('\n\n');
-}
-
-/**
- * Devuelve el prompt como array de bloques Anthropic con cache_control en L0+L1.
- * Usar cuando el modelo es claude-*.
- */
-function buildAnthropicSystemBlocks(expertName) {
-  const L0 = buildL0();
-  const L1 = buildL1(expertName);
-  const L2 = buildL2();
-  const L4 = buildL4(expertName);
-
-  const blocks = [];
-  const staticPart = [L0, L1].filter(Boolean).join('\n\n');
-  const dynamicPart = [L2, L4].filter(Boolean).join('\n\n');
-
-  if (staticPart) blocks.push({ type: 'text', text: staticPart, cache_control: { type: 'ephemeral' } });
-  if (dynamicPart) blocks.push({ type: 'text', text: dynamicPart });
-  return blocks;
 }
 
 /**
@@ -176,7 +156,6 @@ module.exports = {
   buildL0, buildL1, buildL2, buildL3, buildL4,
   assembleSystemPrompt,
   assembleStaticPrompt,
-  buildAnthropicSystemBlocks,
   getScopedTools,
   layerStats
 };
