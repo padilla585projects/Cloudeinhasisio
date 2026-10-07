@@ -3,6 +3,27 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.44.1 - Razonamiento DESACTIVADO por defecto en las llamadas al pool
+────────────────────────────────────────────────────────────────────────────────
+
+PROBLEMA (visto en el Core el 07-10, 15:56): jarvis-fondo:1.0 -> deepseek-flash con max_tokens 1024
+devolvio respuesta VACIA (finish_reason length: el razonamiento se comio los tokens) y el Core cayo a
+Haiku (Anthropic). El Core solo apaga el razonamiento solo con max_tokens <=256; mis tareas de fondo
+piden 300-1500 y el chat 2048-4096, asi que quedaban expuestas. Y razonar cuesta tokens de salida.
+
+QUE CAMBIA: callPool manda "thinking": {"type":"disabled"} (el formato objeto de DeepSeek) en todas las
+llamadas al pool, salvo si la ruta pide razonar (thinking:true o 'max': experto razonamiento), que manda
+{"type":"enabled"}. NO se manda a jarvis-vision (su cadena empieza por OpenAI y no esta confirmado que
+lo tolere). El Core probo con su clave lab que el tramo LOCAL (llama.cpp) lo ignora (200) en jarvis:1.0
+y jarvis-fondo:1.0. Ademas el Core reintentara UNA vez sin razonar si DeepSeek devuelve vacio por
+longitud y la app no dijo nada de thinking (aun sin desplegar).
+
+IMPACTO DE TOKENS (REGLA DE ORO): BAJA. Quita los tokens de razonamiento (salida, $0.87/MTok en v4-pro
+y $0.28 en flash) de chat, router, fondo y analisis; menos latencia y menos respuestas vacias que acaban
+en Haiku ($1/$5). Riesgo de calidad: los expertos de diagnostico o dev razonaban por defecto con v4-pro;
+si se nota peor calidad, ponerles thinking:true en nexus/experts.js (solo ellos).
+
+────────────────────────────────────────────────────────────────────────────────
 v3.44.0 - TODO por el pool, sin respaldos propios (decision de Adrian, 07-10-2026)
 ────────────────────────────────────────────────────────────────────────────────
 

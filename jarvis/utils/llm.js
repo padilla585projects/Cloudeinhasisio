@@ -330,8 +330,7 @@ async function poolWarm({ minIntervalMs = 0 } = {}) {
 // ── Pool de IA local (OpenAI-compatible) ──────────────────────────────────────
 // Llama al pool (jarvis:1.0 y demas modelos virtuales). El Core enruta local -> pago y es quien
 // lleva el respaldo: Jarvis NO tiene respaldo propio. Un solo intento; ante error o plazo lanza.
-// max_tokens SIEMPRE. NO manda thinking al local (lo rechaza); solo a los alias sin tramo local
-// (jarvis-analisis / jarvis-razonamiento) y solo si es booleano: el Core lo traduce para DeepSeek.
+// max_tokens SIEMPRE. Manda thinking desactivado por defecto (ver mas abajo).
 async function callPool(model, system, messages, aiTools, maxTokens, options = {}) {
   if (!POOL_API_KEY || !POOL_URL) {
     const e = new Error('Pool no configurado (pool_url / pool_api_key)');
@@ -345,8 +344,15 @@ async function callPool(model, system, messages, aiTools, maxTokens, options = {
     body.tools = aiTools;
     body.tool_choice = 'auto';
   }
-  // Los alias de analisis y razonamiento son solo de pago: aqui si se puede pedir razonar o no.
-  if (typeof options.thinking === 'boolean' && /^jarvis-(analisis|razonamiento)/.test(body.model)) body.thinking = options.thinking;
+  // Razonamiento: lo decide la RUTA. Por defecto DESACTIVADO, en el formato OBJETO de DeepSeek
+  // ({"type":"disabled"}); activado solo si la ruta lo pide (thinking:true|'max': experto razonamiento).
+  // Motivo (07-10-2026): el razonamiento de v4-pro/flash se come el max_tokens (el Core solo lo apaga
+  // solo con <=256) y una respuesta vacia acaba en Haiku; ademas, razonar cuesta tokens de salida.
+  // El tramo local (llama.cpp) ignora el campo (probado por el Core). NO se manda a jarvis-vision: su
+  // cadena empieza por OpenAI y no esta confirmado que lo tolere.
+  if (!/^jarvis-vision/.test(body.model)) {
+    body.thinking = (options.thinking === true || options.thinking === 'max') ? { type: 'enabled' } : { type: 'disabled' };
+  }
   // Plazo: interactivo 120 s, fondo 180 s (el Core corta a los 190). Sin respaldo propio, es mejor
   // esperar a que el pool conteste (local <=10 s y luego pago) que cortar y dejar al usuario sin respuesta.
   const timeoutMs = options.timeoutMs || (options.background ? 180000 : 120000);

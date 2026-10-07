@@ -456,9 +456,11 @@ Reglas de convivencia con el pool (la GPU es compartida, de una petición en una
 - El tiempo lo marcan los tokens NUEVOS por vuelta (`prompt_tokens − cached_tokens`),
   a ~90 tok/s con la GPU libre. Las 96 tools se cachean; los estados de HA y los
   resultados de tools no. Ver la optimización de payload en `FUTURAS_MEJORAS.txt`.
-- No pasar thinking al LOCAL (lo rechaza) ni usar streaming con tools (400). Solo a los alias sin
-  tramo local (`jarvis-analisis:1.0`, `jarvis-razonamiento:1.0`) y solo booleano: el Core lo traduce a
-  `{"type":"enabled|disabled"}` para DeepSeek. Con `max_tokens` ≤256 el Core lo apaga solo.
+- No usar streaming con tools (400). `callPool` manda `thinking: {"type":"disabled"}` POR DEFECTO (formato
+  objeto de DeepSeek; el tramo local lo ignora) y `{"type":"enabled"}` solo si la ruta pide razonar
+  (`thinking:true|'max'`: experto razonamiento). NO se manda a `jarvis-vision`. Sin esto, el razonamiento
+  de v4-pro/flash se come el `max_tokens` y una respuesta vacía acaba en Haiku (el Core solo lo apaga solo
+  con `max_tokens` ≤256).
 - Modelos virtuales: `jarvis:1.0` (chat), `jarvis-fondo:1.0` (fondo, batch), `jarvis-analisis:1.0`,
   `jarvis-razonamiento:1.0` y `jarvis-vision:1.0` (cámaras, solo pago). Voz, búsqueda web y visión
   también por el pool; quedan directos (el pool no los sirve): imágenes, tts-1 y `fetch_url`.
