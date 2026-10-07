@@ -201,7 +201,7 @@ async function proactiveThinkingLoop() {
       if (autoFixLog.length) console.log(`[proactive] auto-fix: ${autoFixLog.join(' | ')}`);
     }
 
-    const model = state.saverMode ? C.BG_MODEL : C.MODEL;
+    const model = state.saverMode ? C.BG_MODEL : (C.USE_POOL ? C.FONDO_MODEL : C.MODEL);
 
     const system = `Eres Jarvis: un ingeniero domótico experto que vigila esta casa 24/7. No eres un chatbot — eres autónomo y RESUELVES.
 
@@ -226,7 +226,7 @@ REGLAS DE ORO:
     for (let iter = 0; iter < MAX_ITER; iter++) {
       let result;
       try {
-        result = await callLLM(model, system, messages, tools, 1500);
+        result = await callLLM(model, system, messages, tools, 1500, { background: true });
       } catch (err) {
         console.log(`[proactive] Error API iter=${iter}: ${err.message}`);
         break;

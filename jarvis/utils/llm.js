@@ -2,7 +2,7 @@
 const fs = require('fs');
 const fetch = require('node-fetch');
 const { OPENAI_API_KEY, ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, DEEPSEEK_URL, API_USAGE_FILE,
-        POOL_URL, POOL_API_KEY, POOL_MODEL } = require('./constants');
+        POOL_URL, POOL_API_KEY, POOL_MODEL, POOL_MODEL_FONDO } = require('./constants');
 const state = require('./state');
 
 // Precios reales por modelo (USD / token)
@@ -510,6 +510,17 @@ function poolPriceKey(modelHeader) {
   return hit || 'deepseek-v4-pro';
 }
 
+// ¿Este nombre de modelo lo sirve el pool? (jarvis:1.0, el modelo de fondo configurado, o qwen*).
+function isPoolModel(model) {
+  if (!model) return false;
+  return model === POOL_MODEL || (!!POOL_MODEL_FONDO && model === POOL_MODEL_FONDO) ||
+         model.startsWith('jarvis:') || model.startsWith('jarvis-') || model.startsWith('qwen');
+}
+// Nombre real que se pide al pool: el de fondo si se llamo con el, y si no el principal.
+function resolvePoolModel(model) {
+  return (POOL_MODEL_FONDO && model === POOL_MODEL_FONDO) ? POOL_MODEL_FONDO : POOL_MODEL;
+}
+
 function poolBase() {
   // Acepta la URL como la da el panel del pool: con o sin /openai/v1 (o /v1) al final.
   return POOL_URL.replace(/\/+$/, '').replace(/\/(openai\/v1|openai|v1)$/i, '');
@@ -555,7 +566,7 @@ async function callPool(model, system, messages, aiTools, maxTokens, options = {
   }
   const sanitized = sanitizeMessagesForOpenAI(messages);
   const msgs = system ? [{ role: 'system', content: system }, ...sanitized] : [...sanitized];
-  const body = { model: POOL_MODEL, max_tokens: maxTokens || 2048, messages: msgs };
+  const body = { model: resolvePoolModel(model), max_tokens: maxTokens || 2048, messages: msgs };
   if (aiTools && aiTools.length > 0) {
     body.tools = aiTools;
     body.tool_choice = 'auto';
@@ -575,7 +586,11 @@ async function callPool(model, system, messages, aiTools, maxTokens, options = {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${POOL_API_KEY}`,
         // El Core saca la petición de la cola si cortamos: no dejamos trabajo colgado para nadie.
-        'X-AI-Pool-Timeout': String(Math.round(timeoutMs / 1000))
+        'X-AI-Pool-Timeout': String(Math.round(timeoutMs / 1000)),
+        // Trabajo de fondo = aplazable: el local tiene hasta 60 s (en vez de 10) antes de pasar a
+        // pago, y si el presupuesto del pool llega a critical/over, el Core lo corta antes que a
+        // lo que espera un usuario.
+        ...(options.background ? { 'X-AI-Pool-Priority': 'batch' } : {})
       },
       body: JSON.stringify(body),
       signal: controller.signal
@@ -585,7 +600,11 @@ async function callPool(model, system, messages, aiTools, maxTokens, options = {
   }
   if (!response.ok) {
     const err = await response.text();
-    throw new Error(`pool error ${response.status}: ${err.slice(0, 200)}`);
+    const e = new Error(`pool error ${response.status}: ${err.slice(0, 200)}`);
+    // Lo aplazable se corta cuando el presupuesto del pool llega a over: NO es un fallo del pool
+    // y NO hay que saltarse el limite llamando a DeepSeek directo (ese gasto no pasaria por el libro).
+    if (options.background && (response.status === 402 || /budget|presupuesto|over_budget|spend_limit/i.test(err))) e.budgetBlocked = true;
+    throw e;
   }
   const data = await response.json();
   const choice = (data.choices || [])[0];
@@ -625,8 +644,7 @@ async function callPool(model, system, messages, aiTools, maxTokens, options = {
 
 async function callLLM(model, system, messages, tools, maxTokens, options = {}) {
   // Pool de IA local (jarvis:1.0) — si está configurado, con respaldo a DeepSeek.
-  if (POOL_API_KEY && POOL_URL && model &&
-      (model === POOL_MODEL || model.startsWith('jarvis:') || model.startsWith('qwen'))) {
+  if (POOL_API_KEY && POOL_URL && isPoolModel(model)) {
     // Respaldo: sin tools (clasificar, resumir, destilar) basta flash; con tools, pro.
     const fallback = (cause) => {
       const fbModel = (options.background || !tools || tools.length === 0) ? 'deepseek-v4-flash' : 'deepseek-v4-pro';
@@ -643,6 +661,10 @@ async function callLLM(model, system, messages, tools, maxTokens, options = {}) 
       return await callPool(model, system, messages, tools, maxTokens, options);
     } catch (e) {
       if (e.noApiKey) throw e;
+      if (e.budgetBlocked) {
+        console.log(`[llm] pool: presupuesto agotado, tarea aplazable omitida (${(e.message || '').slice(0, 90)})`);
+        throw e;
+      }
       console.log(`[llm] pool no disponible (${(e.message || '').slice(0, 90)}) -> fallback DeepSeek`);
       if (isPoolTransient(e)) openPoolBreaker((e.message || '').slice(0, 60));
       return fallback(e);

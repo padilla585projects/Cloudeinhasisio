@@ -103,7 +103,7 @@ Solo información VERIFICABLE y PRÁCTICA. Nada genérico.`;
 
     let knowResult;
     try {
-      knowResult = await callLLM(C.BG_MODEL, 'Eres un experto técnico. Genera conocimiento estructurado y práctico. Responde SOLO con la llamada a knowledge_db. Español. Sé conciso pero completo.', [{ role: 'user', content: knowledgePrompt }], knowledgeTools, 800);
+      knowResult = await callLLM(C.FONDO_MODEL, 'Eres un experto técnico. Genera conocimiento estructurado y práctico. Responde SOLO con la llamada a knowledge_db. Español. Sé conciso pero completo.', [{ role: 'user', content: knowledgePrompt }], knowledgeTools, 800);
     } catch (err) {
       console.log(`[knowledge] Error API: ${err.message}`);
       return;
@@ -141,7 +141,7 @@ Responde SOLO con un JSON array de strings (las reglas). Máx 20 reglas. Solo la
 
     let distillResult;
     try {
-      distillResult = await callLLM(C.BG_MODEL, null, [{ role: 'user', content: prompt }], null, 1024);
+      distillResult = await callLLM(C.FONDO_MODEL, null, [{ role: 'user', content: prompt }], null, 1024, { background: true });
     } catch (err) {
       console.log(`[distill] Error API: ${err.message}`);
       return;

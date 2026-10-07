@@ -162,7 +162,7 @@ async function summarizeOldHistory() {
       ? `Resumen anterior:\n${prevSummary}\n\nNuevos mensajes:\n${digest}\n\nActualiza el resumen incluyendo lo nuevo. Máx 200 palabras. Solo hechos: qué pidió el usuario, qué hizo Jarvis, qué tools usó, resultados clave. Español.`
       : `Mensajes:\n${digest}\n\nResume esta conversación en máx 150 palabras. Solo hechos: qué pidió el usuario, qué hizo Jarvis, qué tools usó, resultados clave. Español.`;
 
-    const result = await callLLM(C.BG_MODEL, 'Eres un resumidor conciso. Solo hechos, sin opiniones.', [{ role: 'user', content: prompt }], [], 300);
+    const result = await callLLM(C.FONDO_MODEL, 'Eres un resumidor conciso. Solo hechos, sin opiniones.', [{ role: 'user', content: prompt }], [], 300, { background: true });
 
     if (result.text) {
       const summaryMsg = { role: 'user', content: `[RESUMEN AUTOMÁTICO DE CONVERSACIÓN ANTERIOR — no es un mensaje real del usuario]\n${result.text}`, _summary: true };

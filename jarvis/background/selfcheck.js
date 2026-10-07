@@ -234,7 +234,7 @@ Responde ÚNICAMENTE con este JSON (sin texto extra):
 
     let repairResult;
     try {
-      repairResult = await callLLM(C.BG_MODEL, null, [{ role: 'user', content: repairPrompt }], null, 1024);
+      repairResult = await callLLM(C.FONDO_MODEL, null, [{ role: 'user', content: repairPrompt }], null, 1024, { background: true });
     } catch (err) {
       console.log(`[self-repair] API error: ${err.message}`);
       return;
@@ -381,10 +381,10 @@ Genera UNA entrada de knowledge_db con:
 Solo la llamada a knowledge_db. Español.`;
 
         const knowledgeTools = state.openAITools.filter(t => t.function.name === 'knowledge_db');
-        const result = await callLLM(C.BG_MODEL,
+        const result = await callLLM(C.FONDO_MODEL,
           'Eres Jarvis, experto en Home Assistant. Extrae conocimiento práctico de documentación técnica. Responde SOLO con knowledge_db. Español.',
           [{ role: 'user', content: extractPrompt }],
-          knowledgeTools, 1000
+          knowledgeTools, 1000, { background: true }
         );
 
         for (const tc of result.toolCalls) {

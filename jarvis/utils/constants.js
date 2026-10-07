@@ -18,10 +18,15 @@ const DEEPSEEK_R1_MODEL  = 'deepseek-v4-pro';     // V4 Pro — razonamiento pro
 const POOL_URL          = process.env.POOL_URL     || '';
 const POOL_API_KEY      = process.env.POOL_API_KEY || '';
 const POOL_MODEL        = process.env.POOL_MODEL   || 'jarvis:1.0';
+// Modelo virtual del pool para trabajo de FONDO (aplazable, mas barato: p. ej. jarvis-fondo:1.0).
+// Vacio = se usa POOL_MODEL (con prioridad batch igualmente).
+const POOL_MODEL_FONDO  = process.env.POOL_MODEL_FONDO || '';
 const USE_POOL          = !!(POOL_API_KEY && POOL_URL);
 const MODEL             = USE_POOL ? POOL_MODEL : 'deepseek-v4-pro';   // Chat principal
 const BG_MODEL          = USE_POOL ? POOL_MODEL : 'deepseek-v4-flash'; // Background + simples
 const CLAUDE_MODEL      = USE_POOL ? POOL_MODEL : 'deepseek-v4-pro';   // Dev expert
+// Trabajo de fondo (resumenes, patrones, destilado, vigilancia...). Sin pool == BG_MODEL (igual que antes).
+const FONDO_MODEL       = USE_POOL ? (POOL_MODEL_FONDO || POOL_MODEL) : BG_MODEL;
 const HA_TOKEN          = process.env.HA_TOKEN;
 const HA_URL            = process.env.HA_URL  || 'http://supervisor/core';
 const LANGUAGE          = process.env.LANGUAGE || 'es';
@@ -64,9 +69,9 @@ const API_USAGE_FILE         = path.join(DATA_DIR, 'api_usage.json');
 
 module.exports = {
   ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, SERPER_API_KEY,
-  MODEL, BG_MODEL, CLAUDE_MODEL,
+  MODEL, BG_MODEL, CLAUDE_MODEL, FONDO_MODEL,
   DEEPSEEK_API_KEY, DEEPSEEK_URL, DEEPSEEK_MODEL, DEEPSEEK_R1_MODEL,
-  POOL_URL, POOL_API_KEY, POOL_MODEL, USE_POOL,
+  POOL_URL, POOL_API_KEY, POOL_MODEL, POOL_MODEL_FONDO, USE_POOL,
   HA_TOKEN, HA_URL, LANGUAGE,
   PROXMOX_URL, PROXMOX_TOKEN, PROXMOX_NODE,
   OMV_URL, OMV_USER, OMV_PASSWORD,
