@@ -12,7 +12,7 @@ let yaml; try { yaml = require('js-yaml'); } catch { yaml = null; }
 const state = require('../utils/state');
 const { loadJSON, saveJSON, validateYamlSyntax, validateHAStructure, autoBackup } = require('../utils/persistence');
 const { haGet, haPost, supervisorGet, getSelfSlug } = require('../utils/ha-api');
-const { callOpenAI, callImageEdit } = require('../utils/llm');
+const { callOpenAI, callImageEdit, poolSearch } = require('../utils/llm');
 const { execSync, spawnSync } = require('child_process');
 const C = require('../utils/constants');
 const { scanInstallation } = require('../utils/scan');
@@ -383,6 +383,18 @@ async function executeTool(name, input) {
 
       // ─── Internet ───
       case 'web_search': {
+        // Con pool: primero la busqueda del pool (busca, lee y resume paginas con equipos locales,
+        // gratis). Si no esta disponible o no trae nada: Serper (Google) y luego DuckDuckGo, como siempre.
+        if (C.USE_POOL) {
+          const ps = await poolSearch(input.query, { results: 8, read: 3 });
+          if (ps && ps.results.length) {
+            const results = ps.results.slice(0, 8).map(r => ({
+              url: r.url, title: r.title, snippet: r.snippet || '',
+              ...(r.read && r.summary ? { summary: String(r.summary).slice(0, 700) } : {})
+            }));
+            return { query: input.query, results, source: 'pool', count: results.length };
+          }
+        }
         // Primario: Serper (Google). Fallback: DuckDuckGo
         if (C.SERPER_API_KEY) {
           try {
@@ -3566,8 +3578,23 @@ ${dots}`;
       // ─── web_search_native (GPT-4.1 con web search integrado) ──────────────
       case 'web_search_native': {
         const { query, context: ctx } = input;
-        if (!C.OPENAI_API_KEY) return { error: 'OPENAI_API_KEY no configurada' };
         if (!query) return { error: 'query requerido' };
+
+        // Con pool: si el pool leyo y resumio al menos 2 paginas, se responde con eso (gratis, sin
+        // gpt-4.1). Con menos, o si falla, se sigue con la busqueda nativa de OpenAI de siempre.
+        if (C.USE_POOL) {
+          const ps = await poolSearch(query, { results: 6, read: 3, question: ctx ? `${ctx} — ${query}` : query });
+          const leidas = ps ? ps.results.filter(r => r.read && r.summary) : [];
+          if (leidas.length >= 2) {
+            return {
+              success: true,
+              answer: leidas.map((r, i) => `[${i + 1}] ${r.title}\n${String(r.summary).slice(0, 700)}`).join('\n\n'),
+              citations: leidas.map(r => ({ url: r.url, title: r.title })),
+              source: 'pool (resumenes de paginas leidas)'
+            };
+          }
+        }
+        if (!C.OPENAI_API_KEY) return { error: 'OPENAI_API_KEY no configurada' };
 
         try {
           const userMsg = ctx

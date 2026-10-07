@@ -3,6 +3,41 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.43.0 - Fase 3 del pool: voz y busqueda web pasan por el pool
+────────────────────────────────────────────────────────────────────────────────
+
+QUE CAMBIA (todo con respaldo al camino directo de antes; sin pool, igual que antes):
+ - Voz a texto (llm.js callWhisper): con pool va primero por POST
+   /openai/v1/audio/transcriptions (whisper-1; de pago por ahora, el Core lo apunta
+   en su libro). Plazo de 15 s (el modo voz lo espera una persona). Si el pool falla,
+   hay cortacircuitos abierto o no contesta, OpenAI directo como siempre.
+ - web_search (executor): con pool, primero POST /v1/tools/search del pool: busca,
+   descarga las paginas con equipos libres de casa y las resume con modelos pequenos
+   locales (gratis). Cada resultado leido trae "summary" (max 700 chars). Plazo 25 s. Si
+   el pool falla o no trae nada: Serper (si hay clave) y DuckDuckGo, como antes.
+ - web_search_native (executor): con pool, si el pool leyo y resumio al menos 2 paginas
+   se responde con esos resumenes y citas, SIN gastar gpt-4.1. Con menos de 2, o si el
+   pool falla, busqueda nativa de OpenAI como antes. El contexto orienta el resumen.
+ - server.js: en modo pool los resultados de tools se cortan a 1.200 chars, pero
+   web_search y web_search_native a 3.000 (el mismo limite que sin pool) para no cortar
+   los resumenes por la mitad.
+ - NO se cambian: fetch_url (el pool rechaza direcciones privadas y Jarvis la usa
+   tambien para dispositivos de la red local), TTS tts-1 (el contrato del Core no
+   documenta audio/speech) ni las imagenes (el pool aun no las sirve).
+
+IMPACTO DE TOKENS (REGLA DE ORO): BAJA el coste.
+ - web_search_native: cada llamada que se resuelva con el pool evita una de gpt-4.1
+   con busqueda integrada (~$2/$8 por MTok mas el coste de la herramienta). Estimacion
+   prudente: ~$0.01-0.03 por busqueda ahorrada.
+ - web_search: sin coste de LLM nuevo (los resumenes los hace el pool en local); el
+   resultado trae hasta ~700 chars por pagina leida (3) = hasta ~2.100 chars (~600
+   tokens) mas en el contexto del turno que antes eran solo enlaces y fragmentos. Es
+   el unico aumento: solo cuando se busca, y menos que releer las paginas con fetch_url.
+ - Whisper: mismo coste (whisper-1), ahora anotado en el libro de gasto del pool.
+ - Calidad: los resumenes los hacen modelos pequenos (qwen2.5 1.5b/0.5b). Si no son
+   fiables para investigar, subir el umbral de web_search_native o quitar su rama de pool.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.42.0 - Fase 2 del pool: el trabajo de fondo va como aplazable (batch)
 ────────────────────────────────────────────────────────────────────────────────
 

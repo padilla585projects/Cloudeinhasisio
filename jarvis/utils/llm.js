@@ -705,8 +705,9 @@ const OPENAI_MODEL_FALLBACK = require('./constants').MODEL;
  * @param {string} language     — código ISO (es, en, ...) o null para auto-detect
  * @returns {Promise<{text: string, language: string}>}
  */
-async function callWhisper(audioBuffer, filename = 'audio.webm', language = 'es') {
-  if (!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY no configurada');
+// Una peticion de transcripcion (formato OpenAI) a `url` con la clave dada. El FormData
+// se construye aqui dentro: es un stream y no se puede reutilizar entre intentos.
+async function whisperRequest(url, apiKey, audioBuffer, filename, language, extraHeaders = {}, timeoutMs = 0) {
   const FormData = require('form-data');
   const form = new FormData();
   form.append('file', audioBuffer, { filename, contentType: 'audio/webm' });
@@ -714,17 +715,74 @@ async function callWhisper(audioBuffer, filename = 'audio.webm', language = 'es'
   if (language) form.append('language', language);
   form.append('response_format', 'json');
 
-  const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, ...form.getHeaders() },
-    body: form
-  });
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Whisper error ${response.status}: ${err}`);
+  const controller = timeoutMs ? new AbortController() : null;
+  const timer = timeoutMs ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, ...extraHeaders, ...form.getHeaders() },
+      body: form,
+      ...(controller ? { signal: controller.signal } : {})
+    });
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`Whisper error ${response.status}: ${err.slice(0, 300)}`);
+    }
+    const data = await response.json();
+    return { text: data.text || '', language: data.language || language };
+  } finally {
+    if (timer) clearTimeout(timer);
   }
-  const data = await response.json();
-  return { text: data.text || '', language: data.language || language };
+}
+
+// Voz a texto. Con el pool configurado va PRIMERO por el (POST /openai/v1/audio/transcriptions,
+// whisper-1 de pago por ahora, el Core lo apunta en su libro de gasto); si el pool no esta
+// disponible o falla, se usa OpenAI directo como antes. Sin pool: igual que antes.
+async function callWhisper(audioBuffer, filename = 'audio.webm', language = 'es') {
+  if (POOL_API_KEY && POOL_URL && !poolBreakerOpen()) {
+    try {
+      return await whisperRequest(`${poolBase()}/openai/v1/audio/transcriptions`, POOL_API_KEY,
+        audioBuffer, filename, language, { 'X-AI-Pool-Timeout': '15' }, 15000);
+    } catch (e) {
+      console.log(`[whisper] pool no disponible (${(e.message || '').slice(0, 90)}) -> ${OPENAI_API_KEY ? 'OpenAI directo' : 'sin respaldo'}`);
+      if (!OPENAI_API_KEY) throw e;
+    }
+  }
+  if (!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY no configurada');
+  return whisperRequest('https://api.openai.com/v1/audio/transcriptions', OPENAI_API_KEY, audioBuffer, filename, language);
+}
+
+// Busqueda web del pool (POST /v1/tools/search): el pool busca, descarga las paginas con equipos
+// libres de casa y las resume con modelos pequenos locales (gratis). Devuelve el JSON del pool
+// ({results:[{title,url,snippet,read,summary}], devices, took_s}) o null si no se puede (sin pool,
+// cortacircuitos abierto, error, plazo): quien llama usa entonces su busqueda de siempre.
+async function poolSearch(query, { results = 8, read = 3, question, timeoutMs = 25000 } = {}) {
+  if (!POOL_API_KEY || !POOL_URL || poolBreakerOpen() || !query) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const r = await fetch(`${poolBase()}/v1/tools/search`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${POOL_API_KEY}`,
+        'X-AI-Pool-Timeout': String(Math.round(timeoutMs / 1000))
+      },
+      body: JSON.stringify({ query, results, read, ...(question ? { question } : {}) }),
+      signal: controller.signal
+    });
+    if (!r.ok) {
+      console.log(`[search] pool error ${r.status} -> busqueda directa`);
+      return null;
+    }
+    const data = await r.json();
+    return (data && Array.isArray(data.results)) ? data : null;
+  } catch (e) {
+    console.log(`[search] pool no disponible (${(e.message || '').slice(0, 80)}) -> busqueda directa`);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // ── DALL-E image edit / variation ─────────────────────────────────────────────
@@ -776,6 +834,7 @@ module.exports = {
   persistApiUsage,
   setPoolWarmupHook,
   poolWarm,
+  poolSearch,
   openPoolBreaker,
   closePoolBreaker,
   poolBreakerOpen

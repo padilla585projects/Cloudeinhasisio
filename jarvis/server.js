@@ -104,6 +104,8 @@ function saveHistory() {
 //     siguiente empieza con el mismo prefijo que dejó este.
 const POOL_MODE      = !!C.USE_POOL;
 const POOL_TOOL_MAX  = 1200;  // chars por resultado de tool (bucle e historial)
+// Las busquedas web traen resumenes de paginas: con 1.200 se cortarian a mitad. Mismo limite que sin pool.
+const POOL_TOOL_MAX_BY_NAME = { web_search: 3000, web_search_native: 3000 };
 const POOL_ARGS_MAX  = 800;   // chars de argumentos de una tool call que se conservan
 
 // Expande _ctx en el contenido enviado al LLM (el historial guardado no lo toca,
@@ -606,10 +608,11 @@ async function handleChat(req, res, messages, files) {
       // historial, así el prefijo del turno siguiente coincide con el de este.
       currentMessages.push(POOL_MODE ? compactAssistantMsg(result.message, POOL_ARGS_MAX, true) : result.message);
 
-      const maxLen = POOL_MODE ? POOL_TOOL_MAX
+      const baseMaxLen = POOL_MODE ? POOL_TOOL_MAX
         : state.saverMode ? 1500 : (activeModel === C.BG_MODEL ? 2000 : 3000);
       for (let i = 0; i < result.toolCalls.length; i++) {
         const tc = result.toolCalls[i];
+        const maxLen = POOL_MODE ? (POOL_TOOL_MAX_BY_NAME[tc.name] || baseMaxLen) : baseMaxLen;
         sendEvent({ type: 'tool_end', tool: tc.name, result: results[i] });
         const raw = JSON.stringify(results[i]);
         const content = raw.length > maxLen ? raw.slice(0, maxLen) + '\n...[truncado para ahorrar tokens]' : raw;
