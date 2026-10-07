@@ -2,7 +2,7 @@
 ESTADO ACTUAL DEL PROYECTO — Jarvis AI Agent para Home Assistant
 ================================================================================
 Ultima actualizacion: 2026-10-04
-Version actual: 3.43.2
+Version actual: 3.43.3
 
 --------------------------------------------------------------------------------
 AL DIA 04-10-2026 — POOL DE IA LOCAL (v3.39.0 a 3.39.2)

@@ -166,7 +166,7 @@ const CRITICAL_FOCUSES = new Set(['system_health', 'fallen_devices']);
 
 async function proactiveThinkingLoop() {
   try {
-    if (!C.ANTHROPIC_API_KEY && !C.OPENAI_API_KEY) return;
+    if (!C.HAS_LLM) return;
 
     const idleMs = Date.now() - (state.lastUserActivity || 0);
     const idleHours = idleMs / 3600_000;

@@ -315,7 +315,7 @@ const HA_LEARN_STATE_FILE = path.join(C.DATA_DIR, 'ha_learn_state.json');
 
 async function bootLearnHA() {
   try {
-    if (!C.ANTHROPIC_API_KEY && !C.OPENAI_API_KEY) return;
+    if (!C.HAS_LLM) return;
 
     // Comprobar qué docs ya hemos estudiado
     const learnState = loadJSON(HA_LEARN_STATE_FILE, { studied: [], lastRun: null, totalPages: 0 });
@@ -412,7 +412,7 @@ Solo la llamada a knowledge_db. Español.`;
 
 async function bootLearnOwnProject() {
   try {
-    if (!C.ANTHROPIC_API_KEY && !C.OPENAI_API_KEY) return;
+    if (!C.HAS_LLM) return;
 
     const ownLearnFile = path.join(C.DATA_DIR, 'own_project_learned.json');
     const learnState = loadJSON(ownLearnFile, { learned: false, version: '' });

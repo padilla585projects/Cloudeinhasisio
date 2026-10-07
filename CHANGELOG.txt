@@ -3,6 +3,28 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.43.3 - Busqueda del pool con pausa, router tolerante y sin depender de la clave de Anthropic
+────────────────────────────────────────────────────────────────────────────────
+
+Encontrado probando la v3.43.1 en produccion (07-10-2026):
+ - Busqueda web por el pool: el plazo de 25 s se quedaba corto (el pool tarda 14-33 s con
+   equipos libres) y, con 3 busquedas seguidas del agente, se perdian 75 s antes de usar la
+   directa. Ahora el plazo es de 35 s y, tras un fallo (plazo, red o error), la busqueda del
+   pool se PAUSA 10 min y las siguientes van directas. closePoolBreaker() tambien la reanuda.
+   (Observado ademas: DuckDuckGo devolvio 0 resultados desde HA; el respaldo directo es debil.)
+ - Router de expertos: DeepSeek v4-pro contestaba 5 tokens pero la respuesta no se reconocia y
+   se caia a "ha_control (fallback)". Ahora parseExpertReply tolera comillas, puntos, negritas,
+   tildes y frases ("Experto: red"), y si aun asi no es valida se registra lo que respondio.
+ - Guardas de los bucles de fondo: patterns, proactive y los dos aprendizajes del arranque se
+   saltaban si no habia clave de ANTHROPIC (un resto de cuando Jarvis usaba Claude, hasta la
+   v3.36.0 del 07-07-2026). Con el pool o DeepSeek configurados no se ejecutaban igualmente si
+   faltaba esa clave. Nuevo C.HAS_LLM (hay pool, DeepSeek, OpenAI o Anthropic). Asi se puede
+   retirar la clave de Anthropic del add-on sin parar nada: Jarvis NO usa Anthropic directo.
+
+IMPACTO DE TOKENS (REGLA DE ORO): NEUTRO. No cambia ninguna llamada LLM. La pausa de busqueda
+evita esperas, no gasto; el router solo reconoce mejor una respuesta que ya se pagaba.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.43.2 - Precio de deepseek-flash y traza del pool mas fiel
 ────────────────────────────────────────────────────────────────────────────────
 

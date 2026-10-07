@@ -83,7 +83,10 @@ Si los archivos están en la raíz, HA no detecta actualizaciones. NUNCA mover a
 
 ## Variables de entorno (definidas en run.sh)
 - `OPENAI_API_KEY` — Key de OpenAI (requerida)
-- `ANTHROPIC_API_KEY` — Key de Anthropic (opcional, experto dev)
+- `ANTHROPIC_API_KEY` — Key de Anthropic (OPCIONAL y hoy SIN USO: desde la v3.36.0, 07-07-2026, ningún
+  modelo de Jarvis es `claude-*`). No hace falta ponerla; si está, el gasto en Anthropic NO es de Jarvis.
+  El 07-10-2026 Adrián vio ~59 US$/30 días en una clave llamada «Jarvis-Hassio» (Sonnet 4.6, a diario,
+  con picos): era la clave de este campo y NO la usaba el código de Jarvis (ver ESTADO_PROYECTO.txt)
 - `DEEPSEEK_API_KEY` — Key de DeepSeek (opcional, expertos analisis + razonamiento)
 - `SERPER_API_KEY` — Key de Serper para búsqueda Google (opcional)
 - `LANGUAGE` — es (default)

@@ -47,7 +47,7 @@ async function captureStateSnapshot() {
 
 async function analyzePatterns() {
   try {
-    if (!C.ANTHROPIC_API_KEY) return;
+    if (!C.HAS_LLM) return;
 
     const snapshots = loadJSON(PATTERNS_FILE, []);
     if (snapshots.length < 50) {
