@@ -2,7 +2,7 @@
 FUTURAS MEJORAS — Jarvis AI Agent para Home Assistant
 ================================================================================
 Ultima actualizacion: 2026-10-04
-Version actual: 3.40.0
+Version actual: 3.41.0
 
 Prioridad: ALTA | MEDIA | BAJA
 Orden del usuario: INTELIGENCIA primero, luego el resto.
@@ -34,6 +34,21 @@ Orden de ataque (toca el bucle agentico: hacerlo con calma y probando):
        L1 y otras tools); si el router alterna mucho, cada uno recalienta su cache.
        Medir con la traza antes de decidir.
 [ ] 9. Calentar mas expertos (diagnostico, automatizacion) si se usan a menudo.
+       (v3.41.0: el calentamiento pesado se sustituyo por /v1/inference/warm. Si se quiere
+       calentar la CACHE del prefijo sin gasto, hace falta un modelo virtual del Core solo
+       local, p. ej. jarvis-local:1.0, como alejandra-experto-local:1.0.)
+
+================================================================================
+SPRINT POOL FASES (pasar Jarvis a hablar SOLO con el pool)             ALTA
+================================================================================
+Aprobado por Adrian el 07-10-2026 (el Core ya enruta local -> pago; ver CHANGELOG 3.41.0).
+[v] Fase 1 (v3.41.0): gasto de pago contado al precio real; calentamiento ligero.
+[ ] Fase 2: trabajo de fondo (resumenes, patrones, destilado, router) con modelo virtual
+    propio (jarvis-fondo:1.0, v4-flash) y X-AI-Pool-Priority: batch (aplazable si el
+    presupuesto llega a critical/over). Hoy NINGUN llamador marca background:true.
+[ ] Fase 3: voz a texto (whisper-1) y busqueda web (/v1/tools/search|read) por el pool,
+    con el camino directo actual como respaldo; tts-1 si encaja. Imagenes: siguen igual.
+[ ] Tras un mes sin caidas del Core: retirar el DeepSeek directo (respaldo de emergencia).
 
 ================================================================================
 SPRINT 1 — INTELIGENCIA                                              ALTA

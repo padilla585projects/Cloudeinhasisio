@@ -13,7 +13,7 @@ const { loadJSON, saveJSON, autoBackup } = require('./utils/persistence');
 const { haGet, haPost }      = require('./utils/ha-api');
 const { scanInstallation }   = require('./utils/scan');
 const { callLLM, callOpenAI, callWhisper, callImageEdit, sanitizeMessagesForOpenAI, stripImagesFromHistory, persistApiUsage,
-        setPoolWarmupHook, openPoolBreaker, closePoolBreaker } = require('./utils/llm');
+        setPoolWarmupHook, poolWarm, closePoolBreaker } = require('./utils/llm');
 const { updateLiveContext, buildDynamicContext, buildTurnSnapshot } = require('./utils/context');
 const { tools, openAITools } = require('./tools/definitions');
 const { executeTool }        = require('./tools/executor');
@@ -384,6 +384,7 @@ async function handleChat(req, res, messages, files) {
 
   try {
     await updateLiveContext();
+    if (POOL_MODE) poolWarm({ minIntervalMs: 5 * 60_000 }).catch(() => {});
 
     const lastMsg = messages[messages.length - 1];
     if (lastMsg && lastMsg.role === 'user') {
@@ -1697,45 +1698,34 @@ async function proactiveDeviceHealthScan() {
 }
 
 // ── Calentamiento del pool ────────────────────────────────────────────────────
-// Tras reiniciar el equipo del pool su caché de prompt está fría: leer el prefijo
-// (~8k tokens medidos por el pool) tarda de ~90 s a >190 s según la carga de la GPU,
-// y mi timeout interactivo es de 45 s, así que ningún intento real llegaría a
-// calentarla. Aquí se manda, EN SEGUNDO PLANO y con timeout de 180 s (el Core del
-// pool corta cada petición a los 190 s), el mismo prefijo (system estable + tools) con
-// max_tokens:1. Si se corta, llama.cpp CONSERVA lo ya procesado de la tarea cancelada:
-// el reintento solo lee lo que falte, así que repetir converge. Coste $0 (local).
-// Mientras dura, el cortacircuitos de llm.js manda el chat a DeepSeek; al terminar
-// bien, lo cierra. Un solo vuelo.
+// El Core del pool enruta jarvis:1.0 con una cadena local -> modelos de pago: si el
+// modelo local no responde en ~10 s (o no está en memoria) contesta con el de pago, y
+// él mismo cuenta el gasto. Lo que sí le sirve a Jarvis es que el modelo local esté
+// CARGADO cuando llega el mensaje (el ASUS apaga su servidor de modelos a los 30 min
+// de reposo y arrancarlo tarda ~70 s). Para eso el Core ofrece POST /v1/inference/warm:
+// responde al instante, calienta en segundo plano y no cuenta como gasto.
+// (Antes se mandaba el prefijo entero con max_tokens:1 y timeout largo: con la cadena
+// de pago dentro del Core esa petición la contestaría el modelo de PAGO tras 10 s
+// locales, costaría dinero y daría la caché por caliente sin estarlo.)
+// Mientras el cortacircuitos esté abierto se reintenta: si el Core contesta, se cierra.
 let _poolWarming = false;
 const _sleep = ms => new Promise(r => setTimeout(r, ms));
 
 async function warmPool() {
   if (!POOL_MODE || _poolWarming) return;
   _poolWarming = true;
-  const t0 = Date.now();
   try {
     for (let attempt = 1; attempt <= 12; attempt++) {
-      try {
-        // ha_control = el prefijo más grande; rapido = el que más se usa en mensajes cortos.
-        for (const name of ['ha_control', 'rapido']) {
-          const tls = [...nexusGetToolsForExpert(name)];
-          if (mcpClient && mcpClient.getMcpOpenAiTools().length > 0) tls.push(...mcpClient.getMcpOpenAiTools());
-          await callLLM(C.MODEL, nexusAssembleStaticPrompt(name),
-            [{ role: 'user', content: '[Ahora: calentamiento de caché]\nok' }],
-            tls, 1, { poolOnly: true, timeoutMs: 180_000 });
-          console.log(`[pool] caché calentada: ${name} (${Math.round((Date.now() - t0) / 1000)}s)`);
-        }
+      const r = await poolWarm();
+      if (r.ok) {
+        console.log(`[pool] modelo local pedido en caliente (${r.status})`);
         closePoolBreaker();
         return;
-      } catch (e) {
-        const msg = e.message || '';
-        console.log(`[pool] calentamiento, intento ${attempt}/12 falló: ${msg.slice(0, 100)}`);
-        // Corte por tiempo (nuestro abort o el 504 del Core): hubo progreso, reintentar ya.
-        // Cualquier otro fallo (503 sin equipo, red caída): esperar un minuto.
-        await _sleep(/aborted|timeout|timed out|pool error 504/i.test(msg) ? 5_000 : 60_000);
       }
+      console.log(`[pool] calentamiento, intento ${attempt}/12 falló: ${r.status || r.error || 'sin respuesta'}`);
+      await _sleep(60_000);
     }
-    console.log('[pool] no se pudo calentar tras 12 intentos; el chat sigue en DeepSeek');
+    console.log('[pool] el Core no responde tras 12 intentos; el chat sigue en DeepSeek directo');
   } finally {
     _poolWarming = false;
   }
@@ -1778,8 +1768,8 @@ app.listen(PORT, '0.0.0.0', () => {
 
       console.log('[boot] Inicialización completa. Jarvis operativo.');
 
-      // Pool: calentar su caché con el prompt ya definitivo (pausa el pool mientras tanto).
-      if (POOL_MODE) openPoolBreaker('arranque (calentando caché)');
+      // Pool: pedir el modelo local en caliente (instantáneo, sin coste).
+      if (POOL_MODE) warmPool().catch(() => {});
 
       await bootSelfCheck().catch(e => console.log(`[boot] Self-check falló: ${e.message}`));
 

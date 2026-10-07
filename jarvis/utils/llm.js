@@ -18,6 +18,7 @@ const MODEL_PRICES = {
   'gpt-4o':             { in: 2.50 / 1e6,   out: 10.00 / 1e6, cache_read: 0.625 / 1e6,   cache_write: 0 },
   'claude-sonnet-4-5':  { in: 3.00 / 1e6,   out: 15.00 / 1e6, cache_read: 0.30 / 1e6,    cache_write: 3.75 / 1e6 },
   'claude-sonnet-4-6':  { in: 3.00 / 1e6,   out: 15.00 / 1e6, cache_read: 0.30 / 1e6,    cache_write: 3.75 / 1e6 },
+  'claude-haiku-4-5':   { in: 1.00 / 1e6,   out: 5.00 / 1e6,  cache_read: 0.10 / 1e6,    cache_write: 1.25 / 1e6 },
   'jarvis:1.0':         { in: 0,            out: 0,           cache_read: 0,             cache_write: 0 }, // pool local = gratis
 };
 
@@ -498,6 +499,49 @@ function openPoolBreaker(reason) {
   if (poolWarmupHook) { try { poolWarmupHook(); } catch (_) {} }
 }
 
+// Clave de precio de un modelo servido por el pool de pago. X-AI-Pool-Model trae el
+// modelo real, p. ej. "deepseek-v4-pro", "claude-haiku-4-5-20251001" o con proveedor
+// delante ("paid:deepseek/deepseek-v4-pro"). Si no lo conocemos, trackUsage usa el
+// precio de deepseek-v4-pro (aproximacion prudente, no cero).
+function poolPriceKey(modelHeader) {
+  const m = String(modelHeader || '').toLowerCase().replace(/^paid:/, '').split('/').pop();
+  if (MODEL_PRICES[m]) return m;
+  const hit = Object.keys(MODEL_PRICES).find(k => k !== 'jarvis:1.0' && m.startsWith(k));
+  return hit || 'deepseek-v4-pro';
+}
+
+function poolBase() {
+  // Acepta la URL como la da el panel del pool: con o sin /openai/v1 (o /v1) al final.
+  return POOL_URL.replace(/\/+$/, '').replace(/\/(openai\/v1|openai|v1)$/i, '');
+}
+
+// Calentamiento ligero del modelo local: POST /v1/inference/warm responde AL INSTANTE
+// (202 warming / 200 warm) y no cuenta como gasto. Evita que la primera peticion tras una
+// pausa (el ASUS apaga su servidor de modelos a los 30 min) tenga que cargar el modelo.
+// Throttle: como mucho una vez cada minIntervalMs. Nunca lanza: devuelve {ok,status}.
+let _lastPoolWarm = 0;
+async function poolWarm({ minIntervalMs = 0 } = {}) {
+  if (!POOL_API_KEY || !POOL_URL) return { ok: false, status: 0 };
+  if (minIntervalMs && Date.now() - _lastPoolWarm < minIntervalMs) return { ok: true, status: 'skip' };
+  _lastPoolWarm = Date.now();
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), 10000);
+  try {
+    const r = await fetch(`${poolBase()}/v1/inference/warm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${POOL_API_KEY}` },
+      body: JSON.stringify({ model: POOL_MODEL }),
+      signal: controller.signal
+    });
+    return { ok: r.ok, status: r.status };
+  } catch (e) {
+    _lastPoolWarm = 0;
+    return { ok: false, status: 0, error: e.message };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 // ── Pool de IA local (OpenAI-compatible) ──────────────────────────────────────
 // Llama al pool local (jarvis:1.0). NO manda parámetros de thinking (el pool los
 // rechaza). max_tokens SIEMPRE. Un solo intento: ante error/timeout lanza y
@@ -518,9 +562,8 @@ async function callPool(model, system, messages, aiTools, maxTokens, options = {
   }
   // Timeout adaptativo: interactivo 45s (cubre carga de modelo en frío), fondos más largo.
   const timeoutMs = options.timeoutMs || (options.background ? 180000 : 45000);
-  // Acepta la URL como la da el panel del pool: con o sin /openai/v1 (o /v1) al final.
-  // Siempre reconstruimos el endpoint canónico, así no importa cuál peguen.
-  const base = POOL_URL.replace(/\/+$/, '').replace(/\/(openai\/v1|openai|v1)$/i, '');
+  // Siempre reconstruimos el endpoint canónico, así no importa cómo se pegue la URL.
+  const base = poolBase();
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -549,15 +592,21 @@ async function callPool(model, system, messages, aiTools, maxTokens, options = {
   if (!choice) throw new Error('pool: respuesta sin choices');
   const message = choice.message || {};
   const usage = data.usage || {};
-  trackUsage(POOL_MODEL, usage);
+  // El Core puede responder con la IA local (gratis) o, si esta no llega a tiempo, con un
+  // modelo de PAGO de su cadena. Lo dice X-AI-Pool-Source. Si fue de pago hay que contarlo
+  // al precio del modelo real, o el guarda de coste diario no vería ese gasto (el libro
+  // global de 100 EUR/mes es del pool, pero el limite diario de Jarvis es el nuestro).
+  const poolSource = (response.headers.get('x-ai-pool-source') || 'local').toLowerCase();
+  const poolModelUsed = response.headers.get('x-ai-pool-model') || POOL_MODEL;
+  trackUsage(poolSource === 'paid' ? poolPriceKey(poolModelUsed) : POOL_MODEL, usage);
   // Traza ligera para validar que el pool responde (y quién): modelo/worker reales
   // y tokens NUEVOS leídos (prompt - cache), que es lo que marca el tiempo de lectura.
   try {
-    const pm = response.headers.get('x-ai-pool-model') || POOL_MODEL;
+    const pm = poolModelUsed;
     const pw = response.headers.get('x-ai-pool-worker') || '?';
     const pt = usage.prompt_tokens || 0;
     const ct = (usage.prompt_tokens_details && usage.prompt_tokens_details.cached_tokens) || 0;
-    console.log(`[llm] pool OK: ${pm}@${pw} | prompt ${pt} (cache ${ct}, nuevos ${pt - ct}) | out ${usage.completion_tokens || 0}`);
+    console.log(`[llm] pool OK (${poolSource}): ${pm}@${pw} | prompt ${pt} (cache ${ct}, nuevos ${pt - ct}) | out ${usage.completion_tokens || 0}`);
   } catch {}
   return {
     text: message.content || '',
@@ -578,9 +627,6 @@ async function callLLM(model, system, messages, tools, maxTokens, options = {}) 
   // Pool de IA local (jarvis:1.0) — si está configurado, con respaldo a DeepSeek.
   if (POOL_API_KEY && POOL_URL && model &&
       (model === POOL_MODEL || model.startsWith('jarvis:') || model.startsWith('qwen'))) {
-    // Calentamiento: va SOLO al pool, con timeout largo, sin cortacircuitos ni respaldo.
-    if (options.poolOnly) return callPool(model, system, messages, tools, maxTokens, options);
-
     // Respaldo: sin tools (clasificar, resumir, destilar) basta flash; con tools, pro.
     const fallback = (cause) => {
       const fbModel = (options.background || !tools || tools.length === 0) ? 'deepseek-v4-flash' : 'deepseek-v4-pro';
@@ -707,6 +753,7 @@ module.exports = {
   convertToolsToAnthropic,
   persistApiUsage,
   setPoolWarmupHook,
+  poolWarm,
   openPoolBreaker,
   closePoolBreaker,
   poolBreakerOpen

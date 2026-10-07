@@ -101,7 +101,7 @@ if bashio::config.has_value 'centinela_clave'; then
 fi
 
 
-bashio::log.info "Iniciando Jarvis AI Agent v3.40.0..."
+bashio::log.info "Iniciando Jarvis AI Agent v3.41.0..."
 bashio::log.info "Modelos cloud: DeepSeek V4 Flash (bg) + V4 Pro (principal/dev)"
 bashio::log.info "Nucleos activos:"
 if [ -n "${POOL_API_KEY:-}" ] && [ -n "${POOL_URL:-}" ]; then

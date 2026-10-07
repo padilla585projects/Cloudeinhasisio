@@ -3,6 +3,45 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.41.0 - Fase 1 del pool con respaldo de pago: contar el gasto y calentar bien
+────────────────────────────────────────────────────────────────────────────────
+
+CONTEXTO (07-10-2026): el Core del pool ahora enruta jarvis:1.0 con una cadena
+local (qwen3.6 -> gemma4 -> prisma) -> de PAGO (deepseek-v4-pro -> v4-flash ->
+claude-haiku-4-5). Si el modelo local no responde en ~10 s (o no esta en memoria)
+contesta uno de pago, y el Core lleva el libro de gasto (100 EUR/mes en total,
+compartido con las demas apps). Cada respuesta dice quien contesto en
+X-AI-Pool-Source: local|paid y X-AI-Pool-Model. Es la fase 1 de pasar Jarvis a
+hablar SOLO con el pool (fase 2: trabajo de fondo; fase 3: voz y busqueda).
+
+QUE CAMBIA:
+ - Gasto contado al precio real. Antes jarvis:1.0 valia $0 en el guarda de coste
+   diario; ahora, si la respuesta es de pago (X-AI-Pool-Source: paid), se cuenta al
+   precio del modelo que contesto (deepseek-v4-pro/flash, claude-haiku-4-5; si no se
+   reconoce, al de v4-pro, aproximacion prudente). Sin esto el limite diario de
+   Jarvis (DAILY_COST_LIMIT) no veria el gasto que hace el pool en su nombre. La traza
+   ahora dice [llm] pool OK (local|paid): modelo@equipo | prompt N (cache C, nuevos X).
+ - Calentamiento ligero. Se quita el calentamiento pesado de la v3.40.0 (mandar el
+   prefijo entero con max_tokens:1 y timeout de 180 s): con la cadena de pago dentro
+   del Core esa peticion la contestaria el modelo de PAGO tras 10 s locales, costaria
+   dinero y daria la cache por caliente sin estarlo. Ahora Jarvis llama a
+   POST /v1/inference/warm del Core (responde al instante, 202 warming / 200 warm, no
+   cuenta como gasto): al arrancar, al abrirse una conversacion (maximo cada 5 min) y
+   en bucle mientras el cortacircuitos este abierto. Si el Core contesta, se cierra.
+ - Se retira la opcion poolOnly de callLLM (ya sin uso).
+
+IMPACTO DE TOKENS (REGLA DE ORO): BAJA o neutro.
+ - Quita 2 peticiones de ~8-10k tokens en cada arranque/caida del pool (calentamiento
+   pesado) y las cambia por un POST sin tokens.
+ - No anade ninguna llamada LLM. El respaldo a DeepSeek directo sigue igual como
+   emergencia (solo si el pool entero no contesta).
+ - El gasto de pago pasa a verse en el guarda diario de Jarvis (antes era invisible);
+   el tope duro es el del pool: 100 EUR/mes compartidos entre todas las apps.
+ - Estimacion: con el ASUS lento, todo el chat se responde de pago por el pool a
+   precio de DeepSeek v4-pro (~$0.0045 por turno de ~10k tokens de entrada sin cache),
+   lo mismo que cuesta hoy el DeepSeek directo; con cache de prefijo, bastante menos.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.40.0 - Prompt cacheable para el pool, cortacircuitos y calentamiento
 ────────────────────────────────────────────────────────────────────────────────
 

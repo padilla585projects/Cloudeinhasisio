@@ -449,6 +449,18 @@ Reglas de convivencia con el pool (la GPU es compartida, de una petición en una
   resultados de tools no. Ver la optimización de payload en `FUTURAS_MEJORAS.txt`.
 - No pasar parámetros de thinking al pool (los rechaza) ni usar streaming con tools (400).
 
+### El Core del pool también enruta a modelos de PAGO (v3.41.0)
+`jarvis:1.0` = cadena local (qwen3.6 → gemma4 → prisma) → de pago (deepseek-v4-pro →
+v4-flash → claude-haiku-4-5). Si el local no responde en ~10 s (interactivo) o ~60 s
+(`X-AI-Pool-Priority: batch`), y nunca más del 40 % de `X-AI-Pool-Timeout`, contesta el
+de pago. Cada respuesta trae `X-AI-Pool-Source: local|paid` y `X-AI-Pool-Model` (el real).
+- El gasto de pago lo lleva el pool (100 €/mes TOTAL, compartido con todas las apps). Jarvis
+  lo cuenta además en su guarda diario al precio del modelo real (`poolPriceKey` en `llm.js`):
+  si se ignorara `X-AI-Pool-Source`, `jarvis:1.0` valdría $0 y el guarda no vería ese gasto.
+- Un modelo de pago puede RAZONAR antes de responder (v4-pro): con `max_tokens` bajo puede
+  salir vacío. El Core trata la respuesta vacía como error y pasa al siguiente de la cadena.
+- Contrato del Core: `ai-pool/pool/docs/plan-ia-de-pago-en-el-pool.md` (§8) y `contrato-modo-pool.md`.
+
 ### Con el pool, el prompt tiene que ser un PREFIJO ESTABLE (v3.40.0)
 La caché del pool solo vale mientras el comienzo del prompt sea idéntico byte a byte.
 Reglas que NO hay que romper al tocar `server.js`, `nexus/layers.js` o `utils/context.js`:
@@ -461,11 +473,10 @@ Reglas que NO hay que romper al tocar `server.js`, `nexus/layers.js` o `utils/co
 - No acortar el historial con una ventana deslizante: mueve el comienzo en cada turno.
   Lo recorta el resumen automático, que reescribe el inicio de golpe y pocas veces.
 - Tras una caída, `llm.js` pausa el pool (cortacircuitos, máx 10 min) y `warmPool()`
-  en `server.js` calienta la caché en segundo plano. Sin eso, con la caché fría, el
-  prefijo (~8k tokens medidos) tarda 90-190+ s según la carga de la GPU y el timeout
-  de 45 s lo aborta. El Core del pool corta cada petición a los 190 s, así que el
-  calentamiento usa timeout de 180 s y reintenta (llama.cpp conserva lo ya procesado
-  de una tarea cancelada). Usa `poolOnly:true`: nunca cae a DeepSeek.
+  en `server.js` lo reintenta con `POST /v1/inference/warm` (instantáneo, sin coste):
+  al contestar el Core, se cierra el cortacircuitos. NO calentar mandando el prefijo
+  entero por `chat/completions`: con la cadena de pago del Core lo contestaría un
+  modelo de PAGO tras ~10 s locales (gasto + caché local sin calentar).
 
 ## Documentos de referencia en la raíz
 
