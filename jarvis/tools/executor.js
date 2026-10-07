@@ -12,7 +12,7 @@ let yaml; try { yaml = require('js-yaml'); } catch { yaml = null; }
 const state = require('../utils/state');
 const { loadJSON, saveJSON, validateYamlSyntax, validateHAStructure, autoBackup } = require('../utils/persistence');
 const { haGet, haPost, supervisorGet, getSelfSlug } = require('../utils/ha-api');
-const { callOpenAI, callLLM, callImageEdit, poolSearch } = require('../utils/llm');
+const { callOpenAI, callLLM, callImageEdit, poolSearch, repairToolPairs } = require('../utils/llm');
 const { execSync, spawnSync } = require('child_process');
 const C = require('../utils/constants');
 const { scanInstallation } = require('../utils/scan');
@@ -29,6 +29,7 @@ function saveHistory() {
   const histLimit = state.saverMode ? 15 : 30;
   if (state.conversationHistory.length > histLimit)
     state.conversationHistory = state.conversationHistory.slice(-histLimit);
+  state.conversationHistory = repairToolPairs(state.conversationHistory);   // el recorte no debe dejar tool huerfanos
   saveJSON(C.HISTORY_FILE, state.conversationHistory);
 }
 

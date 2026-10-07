@@ -166,6 +166,10 @@ default                            → callOpenAI
 ### Bucle agéntico
 - Ejecuta TODAS las tools de un turno antes de push al historial
 - Un push de assistant message + un push con todos los tool_results por turno
+- NUNCA cortar el historial (límite de 60, resumen automático) dejando un `tool` sin su llamada, ni una
+  llamada sin su resultado: Anthropic/DeepSeek devuelven 400 ("unexpected tool_use_id found") y el pool
+  responde 502 tras probar TODOS los pasos. `repairToolPairs()` (llm.js) lo evita: se aplica antes de enviar
+  al pool y al guardar el historial. Si tocas cómo se recorta/resume el historial, conserva esa llamada
 - Máximo 15 iteraciones
 - get_entities: caché 30s, máx 100 entidades
 - Errores de tools se auto-registran como learnings

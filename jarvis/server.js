@@ -13,7 +13,7 @@ const { loadJSON, saveJSON, autoBackup } = require('./utils/persistence');
 const { haGet, haPost }      = require('./utils/ha-api');
 const { scanInstallation }   = require('./utils/scan');
 const { callLLM, callOpenAI, callWhisper, callImageEdit, sanitizeMessagesForOpenAI, stripImagesFromHistory, persistApiUsage,
-        poolWarm } = require('./utils/llm');
+        poolWarm, repairToolPairs } = require('./utils/llm');
 const { updateLiveContext, buildDynamicContext, buildTurnSnapshot } = require('./utils/context');
 const { tools, openAITools } = require('./tools/definitions');
 const { executeTool }        = require('./tools/executor');
@@ -55,7 +55,7 @@ if (!fs.existsSync(C.DATA_DIR)) fs.mkdirSync(C.DATA_DIR, { recursive: true });
 
 // ── Inicializar estado desde disco ────────────────────────────────────────────
 state.userMemory          = loadJSON(C.MEMORY_FILE, []);
-state.conversationHistory = loadJSON(C.HISTORY_FILE, []);
+state.conversationHistory = repairToolPairs(loadJSON(C.HISTORY_FILE, []));   // cura un historial ya cortado a medias
 state.learnings           = loadJSON(C.LEARNINGS_FILE, []);
 state.installationMap     = loadJSON(C.INSTALLATION_MAP_FILE, {});
 state.scheduledTasks      = loadJSON(C.SCHEDULED_TASKS_FILE, {});
@@ -89,6 +89,8 @@ function saveHistory() {
   const histLimit = state.saverMode ? 30 : 60;
   if (state.conversationHistory.length > histLimit)
     state.conversationHistory = state.conversationHistory.slice(-histLimit);
+  // El recorte puede dejar un `tool` sin su llamada (o al reves): se repara siempre antes de guardar.
+  state.conversationHistory = repairToolPairs(state.conversationHistory);
   saveJSON(C.HISTORY_FILE, state.conversationHistory);
 }
 

@@ -102,6 +102,46 @@ function sanitizeMessagesForOpenAI(messages, stripImages = false) {
   });
 }
 
+// Repara los pares llamada/resultado de herramientas de una conversacion. Los proveedores estrictos
+// (Anthropic, y el OpenAI-compatible de DeepSeek) rechazan con 400 un mensaje `tool` sin la llamada del
+// asistente que lo origino ("unexpected tool_use_id found in tool_result"), o una llamada sin su resultado.
+// Pasa cuando el historial se recorta en mitad de un intercambio: el limite de 60 mensajes y el resumen
+// automatico (que sustituye los 20 primeros) pueden dejar un `tool` huerfano al principio. Con el pool, si
+// TODOS los pasos de la cadena fallan por eso, el usuario ve "pool error 502: the paid step failed".
+// Devuelve un array NUEVO (sin mutar el original): quita los `tool` sin llamada, quita de un mensaje del
+// asistente las llamadas sin resultado (o el mensaje entero si solo tenia eso) y recorta lo que quede al
+// principio sin ser del usuario (Anthropic exige que empiece por un mensaje de usuario).
+function repairToolPairs(messages) {
+  if (!Array.isArray(messages)) return messages;
+  const out = [];
+  let validIds = null;   // ids de llamadas cuyo resultado puede aparecer ahora mismo
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
+    if (!m) continue;
+    if (m.role === 'tool') {
+      if (validIds && validIds.has(m.tool_call_id)) out.push(m);   // si no, es huerfano: se descarta
+      continue;
+    }
+    if (m.role === 'assistant' && Array.isArray(m.tool_calls) && m.tool_calls.length) {
+      const respondidos = new Set();
+      for (let j = i + 1; j < messages.length && messages[j] && messages[j].role === 'tool'; j++) respondidos.add(messages[j].tool_call_id);
+      const validas = m.tool_calls.filter(tc => respondidos.has(tc.id));
+      if (validas.length === 0) {
+        validIds = null;
+        if (m.content) { const { tool_calls, ...resto } = m; out.push(resto); }   // se conserva el texto
+        continue;
+      }
+      out.push(validas.length === m.tool_calls.length ? m : { ...m, tool_calls: validas });
+      validIds = new Set(validas.map(tc => tc.id));
+      continue;
+    }
+    validIds = null;
+    out.push(m);
+  }
+  while (out.length && out[0].role !== 'user') out.shift();
+  return out;
+}
+
 function stripImagesFromHistory() {
   state.conversationHistory = state.conversationHistory.map(msg => {
     if (!Array.isArray(msg.content)) return msg;
@@ -337,7 +377,8 @@ async function callPool(model, system, messages, aiTools, maxTokens, options = {
     e.noApiKey = true;
     throw e;
   }
-  const sanitized = sanitizeMessagesForOpenAI(messages);
+  // repairToolPairs: si el historial trae un `tool` huerfano, Anthropic/DeepSeek devuelven 400 y la cadena entera falla.
+  const sanitized = repairToolPairs(sanitizeMessagesForOpenAI(messages));
   const msgs = system ? [{ role: 'system', content: system }, ...sanitized] : [...sanitized];
   const body = { model: resolvePoolModel(model), max_tokens: maxTokens || 2048, messages: msgs };
   if (aiTools && aiTools.length > 0) {
@@ -579,6 +620,7 @@ module.exports = {
   callWhisper,
   callImageEdit,
   sanitizeMessagesForOpenAI,
+  repairToolPairs,
   stripImagesFromHistory,
   persistApiUsage,
   poolWarm,

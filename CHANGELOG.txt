@@ -3,6 +3,34 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.44.2 - Historial sin mensajes `tool` huerfanos (error 502 "unexpected tool_use_id found")
+────────────────────────────────────────────────────────────────────────────────
+
+ERROR (07-10-2026, visto por Adrian en el chat): "Error API: pool error 502: the paid step failed:
+anthropic answered 400: messages.2.content.0: unexpected tool_use_id found in tool_result blocks".
+CAUSA: el historial guardado tenia un mensaje `tool` (resultado de herramienta) SIN el mensaje del
+asistente con la llamada que lo origino. Pasa cuando el historial se corta en mitad de un intercambio:
+(1) el limite de 60 mensajes (saveHistory en server.js y la copia de executor.js) y (2) el resumen
+automatico, que sustituye los 20 primeros mensajes por [resumen, ack] y puede dejar un `tool` huerfano
+justo detras (de ahi "messages.2": resumen, ack y el tool). Los proveedores estrictos devuelven 400
+(Anthropic, y el compatible-OpenAI de DeepSeek); como el pool prueba v4-pro -> flash -> haiku y TODOS
+fallan por lo mismo, el usuario ve el 502 del ultimo paso. Antes, con DeepSeek directo, tampoco era
+valido, pero un historial viejo no siempre lo tenia.
+
+QUE CAMBIA: nueva repairToolPairs() en llm.js. Quita los `tool` sin llamada previa, quita de un mensaje del
+asistente las llamadas sin resultado (o el mensaje entero si solo era eso, conservando el texto) y recorta lo
+que quede al principio sin ser del usuario (Anthropic exige empezar por un user). Devuelve un array nuevo.
+Se aplica en TRES sitios: (1) callPool, justo antes de enviar (defensa final: cualquier camino, aunque el
+historial este roto); (2) saveHistory y la copia de executor.js, tras el recorte, para que el historial
+guardado nunca quede cortado; (3) al arrancar, para curar un historial ya roto. No toca los intercambios
+bien formados.
+
+SI TE SALE EL ERROR EN UNA VERSION ANTERIOR: boton "Limpiar chat" del panel de Jarvis (borra el historial).
+
+IMPACTO DE TOKENS (REGLA DE ORO): NEUTRO o a la baja: se envian menos mensajes sueltos que el modelo no puede
+usar, y se evitan los 3 pasos fallidos de la cadena (v4-pro, flash, haiku) que terminaban en error.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.44.1 - Razonamiento DESACTIVADO por defecto en las llamadas al pool
 ────────────────────────────────────────────────────────────────────────────────
 
