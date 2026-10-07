@@ -112,7 +112,9 @@ async function nexusRoute(message) {
       `Clasifica en UNA palabra: ${allNames}. Solo la palabra.`,
       [{ role: 'user', content: text.slice(0, 300) }],
       [],
-      10,
+      // 128 y no 10: si el pool responde con DeepSeek v4-pro, este razona antes de contestar y el
+      // razonamiento cuenta en max_tokens; con 10 saldria vacio. Solo se factura lo que genera.
+      128,
       { thinking: false }
     );
     const expert = result.text.trim().toLowerCase().split(/[\s\n]/)[0];

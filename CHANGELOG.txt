@@ -3,6 +3,33 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.43.1 - Ajustes tras confirmar el contrato con el Core del pool
+────────────────────────────────────────────────────────────────────────────────
+
+El Core del pool respondio (07-10-2026) a lo que la v3.42.0-3.43.0 daba por supuesto:
+ - Bloqueo por presupuesto: es HTTP 429 con {"error":{"type":"rate_limit_error",
+   "code":"budget_deferred"}}, solo para peticiones batch (el interactivo no se bloquea).
+   Antes se detectaba 402 o la palabra "budget". Ahora solo code "budget_deferred":
+   un 429 normal por limite por minuto SI cae al respaldo (probado).
+ - Router de expertos: max_tokens 10 -> 128. Si el pool contesta con DeepSeek v4-pro, este
+   razona antes de responder y el razonamiento cuenta en max_tokens: con 10 saldria vacio
+   (el Core lo trata como error y pasa al siguiente modelo de la cadena, sin apuntarlo en su
+   libro, aunque el proveedor puede cobrar los tokens de razonar). Solo se factura lo que se
+   genera, y esta llamada solo ocurre cuando fallan las regex. Pendiente del Core: mapear
+   thinking:false -> {"type":"disabled"} para paid:deepseek (lo medira con una llamada real).
+ - pool_model_fondo ahora vale "jarvis-fondo:1.0" por defecto: el Core ya lo creo
+   (local qwen3.6 -> paid:deepseek/deepseek-v4-flash -> paid:anthropic/claude-haiku-4-5) y
+   la clave jarvis puede usarlo. "Aplazable" no es del modelo sino de la cabecera
+   X-AI-Pool-Priority: batch de cada peticion (ya se manda en el fondo).
+ - Confirmado: X-AI-Pool-Source: paid, X-AI-Pool-Provider y X-AI-Pool-Model:
+   paid:deepseek/deepseek-v4-pro (poolPriceKey ya normaliza ese formato). Por la pasarela
+   publica esas cabeceras no llegan en respuestas de mas de 45 s; por LAN (nuestro caso) si.
+
+IMPACTO DE TOKENS (REGLA DE ORO): NEUTRO. El router sube su tope de salida de 10 a 128 pero
+solo se genera una palabra; el fondo con jarvis-fondo:1.0 usa v4-flash ($0.14/$0.28) en vez de
+v4-pro como respaldo de pago, lo que lo abarata un 68 %.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.43.0 - Fase 3 del pool: voz y busqueda web pasan por el pool
 ────────────────────────────────────────────────────────────────────────────────
 

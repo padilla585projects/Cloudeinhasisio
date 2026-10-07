@@ -601,9 +601,11 @@ async function callPool(model, system, messages, aiTools, maxTokens, options = {
   if (!response.ok) {
     const err = await response.text();
     const e = new Error(`pool error ${response.status}: ${err.slice(0, 200)}`);
-    // Lo aplazable se corta cuando el presupuesto del pool llega a over: NO es un fallo del pool
-    // y NO hay que saltarse el limite llamando a DeepSeek directo (ese gasto no pasaria por el libro).
-    if (options.background && (response.status === 402 || /budget|presupuesto|over_budget|spend_limit/i.test(err))) e.budgetBlocked = true;
+    // Con el presupuesto del pool en critical/over, el Core bloquea SOLO lo marcado batch con HTTP 429
+    // y {"error":{"type":"rate_limit_error","code":"budget_deferred"}} (confirmado por el Core). NO es
+    // un fallo del pool ni hay que saltarse el limite llamando a DeepSeek directo: ese gasto no pasaria
+    // por su libro de 100 EUR/mes. Un 429 normal (limite por minuto) NO lleva ese codigo y si cae al respaldo.
+    if (options.background && /budget_deferred/.test(err)) e.budgetBlocked = true;
     throw e;
   }
   const data = await response.json();

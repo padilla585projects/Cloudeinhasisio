@@ -461,7 +461,12 @@ de pago. Cada respuesta trae `X-AI-Pool-Source: local|paid` y `X-AI-Pool-Model` 
   lo cuenta además en su guarda diario al precio del modelo real (`poolPriceKey` en `llm.js`):
   si se ignorara `X-AI-Pool-Source`, `jarvis:1.0` valdría $0 y el guarda no vería ese gasto.
 - Un modelo de pago puede RAZONAR antes de responder (v4-pro): con `max_tokens` bajo puede
-  salir vacío. El Core trata la respuesta vacía como error y pasa al siguiente de la cadena.
+  salir vacío. El Core trata la respuesta vacía como error y pasa al siguiente de la cadena (sin
+  apuntarla en su libro, aunque el proveedor puede cobrar los tokens de razonar). Por eso el router
+  de expertos pide max_tokens 128 y no 10. El Core aún NO desactiva el razonamiento de DeepSeek.
+- Con el presupuesto en critical/over el Core bloquea SOLO lo `batch`: HTTP 429 con
+  `code: "budget_deferred"`. Esa tarea se omite (`e.budgetBlocked`); NO se cae a DeepSeek directo.
+- `X-AI-Pool-Model` en pago llega como `paid:proveedor/modelo` (p. ej. `paid:deepseek/deepseek-v4-pro`).
 - Contrato del Core: `ai-pool/pool/docs/plan-ia-de-pago-en-el-pool.md` (§8) y `contrato-modo-pool.md`.
 
 ### Con el pool, el prompt tiene que ser un PREFIJO ESTABLE (v3.40.0)

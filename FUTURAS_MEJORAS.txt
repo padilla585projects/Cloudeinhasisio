@@ -2,7 +2,7 @@
 FUTURAS MEJORAS — Jarvis AI Agent para Home Assistant
 ================================================================================
 Ultima actualizacion: 2026-10-04
-Version actual: 3.43.0
+Version actual: 3.43.1
 
 Prioridad: ALTA | MEDIA | BAJA
 Orden del usuario: INTELIGENCIA primero, luego el resto.
@@ -47,6 +47,8 @@ Aprobado por Adrian el 07-10-2026 (el Core ya enruta local -> pago; ver CHANGELO
     y modelo propio opcional (pool_model_fondo). FALTA que el Core cree jarvis-fondo:1.0
     (local -> v4-flash) y confirme el codigo con que bloquea lo aplazable sin presupuesto.
     El router de expertos NO es fondo (lo espera el usuario).
+    (v3.43.1: el Core ya creo jarvis-fondo:1.0; bloqueo = 429 code budget_deferred; el router
+    pide max_tokens 128. Pendiente del Core: desactivar el razonamiento de paid:deepseek.)
 [v] Fase 3 (v3.43.0): whisper-1 y busqueda web (web_search / web_search_native) por el pool, con el
     camino directo como respaldo. Quedan fuera: fetch_url (el pool no lee direcciones privadas),
     tts-1 (audio/speech no esta en el contrato del Core) e imagenes (el pool aun no las sirve).
