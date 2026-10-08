@@ -616,6 +616,41 @@ async function poolSearch(query, { results = 8, read = POOL_SEARCH_READ, questio
   }
 }
 
+/**
+ * Lee una pagina PUBLICA con el pool (/v1/tools/read): descarga con un equipo libre (y navegador real si hace
+ * falta JavaScript), saca el texto legible (hasta 20.000 car.) y, con summarize:true, lo resume. El pool rechaza
+ * direcciones de la red de casa. Devuelve {title, text, summary, status, final_url} o null si falla (sin respaldo).
+ */
+async function poolRead(url, { question, summarize = false, timeoutMs = 40000 } = {}) {
+  if (!POOL_API_KEY || !POOL_URL || !url) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const r = await fetch(`${poolBase()}/v1/tools/read`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${POOL_API_KEY}`,
+        'X-AI-Pool-Timeout': String(Math.round(timeoutMs / 1000)),
+        'X-AI-Pool-Use': 'lectura'
+      },
+      body: JSON.stringify({ url, summarize, ...(question ? { question } : {}) }),
+      signal: controller.signal
+    });
+    if (!r.ok) {
+      console.log(`[read] pool error ${r.status}`);
+      return null;
+    }
+    const data = await r.json();
+    return (data && typeof data.text === 'string') ? data : null;
+  } catch (e) {
+    console.log(`[read] pool no disponible (${(e.message || '').slice(0, 80)})`);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ── DALL-E image edit / variation ─────────────────────────────────────────────
 
 /**
@@ -663,5 +698,6 @@ module.exports = {
   persistApiUsage,
   poolWarm,
   poolSearch,
+  poolRead,
   poolSpendMe
 };

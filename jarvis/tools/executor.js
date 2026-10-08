@@ -12,7 +12,7 @@ let yaml; try { yaml = require('js-yaml'); } catch { yaml = null; }
 const state = require('../utils/state');
 const { loadJSON, saveJSON, validateYamlSyntax, validateHAStructure, autoBackup } = require('../utils/persistence');
 const { haGet, haPost, supervisorGet, getSelfSlug } = require('../utils/ha-api');
-const { callOpenAI, callLLM, callImageEdit, poolSearch, repairToolPairs } = require('../utils/llm');
+const { callOpenAI, callLLM, callImageEdit, poolSearch, poolRead, repairToolPairs } = require('../utils/llm');
 const { execSync, spawnSync } = require('child_process');
 const C = require('../utils/constants');
 const { scanInstallation } = require('../utils/scan');
@@ -39,6 +39,21 @@ function pushToAll(event) {
   for (const res of state.pushClients) {
     try { res.write(line); } catch { state.pushClients.delete(res); }
   }
+}
+
+// fetch_url con pool: que NO va por el pool. Direcciones de la red de casa (el pool las rechaza y no debe verlas) y
+// ficheros crudos/APIs (JSON, YAML, codigo, texto plano), que no son HTML y el extractor de texto no mejoraria.
+function esUrlDirecta(rawUrl) {
+  let u;
+  try { u = new URL(rawUrl); } catch { return true; }
+  const h = u.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.lan') || h.endsWith('.internal') || !h.includes('.') && !h.includes(':')) return true;
+  if (/^(10\.|127\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(h)) return true;
+  const m = h.match(/^100\.(\d+)\./);
+  if (m && +m[1] >= 64 && +m[1] <= 127) return true;           // Tailscale / CGNAT
+  if (h === '::1' || /^f[cd]/.test(h) || /^fe80/.test(h)) return true;
+  if (h === 'raw.githubusercontent.com' || h === 'api.github.com') return true;
+  return /\.(json|ya?ml|py|js|ts|txt|csv|md|xml|toml|ini|conf|sh|log)$/i.test(u.pathname);
 }
 
 async function executeTool(name, input) {
@@ -451,6 +466,16 @@ async function executeTool(name, input) {
         } catch {
           return { error: `URL inválida: ${input.url}` };
         }
+        const maxChars = input.max_chars || 5000;
+        // Con pool: paginas PUBLICAS de internet por /v1/tools/read (descarga con un equipo libre, navegador real si
+        // hace falta JavaScript, texto limpio) y sin respaldo. Directo solo lo que el pool no puede o no debe leer:
+        // direcciones de la red de casa y ficheros crudos/APIs (JSON, YAML, codigo), que no son HTML.
+        if (C.USE_POOL && !esUrlDirecta(input.url)) {
+          const pr = await poolRead(input.url);
+          if (!pr) return { error: 'El pool de IA no pudo leer la pagina (tardo demasiado, esta bloqueada o no responde). NO la repitas en este turno: usa otra fuente o dile al usuario que no se pudo leer.', url: input.url };
+          const t = String(pr.text || '').replace(/\s+/g, ' ').trim();
+          return { url: input.url, ...(pr.title ? { title: pr.title } : {}), content: t.slice(0, maxChars), truncated: t.length > maxChars, source: 'pool' };
+        }
         const res = await fetch(input.url, {
           headers: { 'User-Agent': 'Mozilla/5.0 (compatible; HABot/1.0)' },
           timeout: 10000
@@ -461,7 +486,6 @@ async function executeTool(name, input) {
         text = text.replace(/<style[\s\S]*?<\/style>/gi, '');
         text = text.replace(/<[^>]+>/g, ' ');
         text = text.replace(/\s+/g, ' ').trim();
-        const maxChars = input.max_chars || 5000;
         return { url: input.url, content: text.slice(0, maxChars), truncated: text.length > maxChars };
       }
 
@@ -744,6 +768,13 @@ async function executeTool(name, input) {
         const type = input.type || 'all';
         const searchQuery = `home assistant ${type === 'frontend' ? 'lovelace card' : type === 'integration' ? 'custom integration' : ''} ${input.query} HACS`;
         const encoded = encodeURIComponent(searchQuery);
+        // Con pool: busqueda del pool (solo resultados con snippet, segundos), sin DuckDuckGo a mano.
+        if (C.USE_POOL) {
+          const ps = await poolSearch(searchQuery, { results: 10, read: 0, timeoutMs: 30000 });
+          if (!ps) return { error: 'El pool de IA no pudo completar la busqueda (tardo demasiado o no responde). NO la repitas en este turno.', query: input.query, type };
+          const results = ps.results.slice(0, 10).map(r => ({ url: r.url, title: r.title, snippet: r.snippet || '' }));
+          return { query: input.query, type, results, count: results.length, source: 'pool', note: 'Usa fetch_url para ver detalles de instalación de cualquier resultado' };
+        }
         try {
           const res = await fetch(`https://html.duckduckgo.com/html/?q=${encoded}`, {
             headers: { 'User-Agent': 'Mozilla/5.0 (compatible; HABot/1.0)' }
@@ -840,6 +871,23 @@ async function executeTool(name, input) {
         ];
 
         const allResults = [];
+        if (C.USE_POOL) {
+          // Con pool: dos busquedas del pool (sin leer paginas, segundos) y la pagina oficial por /v1/tools/read.
+          const found = await Promise.all(searches.map(q => poolSearch(q, { results: 8, read: 0, timeoutMs: 20000 })));
+          if (found.every(f => !f)) return { error: 'El pool de IA no pudo completar la busqueda (tardo demasiado o no responde). NO la repitas en este turno: responde con lo que ya sepas.', topic };
+          for (const ps of found) {
+            for (const r of (ps ? ps.results : [])) {
+              if (allResults.length < 8 && r.url && !allResults.some(x => x.url === r.url)) allResults.push({ url: r.url, title: r.title, snippet: r.snippet || '' });
+            }
+          }
+          let docContent = '';
+          const officialDoc = allResults.find(r => r.url.includes('home-assistant.io'));
+          if (officialDoc) {
+            const pr = await poolRead(officialDoc.url, { timeoutMs: 15000 });
+            if (pr) docContent = String(pr.text || '').replace(/\s+/g, ' ').trim().slice(0, 4000);
+          }
+          return { topic, results: allResults, official_doc: docContent || null, source: 'pool', note: 'Usa fetch_url para profundizar en cualquier enlace. Registra lo importante con learn().' };
+        }
         for (const query of searches) {
           try {
             const encoded = encodeURIComponent(query);

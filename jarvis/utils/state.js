@@ -78,7 +78,7 @@ const state = {
   poolSpend: null,   // ultimo gasto leido del pool (spendwatch): para /api/cost
 
   // ── Versión ──────────────────────────────────────────────────────────────
-  JARVIS_VERSION: '3.45.3',
+  JARVIS_VERSION: '3.46.0',
 };
 
 module.exports = state;

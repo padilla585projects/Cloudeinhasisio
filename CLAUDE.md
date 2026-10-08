@@ -244,7 +244,7 @@ default                            → callOpenAI
 ### Internet (3)
 19. `web_search` — DuckDuckGo (defecto) o Google via Serper
 20. `web_search_native` — Búsqueda web nativa de GPT-4.1 (tool integrada, lee páginas)
-21. `fetch_url` — Obtiene contenido de una URL
+21. `fetch_url` — Obtiene contenido de una URL (pública: por el pool; red de casa y ficheros crudos: directo)
 
 ### Memoria y aprendizaje (5)
 22. `save_memory` — Guarda preferencias/rutinas/info (cap: 500 notas)
@@ -470,7 +470,8 @@ Reglas de convivencia con el pool (la GPU es compartida, de una petición en una
   con `max_tokens` ≤256).
 - Modelos virtuales: `jarvis:1.0` (chat), `jarvis-fondo:1.0` (fondo, batch), `jarvis-analisis:1.0`,
   `jarvis-razonamiento:1.0` y `jarvis-vision:1.0` (cámaras, solo pago). Voz, búsqueda web y visión
-  también por el pool; quedan directos (el pool no los sirve): imágenes, tts-1 y `fetch_url`.
+  también por el pool; quedan directos (el pool no los sirve): imágenes y tts-1. `fetch_url`, `search_hacs_resources` y `ha_knowledge`
+  van por `/v1/tools/read` y `/v1/tools/search` (v3.46.0); `fetch_url` sigue directo solo para la red de casa y ficheros crudos/APIs.
 
 ### El Core del pool también enruta a modelos de PAGO (v3.41.0)
 `jarvis:1.0` = cadena local (qwen3.6 → gemma4 → prisma) → de pago (deepseek-v4-pro →

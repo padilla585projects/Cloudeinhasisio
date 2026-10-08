@@ -3,6 +3,32 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.46.0 - fetch_url, search_hacs_resources y ha_knowledge por el pool (/v1/tools/read y /v1/tools/search)
+────────────────────────────────────────────────────────────────────────────────
+
+PETICION DEL CORE (08-10-2026, doc ai-pool/pool/docs/servicios-por-proyecto.md): Adrian quiere que todas las apps usen
+el pool para todo lo que el pool tenga (GET /v1/services/me lo lista). Tres herramientas de Jarvis seguian bajando
+paginas y DuckDuckGo "a mano".
+
+QUE CAMBIA (solo con pool configurado; sin pool, todo igual que antes)
+ - Nuevo poolRead(url) en utils/llm.js: POST /v1/tools/read (descarga con un equipo libre, navegador real si la pagina
+   necesita JavaScript, texto limpio hasta 20.000 car.). Plazo 40 s, X-AI-Pool-Use: lectura, sin resumen (summarize:false:
+   1-3 s) y SIN respaldo: si falla, error claro "NO la repitas" para que el agente no entre en bucle.
+ - fetch_url: paginas publicas -> pool. Siguen DIRECTAS (el pool no puede o no debe verlas): direcciones de la red de casa
+   (localhost, .local, .lan, 10.x, 192.168.x, 172.16-31.x, Tailscale 100.64-127.x, IPv6 locales) y ficheros crudos/APIs que
+   no son HTML (raw.githubusercontent.com, api.github.com, .json .yaml .py .js .txt .csv .md ...). El bloqueo de POST/PUT/PATCH
+   sigue igual. Devuelve ademas `title` y `source: pool`.
+ - search_hacs_resources: busqueda del pool (solo snippets, segundos) en lugar de DuckDuckGo.
+ - ha_knowledge: dos busquedas del pool en paralelo (solo snippets) + lectura de la pagina oficial de home-assistant.io por
+   /v1/tools/read (4.000 car.), en lugar de DuckDuckGo y descarga a mano. Plazo total < 45 s del bucle de tools.
+ - Se quedan como estaban (el pool aun no los ofrece): imagenes (gpt-image-1, Imagen, DALL-E) y tts-1 de OpenAI.
+
+IMPACTO DE TOKENS (REGLA DE ORO): nulo en llamadas LLM (no se anade ninguna). El contenido que devuelven las tools es del
+mismo orden que antes (fetch_url 5.000 car., ha_knowledge 4.000 car.). Coste en euros: 0 (herramientas gratis del pool).
+Con esto, el tablero del Core (GET /v1/spend/usage?by=use) vera tambien `lectura` y `busqueda` desde Jarvis; lo que queda
+fuera del pool es solo imagenes/tts-1 y las lecturas de red local.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.45.3 - Busqueda web: 2 paginas con extractos por defecto (el Core ya desplego summarize:false)
 ────────────────────────────────────────────────────────────────────────────────
 
