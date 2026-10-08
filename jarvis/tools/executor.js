@@ -12,7 +12,11 @@ let yaml; try { yaml = require('js-yaml'); } catch { yaml = null; }
 const state = require('../utils/state');
 const { loadJSON, saveJSON, validateYamlSyntax, validateHAStructure, autoBackup } = require('../utils/persistence');
 const { haGet, haPost, supervisorGet, getSelfSlug } = require('../utils/ha-api');
-const { callOpenAI, callLLM, callImageEdit, poolSearch, poolRead, repairToolPairs } = require('../utils/llm');
+const { callOpenAI, callLLM, callImageEdit, poolSearch, poolRead, poolImage, repairToolPairs } = require('../utils/llm');
+const dataUrlDe = (buf) => {
+  const mime = buf[0] === 0x89 && buf[1] === 0x50 ? 'image/png' : buf[0] === 0xFF && buf[1] === 0xD8 ? 'image/jpeg' : buf.slice(8, 12).toString() === 'WEBP' ? 'image/webp' : null;
+  return mime ? `data:${mime};base64,${buf.toString('base64')}` : null;
+};
 const { execSync, spawnSync } = require('child_process');
 const C = require('../utils/constants');
 const { scanInstallation } = require('../utils/scan');
@@ -3326,7 +3330,7 @@ ${dots}`;
           ? input.filename.replace(/[^a-zA-Z0-9_-]/g, '_') + '.png'
           : `jarvis_${Date.now()}.png`;
 
-        if (!C.OPENAI_API_KEY) {
+        if (!C.USE_POOL && !C.OPENAI_API_KEY) {
           return { error: 'OPENAI_API_KEY no configurada en el add-on' };
         }
 
@@ -3337,6 +3341,25 @@ ${dots}`;
         try {
           const imagesDir = path.join(C.HA_SHARE, 'jarvis', 'images');
           if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true });
+
+          // Con pool: «imagen:1.0» (Gemini flash-image -> gpt-image-1) por /openai/v1/images/generations, sin respaldo.
+          if (C.USE_POOL) {
+            const q = { standard: 'medium', hd: 'high' }[quality] || (['low', 'medium', 'high', 'auto'].includes(quality) ? quality : undefined);
+            const img = await poolImage(prompt, { size, quality: q });
+            const buf = Buffer.from(img.b64, 'base64');
+            const imgExt = /jpe?g/.test(img.mime) ? 'jpg' : /webp/.test(img.mime) ? 'webp' : 'png';
+            const outName = imgFilename.replace(/\.png$/, '.' + imgExt);
+            const outPath = path.join(imagesDir, outName);
+            fs.writeFileSync(outPath, buf);
+            const wwwDir2 = '/config/www/jarvis';
+            if (!fs.existsSync(wwwDir2)) fs.mkdirSync(wwwDir2, { recursive: true });
+            fs.copyFileSync(outPath, path.join(wwwDir2, outName));
+            return {
+              success: true, file: outPath, lovelace_url: `/local/jarvis/${outName}`, share_url: `/share/jarvis/images/${outName}`,
+              prompt, size, source: 'pool', model_used: img.model || 'imagen:1.0',
+              message: `Imagen guardada en /share/jarvis/images/${outName} y accesible en /local/jarvis/${outName}`
+            };
+          }
 
           // gpt-image-1 (sucesor de dall-e-3): devuelve base64 por defecto
           const res = await fetch('https://api.openai.com/v1/images/generations', {
@@ -3730,7 +3753,7 @@ ${dots}`;
       // ─── image_edit (DALL-E inpainting) ─────────────────────────────────────
       case 'image_edit': {
         const { image_path, prompt, mask_path, size = '1024x1024' } = input;
-        if (!C.OPENAI_API_KEY) return { error: 'OPENAI_API_KEY no configurada' };
+        if (!C.USE_POOL && !C.OPENAI_API_KEY) return { error: 'OPENAI_API_KEY no configurada' };
         if (!image_path || !prompt) return { error: 'image_path y prompt requeridos' };
         if (!fs.existsSync(image_path)) return { error: `No existe: ${image_path}` };
 
@@ -3738,7 +3761,18 @@ ${dots}`;
           const imgBuffer = fs.readFileSync(image_path);
           const maskBuffer = mask_path && fs.existsSync(mask_path) ? fs.readFileSync(mask_path) : null;
 
-          const result = await callImageEdit(imgBuffer, prompt, maskBuffer, size);
+          let result;
+          if (C.USE_POOL) {
+            // Con pool: «imagen:1.0» con la foto en `images` y la mascara PNG en `mask` (zona transparente = editable;
+            // con mascara lo hace OpenAI gpt-image-1 dentro del pool). Sin respaldo.
+            const imgUrl = dataUrlDe(imgBuffer);
+            if (!imgUrl) return { error: 'La imagen debe ser PNG, JPEG o WebP' };
+            const maskUrl = maskBuffer ? dataUrlDe(maskBuffer) : null;
+            if (maskBuffer && (!maskUrl || !maskUrl.startsWith('data:image/png'))) return { error: 'La mascara debe ser un PNG (zona transparente = area a editar)' };
+            result = await poolImage(prompt, { size, images: [imgUrl], ...(maskUrl ? { mask: maskUrl } : {}) });
+          } else {
+            result = await callImageEdit(imgBuffer, prompt, maskBuffer, size);
+          }
 
           const imagesDir = path.join(C.HA_SHARE, 'jarvis', 'images');
           if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true });
@@ -4376,7 +4410,7 @@ ${dots}`;
       }
 
       case 'generate_image_gemini': {
-        if (!C.GEMINI_API_KEY) return { error: 'GEMINI_API_KEY no configurada. Añádela en la configuración del add-on.' };
+        if (!C.USE_POOL && !C.GEMINI_API_KEY) return { error: 'GEMINI_API_KEY no configurada. Añádela en la configuración del add-on.' };
 
         const prompt    = input.prompt || '';
         const filename  = (input.filename || 'gemini_image').replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -4386,9 +4420,16 @@ ${dots}`;
         const imagesDir = '/share/jarvis/images';
         if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true });
 
-        let imageBase64, mimeType;
+        let imageBase64, mimeType, poolModel = '';
 
-        if (useFlash) {
+        if (C.USE_POOL) {
+          // Con pool: la misma «imagen:1.0» (el Core elige Gemini o gpt-image-1). La proporcion va en `aspect_ratio`
+          // (el Core la pide a Gemini y la convierte a size para OpenAI); una no soportada se pide cuadrada.
+          if (prompt.length < 5) return { error: 'El prompt es demasiado corto' };
+          const okRatio = ['1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3'].includes(ratio) ? ratio : '1:1';
+          const img = await poolImage(prompt, { aspectRatio: okRatio });
+          imageBase64 = img.b64; mimeType = img.mime; poolModel = img.model || 'imagen:1.0';
+        } else if (useFlash) {
           // Gemini Flash con salida de imagen — prueba modelos en orden
           const flashModels = [
             'gemini-2.0-flash-preview-image-generation',
@@ -4442,7 +4483,7 @@ ${dots}`;
         }
 
         // Guardar imagen
-        const ext = mimeType.includes('jpeg') ? 'jpg' : 'png';
+        const ext = /jpe?g/.test(mimeType) ? 'jpg' : /webp/.test(mimeType) ? 'webp' : 'png';
         const outPath = path.join(imagesDir, `${filename}.${ext}`);
         fs.writeFileSync(outPath, Buffer.from(imageBase64, 'base64'));
 
@@ -4457,7 +4498,8 @@ ${dots}`;
           file: outPath,
           lovelace_url: `/local/jarvis/${filename}.${ext}`,
           share_url: `/share/jarvis/images/${filename}.${ext}`,
-          model_used: useFlash ? 'gemini-flash' : 'imagen-4.0',
+          model_used: poolModel || (useFlash ? 'gemini-flash' : 'imagen-4.0'),
+          ...(poolModel ? { source: 'pool' } : {}),
           size_kb: Math.round(Buffer.from(imageBase64, 'base64').length / 1024)
         };
       }

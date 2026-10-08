@@ -459,7 +459,7 @@ Reglas de convivencia con el pool (la GPU es compartida, de una petición en una
 - Un solo intento, SIN respaldos propios (el Core lleva local → pago); NUNCA ráfagas en paralelo.
 - `callPool` manda `X-AI-Pool-Timeout` para que el pool saque de su cola lo que
   ya cortamos nosotros, y `X-AI-Pool-Use` (chat_<experto>, router, fondo_*, proactivo, voz,
-  busqueda, lectura, camara) para el desglose de gasto en `GET /v1/spend/usage?by=use` del Core.
+  busqueda, lectura, voz_tts, imagen, camara) para el desglose de gasto en `GET /v1/spend/usage?by=use` del Core.
 - El tiempo lo marcan los tokens NUEVOS por vuelta (`prompt_tokens − cached_tokens`),
   a ~90 tok/s con la GPU libre. Las 96 tools se cachean; los estados de HA y los
   resultados de tools no. Ver la optimización de payload en `FUTURAS_MEJORAS.txt`.
@@ -470,7 +470,7 @@ Reglas de convivencia con el pool (la GPU es compartida, de una petición en una
   con `max_tokens` ≤256).
 - Modelos virtuales: `jarvis:1.0` (chat), `jarvis-fondo:1.0` (fondo, batch), `jarvis-analisis:1.0`,
   `jarvis-razonamiento:1.0` y `jarvis-vision:1.0` (cámaras, solo pago). Voz, búsqueda web y visión
-  también por el pool; quedan directos (el pool no los sirve): imágenes y tts-1. `fetch_url`, `search_hacs_resources` y `ha_knowledge`
+  también por el pool; quedan directos (el pool no los sirve): Edge TTS (gratis). Voz (`voz:1.0`) e imágenes/edición (`imagen:1.0`, con `aspect_ratio` y `mask`) van por el pool (v3.47.0). `fetch_url`, `search_hacs_resources` y `ha_knowledge`
   van por `/v1/tools/read` y `/v1/tools/search` (v3.46.0); `fetch_url` sigue directo solo para la red de casa y ficheros crudos/APIs.
 
 ### El Core del pool también enruta a modelos de PAGO (v3.41.0)

@@ -13,7 +13,7 @@ const { loadJSON, saveJSON, autoBackup } = require('./utils/persistence');
 const { haGet, haPost }      = require('./utils/ha-api');
 const { scanInstallation }   = require('./utils/scan');
 const { callLLM, callOpenAI, callWhisper, callImageEdit, sanitizeMessagesForOpenAI, stripImagesFromHistory, persistApiUsage,
-        poolWarm, repairToolPairs } = require('./utils/llm');
+        poolWarm, poolSpeech, repairToolPairs } = require('./utils/llm');
 const { updateLiveContext, buildDynamicContext, buildTurnSnapshot } = require('./utils/context');
 const { tools, openAITools } = require('./tools/definitions');
 const { executeTool }        = require('./tools/executor');
@@ -110,7 +110,7 @@ const POOL_TOOL_MAX  = 1200;  // chars por resultado de tool (bucle e historial)
 // Las busquedas web traen resumenes de paginas: con 1.200 se cortarian a mitad. Mismo limite que sin pool.
 const POOL_TOOL_MAX_BY_NAME = { web_search: 6000, web_search_native: 6000 };
 // Plazo (ms) de cada herramienta en el bucle del agente; por defecto 45 s. Mas que el de poolSearch (90 s).
-const TOOL_TIMEOUT_MS = { web_search: 100000, web_search_native: 100000 };
+const TOOL_TIMEOUT_MS = { web_search: 100000, web_search_native: 100000, generate_image: 110000, generate_image_gemini: 110000 };
 const POOL_ARGS_MAX  = 800;   // chars de argumentos de una tool call que se conservan
 
 // Expande _ctx en el contenido enviado al LLM (el historial guardado no lo toca,
@@ -1348,13 +1348,13 @@ app.get('/api/cost', (req, res) => {
 // TTS status
 app.get('/api/tts/status', (req, res) => {
   const engines = ['edge-tts'];
-  if (C.OPENAI_API_KEY) engines.push('openai');
+  if (C.USE_POOL || C.OPENAI_API_KEY) engines.push('openai');
   res.json({ available: true, engines });
 });
 
 app.get('/api/tts/voices', (req, res) => {
   const voices = [...EDGE_VOICES];
-  if (C.OPENAI_API_KEY) voices.push(...OPENAI_VOICES);
+  if (C.USE_POOL || C.OPENAI_API_KEY) voices.push(...OPENAI_VOICES);
   res.json({ voices });
 });
 
@@ -1367,8 +1367,15 @@ app.post('/api/tts', async (req, res) => {
 
   try {
     if (voice.startsWith('openai:')) {
-      if (!C.OPENAI_API_KEY) return res.status(400).json({ error: 'OpenAI API key no configurada' });
       const openaiVoice = voice.replace('openai:', '');
+      if (C.USE_POOL) {
+        // Con pool: «voz:1.0» (gpt-4o-mini-tts -> tts-1 -> Gemini TTS) por /openai/v1/audio/speech, sin respaldo.
+        // Si responde Gemini el audio es WAV: el Content-Type lo manda el pool.
+        const sp = await poolSpeech(clean, openaiVoice);
+        res.setHeader('Content-Type', sp.contentType || 'audio/mpeg');
+        return res.end(sp.buffer);
+      }
+      if (!C.OPENAI_API_KEY) return res.status(400).json({ error: 'OpenAI API key no configurada' });
       const oaiRes = await fetch('https://api.openai.com/v1/audio/speech', {
         method: 'POST',
         headers: { Authorization: `Bearer ${C.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },

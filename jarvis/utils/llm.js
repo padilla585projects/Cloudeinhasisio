@@ -651,6 +651,64 @@ async function poolRead(url, { question, summarize = false, timeoutMs = 40000 } 
   }
 }
 
+// Texto a voz y imagenes por el pool (formato OpenAI; el Core elige proveedor y cuenta el gasto, 08-10-2026).
+// «voz:1.0» = gpt-4o-mini-tts -> tts-1 -> Gemini TTS (con Gemini la respuesta es WAV; con OpenAI se respeta
+// response_format). «imagen:1.0» = Gemini flash-image -> gpt-image-1; siempre b64_json con mime_type. Un solo intento,
+// SIN respaldo propio: si falla, lanza Error con el motivo. El tope mensual (project_budget_exceeded) tambien aplica.
+const POOL_VOICE_MODEL = process.env.POOL_VOICE_MODEL || 'voz:1.0';
+const POOL_IMAGE_MODEL = process.env.POOL_IMAGE_MODEL || 'imagen:1.0';
+async function poolMediaRequest(route, body, use, timeoutMs, wantBuffer) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const r = await fetch(`${poolBase()}${route}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${POOL_API_KEY}`,
+        'X-AI-Pool-Timeout': String(Math.round(timeoutMs / 1000)),
+        'X-AI-Pool-Use': use
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+    if (!r.ok) {
+      let msg = '';
+      try { const j = await r.json(); msg = (j.error && (j.error.message || j.error.code)) || ''; if (j.error && j.error.code === 'project_budget_exceeded') avisoTopeAlcanzado(); } catch {}
+      throw new Error(`pool ${use} error ${r.status}${msg ? ': ' + String(msg).slice(0, 200) : ''}`);
+    }
+    if (wantBuffer) {
+      return { buffer: await r.buffer(), contentType: (r.headers.get && r.headers.get('content-type')) || 'audio/mpeg', model: (r.headers.get && r.headers.get('x-ai-pool-model')) || '' };
+    }
+    return await r.json();
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error(`pool ${use}: tardo mas de ${Math.round(timeoutMs / 1000)} s`);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Voz por el pool: devuelve {buffer, contentType, model}. */
+async function poolSpeech(text, voice, { format = 'mp3', timeoutMs = 40000 } = {}) {
+  if (!POOL_API_KEY || !POOL_URL) throw new Error('pool no configurado');
+  return poolMediaRequest('/openai/v1/audio/speech',
+    { model: POOL_VOICE_MODEL, input: text, ...(voice ? { voice } : {}), response_format: format }, 'voz_tts', timeoutMs, true);
+}
+
+/** Imagen por el pool: devuelve {b64, mime, model}. `images` = fotos de referencia o a editar (data URL, hasta 4);
+ *  `mask` = PNG data URL (zona transparente = editable; solo con `images`, lo resuelve OpenAI en el pool);
+ *  `aspectRatio` = 1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3 (el pool lo convierte para cada proveedor si no hay `size`). */
+async function poolImage(prompt, { size, quality, images, mask, aspectRatio, timeoutMs = 100000 } = {}) {
+  if (!POOL_API_KEY || !POOL_URL) throw new Error('pool no configurado');
+  const data = await poolMediaRequest('/openai/v1/images/generations',
+    { model: POOL_IMAGE_MODEL, prompt, n: 1, ...(size ? { size } : {}), ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}), ...(quality ? { quality } : {}), ...(images && images.length ? { images } : {}), ...(mask && images && images.length ? { mask } : {}) },
+    'imagen', timeoutMs, false);
+  const item = data && Array.isArray(data.data) ? data.data[0] : null;
+  if (!item || !item.b64_json) throw new Error('pool imagen: el pool no devolvio ninguna imagen');
+  return { b64: item.b64_json, mime: item.mime_type || 'image/png', model: data.model || '' };
+}
+
 // ── DALL-E image edit / variation ─────────────────────────────────────────────
 
 /**
@@ -699,5 +757,7 @@ module.exports = {
   poolWarm,
   poolSearch,
   poolRead,
+  poolSpeech,
+  poolImage,
   poolSpendMe
 };

@@ -3,6 +3,35 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.47.0 - Voz (TTS) e imagenes por el pool (voz:1.0 / imagen:1.0)
+────────────────────────────────────────────────────────────────────────────────
+
+PETICION DE ADRIAN (08-10-2026: "todo al pool"): el Core desplego /openai/v1/audio/speech (modelo «voz:1.0» =
+gpt-4o-mini-tts -> tts-1 -> Gemini TTS; con Gemini la respuesta es WAV) y /openai/v1/images/generations (modelo
+«imagen:1.0» = Gemini flash-image -> gpt-image-1, siempre b64_json con mime_type). Mismo formato OpenAI que ya usaba Jarvis.
+
+QUE CAMBIA (solo con pool configurado; sin pool, todo igual que antes)
+ - utils/llm.js: poolSpeech(text, voice) y poolImage(prompt, {size, quality, images}) sobre un helper comun
+   (poolMediaRequest): un solo intento, SIN respaldo, X-AI-Pool-Timeout, errores con el motivo; el 429
+   project_budget_exceeded dispara el aviso del tope. Etiquetas X-AI-Pool-Use: `voz_tts` e `imagen`.
+ - server.js /api/tts: las voces «openai:*» (nova, onyx...) van por el pool; el Content-Type lo manda el pool (WAV si
+   responde Gemini). /api/tts/status y /voices las ofrecen aunque no haya clave de OpenAI. Edge TTS (gratis) no cambia.
+ - generate_image (antes gpt-image-1 directo) y generate_image_gemini (antes Imagen 4 / Gemini directo): por el pool;
+   guardan con la extension del mime real (jpg/png/webp) y devuelven el modelo real usado (`model_used`, `source: pool`).
+   generate_image_gemini manda la proporcion en el campo `aspect_ratio` (1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3; otra -> 1:1):
+   el Core la pide a Gemini (imageConfig) y la convierte a size para OpenAI. La quality standard/hd se manda como
+   medium/high. Plazo de la herramienta en el bucle: 110 s (el pool: ~10 s y ~0,03 EUR por imagen).
+ - image_edit (antes DALL-E 2 directo): la foto va en `images` y la mascara PNG en `mask` (zona transparente = editable); con
+   mascara lo hace OpenAI gpt-image-1 dentro del pool (Gemini no admite mascara). Valida que la foto sea PNG/JPEG/WebP y la
+   mascara PNG antes de llamar. Solo el modo directo (sin pool) sigue usando DALL-E 2.
+ - El Core (5e555c5) traduce las voces OpenAI (nova, onyx...) a las de Gemini si el relevo cae en Gemini TTS.
+ - Sigue directo solo Edge TTS (gratis, sin clave).
+
+IMPACTO DE TOKENS (REGLA DE ORO): nulo en LLM (no se anade ninguna llamada de modelo de texto). Dinero: voz e imagenes pasan
+a ser gasto de PAGO del pool, contado en el tope de Jarvis (15 EUR/mes) y visible en by=use (voz_tts, imagen). Uso muy
+ocasional (una voz o imagen a peticion de Adrian), orden de centimos al mes.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.46.0 - fetch_url, search_hacs_resources y ha_knowledge por el pool (/v1/tools/read y /v1/tools/search)
 ────────────────────────────────────────────────────────────────────────────────
 
