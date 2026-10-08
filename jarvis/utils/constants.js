@@ -35,13 +35,13 @@ const VISION_MODEL      = USE_POOL ? (process.env.POOL_MODEL_VISION || 'jarvis-v
 // analisis de patrones no se ejecutaba nunca aunque el pool o DeepSeek funcionaran.
 // Cifra mensual (EUR) para los avisos de gasto en el pool cuando el Core aun no tiene un tope por proyecto. Adrian: 15.
 const POOL_SPEND_ALERT_EUR = Number(process.env.POOL_SPEND_ALERT_EUR) || 15;
-// Busqueda web del pool (/v1/tools/search). POOL_SEARCH_READ = paginas que descarga y resume por busqueda:
-// 0 = solo resultados con snippets (segundos). >0 = el pool resume cada pagina con modelos PEQUENOS de CPU
-// (qwen2.5 0.5b/1.5b en moviles, NAS, MINIPC): con ellos ocupados son 60-100 s (08-10-2026). POOL_SEARCH_EXCERPT=1
-// manda summarize:false: las paginas leidas vuelven con un extracto (~1800 car.) en vez de resumen, y tardan lo
-// que la descarga (5-15 s). Requiere el Core desplegado con ese parametro (avisara); por eso empieza apagado.
-const POOL_SEARCH_READ    = parseInt(process.env.POOL_SEARCH_READ === undefined ? '0' : process.env.POOL_SEARCH_READ, 10) || 0;
-const POOL_SEARCH_EXCERPT = process.env.POOL_SEARCH_EXCERPT === '1';
+// Busqueda web del pool (/v1/tools/search). POOL_SEARCH_READ = paginas que descarga por busqueda. Medidas del Core
+// (08-10-2026): con summarize:false (extractos de ~1800 car. en vez de resumen de un modelo pequeno de CPU) y
+// read:3 tarda ~40 s (la DESCARGA por moviles/navegador del pool es lo lento); read:2 -> 15-40 s; read:0 -> segundos.
+// Con resumenes (read:3) llego a 256 s. Por defecto read:2 + extractos, como recomienda el Core. POOL_SEARCH_EXCERPT=0
+// vuelve a los resumenes; POOL_SEARCH_READ=0 = solo snippets (inmediato).
+const POOL_SEARCH_READ    = parseInt(process.env.POOL_SEARCH_READ === undefined ? '2' : process.env.POOL_SEARCH_READ, 10) || 0;
+const POOL_SEARCH_EXCERPT = process.env.POOL_SEARCH_EXCERPT !== '0';
 const HAS_LLM           = USE_POOL || !!(process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY);
 const HA_TOKEN          = process.env.HA_TOKEN;
 const HA_URL            = process.env.HA_URL  || 'http://supervisor/core';

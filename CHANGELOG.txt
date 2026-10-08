@@ -3,6 +3,25 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.45.3 - Busqueda web: 2 paginas con extractos por defecto (el Core ya desplego summarize:false)
+────────────────────────────────────────────────────────────────────────────────
+
+MEDIDAS REALES DEL CORE (08-10-2026, desplegado f9a86e3):
+ - La busqueda de las 11:20 con read:3 y resumenes de modelos pequenos tardo 256 s en el Core (3 paginas leidas por
+   MINIPC, NAS y el navegador del pool): por eso se cortaba.
+ - Con summarize:false + read:3 + X-AI-Pool-Timeout:40 -> 39,5 s, 3 de 5 paginas leidas (extractos). La DESCARGA de
+   paginas por moviles y navegador del pool sigue costando 30-40 s en el peor caso.
+ - Recomendacion del Core: read:2 + summarize:false con plazo de 60-90 s (esperable 15-40 s), o read:0 (segundos).
+
+QUE CAMBIA: valores por defecto POOL_SEARCH_READ=2 y POOL_SEARCH_EXCERPT activado (envia summarize:false). Mi plazo
+ya era de 90 s (poolSearch) y 100 s para la herramienta en el bucle. Variables de entorno para ajustar sin tocar
+codigo: POOL_SEARCH_READ=0 (solo snippets, inmediato), POOL_SEARCH_READ=3, POOL_SEARCH_EXCERPT=0 (resumenes).
+
+IMPACTO DE TOKENS (REGLA DE ORO): sube ~1.000-1.500 tokens por busqueda (2 extractos de hasta 1.500 car. como
+`excerpt`), solo cuando se busca, y SIN modelos de pago de por medio (los extractos los da el pool gratis). Menos que
+el resumen de las paginas con fetch_url, y se evitan los 256 s de espera y los bucles de reintento.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.45.2 - Busqueda web: sin leer paginas por defecto (segundos) y modo extractos preparado
 ────────────────────────────────────────────────────────────────────────────────
 

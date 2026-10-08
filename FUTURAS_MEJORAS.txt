@@ -2,7 +2,7 @@
 FUTURAS MEJORAS — Jarvis AI Agent para Home Assistant
 ================================================================================
 Ultima actualizacion: 2026-10-04
-Version actual: 3.45.2
+Version actual: 3.45.3
 
 Prioridad: ALTA | MEDIA | BAJA
 Orden del usuario: INTELIGENCIA primero, luego el resto.
@@ -59,8 +59,8 @@ Aprobado por Adrian el 07-10-2026 (el Core ya enruta local -> pago; ver CHANGELO
     opciones del esquema del add-on con cuidado (un cambio de esquema puede hacer que el Supervisor las descarte).
 [v] Avisos del gasto en el pool al 70/90/100 % (v3.45.0, spendwatch). Cifra fijada por Adrian: 15 EUR/mes.
 [v] Tope DURO de 15 EUR puesto en el Core (project_caps.jarvis) el 08-10-2026.
-[ ] Busqueda web: cuando el Core despliegue summarize:false, activar POOL_SEARCH_READ=3 + POOL_SEARCH_EXCERPT=1 por
-    defecto (v3.45.3) y validar el tiempo real (esperado 5-15 s).
+[v] Busqueda web (v3.45.3): read:2 + summarize:false por defecto, segun las medidas del Core (15-40 s).
+[ ] Validar en real el tiempo de la busqueda con la 3.45.3 instalada.
 [ ] Imagenes (DALL-E/Gemini) y tts-1 por el pool cuando el Core los sirva (OMEN, fase 6 del Core).
 
 ================================================================================
