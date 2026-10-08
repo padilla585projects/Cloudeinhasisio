@@ -109,6 +109,8 @@ const POOL_MODE      = !!C.USE_POOL;
 const POOL_TOOL_MAX  = 1200;  // chars por resultado de tool (bucle e historial)
 // Las busquedas web traen resumenes de paginas: con 1.200 se cortarian a mitad. Mismo limite que sin pool.
 const POOL_TOOL_MAX_BY_NAME = { web_search: 3000, web_search_native: 3000 };
+// Plazo (ms) de cada herramienta en el bucle del agente; por defecto 45 s. Mas que el de poolSearch (90 s).
+const TOOL_TIMEOUT_MS = { web_search: 100000, web_search_native: 100000 };
 const POOL_ARGS_MAX  = 800;   // chars de argumentos de una tool call que se conservan
 
 // Expande _ctx en el contenido enviado al LLM (el historial guardado no lo toca,
@@ -604,8 +606,10 @@ async function handleChat(req, res, messages, files) {
         result.toolCalls.map(async tc => {
           try {
             const toolPromise = executeTool(tc.name, tc.input);
+            // La busqueda web va por el pool (busca, descarga y resume paginas): puede pasar de 45 s.
+            const toolMs = TOOL_TIMEOUT_MS[tc.name] || 45000;
             const timeoutPromise = new Promise((_, reject) =>
-              setTimeout(() => reject(new Error(`Tool "${tc.name}" timeout (45s)`)), 45000)
+              setTimeout(() => reject(new Error(`Tool "${tc.name}" timeout (${Math.round(toolMs / 1000)}s)`)), toolMs)
             );
             return await Promise.race([toolPromise, timeoutPromise]);
           } catch (err) {

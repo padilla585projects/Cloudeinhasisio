@@ -3,6 +3,29 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.45.1 - Busqueda web por el pool: plazos realistas y sin bucles de reintento
+────────────────────────────────────────────────────────────────────────────────
+
+PRUEBA REAL (08-10-2026, Jarvis 3.45.0 con el Core ya estable): chat OK por paid:deepseek-v4-pro y spendwatch OK
+(0,48 EUR de 15), PERO la busqueda web por /v1/tools/search se corto a los 40 s DOS veces seguidas ("[search] pool
+no disponible (The user aborted a request.)"). Sin respaldo, la herramienta fallo y su mensaje ("Reintentalo en
+un momento") hizo que el agente la repitiera con otra consulta: cada vuelta cuesta un prompt de ~32k tokens (con
+cache) y 40 s. Ademas la herramienta tiene un corte de 45 s en el bucle, por debajo de lo que tarda el pool.
+
+QUE CAMBIA
+ - poolSearch: plazo 40 s -> 90 s; read 3 -> 2 (menos paginas que descargar y resumir; el pool dice 14-33 s con
+   equipos libres pero esta tardando mas). Aplica a web_search y web_search_native.
+ - Bucle del agente (server.js): plazo por herramienta TOOL_TIMEOUT_MS; web_search y web_search_native tienen 100 s
+   (el resto sigue en 45 s).
+ - Mensaje de error de la busqueda: "NO la repitas en este turno: responde con lo que ya sepas diciendo al usuario
+   que la busqueda no esta disponible". Antes invitaba a reintentar.
+ - Pendiente del Core: dato real de took_s / equipos de esas peticiones y que read recomiendan.
+
+IMPACTO DE TOKENS (REGLA DE ORO): BAJA. Menos paginas leidas por busqueda (los resumenes los hace el pool en local,
+$0) y, sobre todo, se evitan los bucles de reintento: cada vuelta del agente reenvia un prompt de 18-32k tokens.
+Sin llamadas LLM nuevas.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.45.0 - Avisos del gasto de IA de pago en el pool (tope de Jarvis: 15 EUR/mes)
 ────────────────────────────────────────────────────────────────────────────────
 

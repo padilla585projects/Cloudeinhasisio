@@ -583,9 +583,10 @@ async function callWhisper(audioBuffer, filename = 'audio.webm', language = 'es'
 // Busqueda web del pool (POST /v1/tools/search): el pool busca, descarga las paginas con equipos libres
 // de casa y las resume con modelos pequenos locales (gratis). Devuelve el JSON del pool
 // ({results:[{title,url,snippet,read,summary}], devices, took_s}) o null si falla (se registra en el log);
-// quien llama devuelve entonces un error al agente: no hay busqueda de respaldo. Plazo 40 s (la
-// herramienta corta a los 45 s en el bucle del agente; el pool tarda 14-33 s con equipos libres).
-async function poolSearch(query, { results = 8, read = 3, question, timeoutMs = 40000 } = {}) {
+// quien llama devuelve entonces un error al agente: no hay busqueda de respaldo. Plazo 90 s (la
+// herramienta de busqueda tiene 100 s en el bucle del agente, ver TOOL_TIMEOUT_MS en server.js; el pool dice
+// 14-33 s con equipos libres, pero el 08-10-2026 tardo MAS de 40 s dos veces seguidas).
+async function poolSearch(query, { results = 8, read = 2, question, timeoutMs = 90000 } = {}) {
   if (!POOL_API_KEY || !POOL_URL || !query) return null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
