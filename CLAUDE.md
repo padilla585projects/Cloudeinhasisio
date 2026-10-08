@@ -459,7 +459,7 @@ Reglas de convivencia con el pool (la GPU es compartida, de una petición en una
 - Un solo intento, SIN respaldos propios (el Core lleva local → pago); NUNCA ráfagas en paralelo.
 - `callPool` manda `X-AI-Pool-Timeout` para que el pool saque de su cola lo que
   ya cortamos nosotros, y `X-AI-Pool-Use` (chat_<experto>, router, fondo_*, proactivo, voz,
-  busqueda, camara) para el desglose de gasto en `GET /v1/spend/usage?by=use` del Core.
+  busqueda, lectura, camara) para el desglose de gasto en `GET /v1/spend/usage?by=use` del Core.
 - El tiempo lo marcan los tokens NUEVOS por vuelta (`prompt_tokens − cached_tokens`),
   a ~90 tok/s con la GPU libre. Las 96 tools se cachean; los estados de HA y los
   resultados de tools no. Ver la optimización de payload en `FUTURAS_MEJORAS.txt`.
