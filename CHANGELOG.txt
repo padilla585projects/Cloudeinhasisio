@@ -3,6 +3,32 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.45.2 - Busqueda web: sin leer paginas por defecto (segundos) y modo extractos preparado
+────────────────────────────────────────────────────────────────────────────────
+
+DIAGNOSTICO DEL CORE (08-10-2026, 11:18-11:20): el tiempo de /v1/tools/search se va en el RESUMEN. Tras buscar y
+descargar las paginas (read=N en paralelo), el Core resume cada pagina con modelos PEQUENOS de CPU (qwen2.5
+0.5b/1.5b en moviles, NAS y MINIPC) que estaban ocupados ("MINIPC 94 s; NAS 40 s; HTC U11 30 s"). Con read:3 salen
+60-100 s; la busqueda sola (read:0) tarda segundos. El Core ha anadido (en main, SIN desplegar; avisara) el
+parametro summarize:false: las paginas leidas vuelven con `excerpt` (~1800 car. de su propio texto) en vez de
+resumen y tardan lo que la descarga (5-15 s); ademas, con X-AI-Pool-Timeout, ya no espera a los resumenes mas alla
+del 85 % del plazo.
+
+QUE CAMBIA
+ - Por defecto la busqueda NO lee paginas: POOL_SEARCH_READ=0 (constants.js, env) -> solo resultados con snippets,
+   en segundos. Si hace falta el contenido de una pagina concreta, el agente tiene fetch_url (directo).
+ - Modo extractos preparado, APAGADO hasta que el Core avise del despliegue: POOL_SEARCH_EXCERPT=1 manda
+   summarize:false; POOL_SEARCH_READ=3 lee 3 paginas. Cuando se despliegue se cambiaran los valores por defecto
+   (read 3 + extractos). Probar con un Core que no conozca el parametro podria dar un 422, por eso no se manda antes.
+ - web_search devuelve `excerpt` (max 1500 car.) en las paginas leidas si no hay `summary`; web_search_native
+   responde con summary o excerpt de las paginas leidas (o con los fragmentos si no se leyo ninguna).
+ - Limite del resultado de las busquedas en modo pool: 3.000 -> 6.000 car. (3 extractos de 1.500).
+
+IMPACTO DE TOKENS (REGLA DE ORO): BAJA ahora (sin paginas leidas el resultado son solo titulos y fragmentos, unos
+cientos de tokens, y no hay esperas ni reintentos). Cuando se active el modo extractos subira ~1.000-1.500 tokens
+por busqueda (3 x 1.500 car.), el mismo orden que los resumenes de la 3.43, y menos que releer paginas con fetch_url.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.45.1 - Busqueda web por el pool: plazos realistas y sin bucles de reintento
 ────────────────────────────────────────────────────────────────────────────────
 

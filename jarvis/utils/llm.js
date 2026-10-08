@@ -2,7 +2,7 @@
 const fs = require('fs');
 const fetch = require('node-fetch');
 const { OPENAI_API_KEY, DEEPSEEK_API_KEY, DEEPSEEK_URL, API_USAGE_FILE,
-        POOL_URL, POOL_API_KEY, POOL_MODEL, POOL_MODEL_FONDO } = require('./constants');
+        POOL_URL, POOL_API_KEY, POOL_MODEL, POOL_MODEL_FONDO, POOL_SEARCH_READ, POOL_SEARCH_EXCERPT } = require('./constants');
 const state = require('./state');
 
 // Precios reales por modelo (USD / token)
@@ -586,7 +586,7 @@ async function callWhisper(audioBuffer, filename = 'audio.webm', language = 'es'
 // quien llama devuelve entonces un error al agente: no hay busqueda de respaldo. Plazo 90 s (la
 // herramienta de busqueda tiene 100 s en el bucle del agente, ver TOOL_TIMEOUT_MS en server.js; el pool dice
 // 14-33 s con equipos libres, pero el 08-10-2026 tardo MAS de 40 s dos veces seguidas).
-async function poolSearch(query, { results = 8, read = 2, question, timeoutMs = 90000 } = {}) {
+async function poolSearch(query, { results = 8, read = POOL_SEARCH_READ, question, timeoutMs = 90000 } = {}) {
   if (!POOL_API_KEY || !POOL_URL || !query) return null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -599,7 +599,7 @@ async function poolSearch(query, { results = 8, read = 2, question, timeoutMs = 
         'X-AI-Pool-Timeout': String(Math.round(timeoutMs / 1000)),
         'X-AI-Pool-Use': 'busqueda'
       },
-      body: JSON.stringify({ query, results, read, ...(question ? { question } : {}) }),
+      body: JSON.stringify({ query, results, read, ...(question ? { question } : {}), ...(POOL_SEARCH_EXCERPT && read > 0 ? { summarize: false } : {}) }),
       signal: controller.signal
     });
     if (!r.ok) {

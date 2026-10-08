@@ -35,6 +35,13 @@ const VISION_MODEL      = USE_POOL ? (process.env.POOL_MODEL_VISION || 'jarvis-v
 // analisis de patrones no se ejecutaba nunca aunque el pool o DeepSeek funcionaran.
 // Cifra mensual (EUR) para los avisos de gasto en el pool cuando el Core aun no tiene un tope por proyecto. Adrian: 15.
 const POOL_SPEND_ALERT_EUR = Number(process.env.POOL_SPEND_ALERT_EUR) || 15;
+// Busqueda web del pool (/v1/tools/search). POOL_SEARCH_READ = paginas que descarga y resume por busqueda:
+// 0 = solo resultados con snippets (segundos). >0 = el pool resume cada pagina con modelos PEQUENOS de CPU
+// (qwen2.5 0.5b/1.5b en moviles, NAS, MINIPC): con ellos ocupados son 60-100 s (08-10-2026). POOL_SEARCH_EXCERPT=1
+// manda summarize:false: las paginas leidas vuelven con un extracto (~1800 car.) en vez de resumen, y tardan lo
+// que la descarga (5-15 s). Requiere el Core desplegado con ese parametro (avisara); por eso empieza apagado.
+const POOL_SEARCH_READ    = parseInt(process.env.POOL_SEARCH_READ === undefined ? '0' : process.env.POOL_SEARCH_READ, 10) || 0;
+const POOL_SEARCH_EXCERPT = process.env.POOL_SEARCH_EXCERPT === '1';
 const HAS_LLM           = USE_POOL || !!(process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY);
 const HA_TOKEN          = process.env.HA_TOKEN;
 const HA_URL            = process.env.HA_URL  || 'http://supervisor/core';
@@ -78,7 +85,7 @@ const API_USAGE_FILE         = path.join(DATA_DIR, 'api_usage.json');
 
 module.exports = {
   ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, SERPER_API_KEY,
-  MODEL, BG_MODEL, CLAUDE_MODEL, FONDO_MODEL, VISION_MODEL, HAS_LLM, POOL_SPEND_ALERT_EUR,
+  MODEL, BG_MODEL, CLAUDE_MODEL, FONDO_MODEL, VISION_MODEL, HAS_LLM, POOL_SPEND_ALERT_EUR, POOL_SEARCH_READ, POOL_SEARCH_EXCERPT,
   DEEPSEEK_API_KEY, DEEPSEEK_URL, DEEPSEEK_MODEL, DEEPSEEK_R1_MODEL,
   POOL_URL, POOL_API_KEY, POOL_MODEL, POOL_MODEL_FONDO, USE_POOL,
   HA_TOKEN, HA_URL, LANGUAGE,

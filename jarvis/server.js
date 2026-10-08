@@ -108,7 +108,7 @@ function saveHistory() {
 const POOL_MODE      = !!C.USE_POOL;
 const POOL_TOOL_MAX  = 1200;  // chars por resultado de tool (bucle e historial)
 // Las busquedas web traen resumenes de paginas: con 1.200 se cortarian a mitad. Mismo limite que sin pool.
-const POOL_TOOL_MAX_BY_NAME = { web_search: 3000, web_search_native: 3000 };
+const POOL_TOOL_MAX_BY_NAME = { web_search: 6000, web_search_native: 6000 };
 // Plazo (ms) de cada herramienta en el bucle del agente; por defecto 45 s. Mas que el de poolSearch (90 s).
 const TOOL_TIMEOUT_MS = { web_search: 100000, web_search_native: 100000 };
 const POOL_ARGS_MAX  = 800;   // chars de argumentos de una tool call que se conservan

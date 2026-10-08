@@ -387,11 +387,12 @@ async function executeTool(name, input) {
         // Con pool: SOLO la busqueda del pool (busca, lee y resume paginas con equipos locales, gratis);
         // sin respaldo. Sin pool (modo directo): Serper (Google) y luego DuckDuckGo, como antes.
         if (C.USE_POOL) {
-          const ps = await poolSearch(input.query, { results: 8, read: 2 });
+          const ps = await poolSearch(input.query, { results: 8 });
           if (!ps) return { error: 'El pool de IA no pudo completar la busqueda web (tardo demasiado o no responde). NO la repitas en este turno: responde con lo que ya sepas diciendo al usuario que la busqueda no esta disponible ahora.', query: input.query };
           const results = ps.results.slice(0, 8).map(r => ({
             url: r.url, title: r.title, snippet: r.snippet || '',
-            ...(r.read && r.summary ? { summary: String(r.summary).slice(0, 700) } : {})
+            ...(r.read && r.summary ? { summary: String(r.summary).slice(0, 700) } : {}),
+            ...(r.read && !r.summary && r.excerpt ? { excerpt: String(r.excerpt).slice(0, 1500) } : {})
           }));
           return { query: input.query, results, source: 'pool', count: results.length };
         }
@@ -3584,14 +3585,14 @@ ${dots}`;
         // las paginas leidas y, si no se pudo leer ninguna, con los fragmentos de los resultados.
         // Sin pool (modo directo): busqueda nativa de OpenAI, como antes.
         if (C.USE_POOL) {
-          const ps = await poolSearch(query, { results: 6, read: 2, question: ctx ? `${ctx} — ${query}` : query });
+          const ps = await poolSearch(query, { results: 6, question: ctx ? `${ctx} — ${query}` : query });
           if (!ps) return { error: 'El pool de IA no pudo completar la busqueda web (tardo demasiado o no responde). NO la repitas en este turno: responde con lo que ya sepas diciendo al usuario que la busqueda no esta disponible ahora.', query };
-          const leidas = ps.results.filter(r => r.read && r.summary);
+          const leidas = ps.results.filter(r => r.read && (r.summary || r.excerpt));
           const base = leidas.length ? leidas : ps.results.filter(r => r.snippet);
           if (!base.length) return { error: 'La busqueda no devolvio resultados utiles.', query };
           return {
             success: true,
-            answer: base.map((r, i) => `[${i + 1}] ${r.title}\n${String(leidas.length ? r.summary : r.snippet).slice(0, 700)}`).join('\n\n'),
+            answer: base.map((r, i) => `[${i + 1}] ${r.title}\n${String(leidas.length ? (r.summary || r.excerpt) : r.snippet).slice(0, leidas.length && !r.summary ? 1500 : 700)}`).join('\n\n'),
             citations: base.map(r => ({ url: r.url, title: r.title })),
             source: leidas.length ? 'pool (resumenes de paginas leidas)' : 'pool (fragmentos de resultados)'
           };
