@@ -109,8 +109,8 @@ Si los archivos están en la raíz, HA no detecta actualizaciones. NUNCA mover a
   (v3.39.1). La dirección concreta, en las opciones del add-on — no se publica aquí.
 - `POOL_SPEND_ALERT_EUR` — cifra mensual (EUR) de los avisos de gasto en el pool cuando el Core aún no
   tiene tope por proyecto (v3.45.0; 15 por defecto = lo que fijó Adrián). Sin opción en el add-on.
-- `POOL_MODEL_FONDO` — modelo virtual del pool para trabajo de fondo (opcional, v3.42.0),
-  p. ej. `jarvis-fondo:1.0`. Vacío = se usa `POOL_MODEL`. Lo usan las tareas marcadas
+- `POOL_MODEL_FONDO` — modelo virtual del pool para trabajo de fondo (opcional, v3.42.0). Vacío o el antiguo
+  `jarvis-fondo:1.0` = se usa `jarvis-fondo-local:1.0` (SOLO local, sin pago; v3.47.3; `POOL_FONDO_LOCAL=0` lo desactiva). Lo usan las tareas marcadas
   `{background:true}` (`C.FONDO_MODEL`); van con `X-AI-Pool-Priority: batch`.
 
 ## Reglas del proyecto

@@ -3,6 +3,26 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.47.3 - Tareas de fondo SOLO en local: jarvis-fondo-local:1.0 (sin pago)
+────────────────────────────────────────────────────────────────────────────────
+
+DECISION DE ADRIAN (08-10-2026): «la idea es Jarvis 100% por el pool» y el trabajo de fondo en «local». Hoy el proactivo mando
+30 de sus 85 llamadas a pago porque el local no contestaba dentro de la ventana batch (~60 s) de jarvis-fondo:1.0.
+El Core monto `jarvis-fondo-local:1.0` (cadena SOLO local qwen3.6 -> gemma4:e4b -> prisma:1.0, sin ningun paso de pago): con
+X-AI-Pool-Priority: batch espera en cola hasta mi X-AI-Pool-Timeout (180 s) y, si no hay equipo local en ese plazo, devuelve
+504 `timeout` («no worker answered in time») sin gastar ni caer a pago. En Jarvis la tarea falla y se omite hasta su siguiente ciclo.
+
+QUE CAMBIA (constants.js, solo con pool)
+ - FONDO_MODEL = jarvis-fondo-local:1.0 cuando pool_model_fondo esta vacia o vale el antiguo jarvis-fondo:1.0 (el valor que dejo
+   puesto la 3.43); un valor distinto se respeta. Variable POOL_FONDO_LOCAL=0 vuelve a la cadena local -> pago.
+ - Usan FONDO_MODEL: proactivo, fondo_patrones, fondo_conocimiento, fondo_destilado, fondo_resumen y fondo_reparacion
+   (selfcheck). Chat, router, analisis, razonamiento y vision NO cambian (siguen con su cadena local -> pago / solo pago).
+ - Por contrato del Core los 504 `timeout` son «omitir y reintentar en el siguiente ciclo»: ninguna tarea reintenta en bucle.
+
+IMPACTO DE TOKENS (REGLA DE ORO): el fondo pasa a coste 0 EUR (solo local). Mismos tokens, mismas frecuencias. Riesgo: si el
+local esta caido/ocupado, esas tareas se omiten ese ciclo (sin avisar) en vez de gastar unos centimos.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.47.2 - Tareas de fondo con IA: una ejecucion por intervalo aunque se reinicie el add-on
 ────────────────────────────────────────────────────────────────────────────────
 

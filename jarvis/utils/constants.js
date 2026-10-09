@@ -24,7 +24,15 @@ const MODEL             = USE_POOL ? POOL_MODEL : 'deepseek-v4-pro';   // Chat p
 const BG_MODEL          = USE_POOL ? POOL_MODEL : 'deepseek-v4-flash'; // Background + simples
 const CLAUDE_MODEL      = USE_POOL ? POOL_MODEL : 'deepseek-v4-pro';   // Dev expert
 // Trabajo de fondo (resumenes, patrones, destilado, vigilancia...). Sin pool == BG_MODEL (igual que antes).
-const FONDO_MODEL       = USE_POOL ? (POOL_MODEL_FONDO || POOL_MODEL) : BG_MODEL;
+// v3.47.3: con pool el fondo va por jarvis-fondo-local:1.0 (SOLO local, sin ningun paso de pago; si no hay equipo en
+// el plazo, 504 `timeout` y la tarea se omite hasta su siguiente ciclo). Decision de Adrian (08-10-2026): «Jarvis 100% por
+// el pool» y el fondo en local. Si la opcion pool_model_fondo esta vacia o vale el antiguo jarvis-fondo:1.0, se usa el local;
+// un valor distinto se respeta. POOL_FONDO_LOCAL=0 vuelve a la cadena local -> pago de jarvis-fondo:1.0.
+const FONDO_LOCAL_MODEL = 'jarvis-fondo-local:1.0';
+const FONDO_LOCAL       = process.env.POOL_FONDO_LOCAL !== '0';
+const FONDO_MODEL       = USE_POOL
+  ? ((FONDO_LOCAL && (!POOL_MODEL_FONDO || POOL_MODEL_FONDO === 'jarvis-fondo:1.0')) ? FONDO_LOCAL_MODEL : (POOL_MODEL_FONDO || POOL_MODEL))
+  : BG_MODEL;
 // Con pool, analisis y razonamiento tambien van por el pool (alias solo de pago del Core); sin pool, DeepSeek directo.
 const DEEPSEEK_MODEL    = USE_POOL ? (process.env.POOL_MODEL_ANALISIS || 'jarvis-analisis:1.0')           : 'deepseek-v4-flash'; // analisis + tools (non-thinking)
 const DEEPSEEK_R1_MODEL = USE_POOL ? (process.env.POOL_MODEL_RAZONAMIENTO || 'jarvis-razonamiento:1.0')   : 'deepseek-v4-pro';   // razonamiento profundo (thinking)
