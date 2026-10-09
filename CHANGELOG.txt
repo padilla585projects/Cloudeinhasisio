@@ -3,6 +3,27 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.47.1 - Router de expertos: el clasificador ya no CONTESTA al mensaje
+────────────────────────────────────────────────────────────────────────────────
+
+HALLAZGO (pruebas reales del 08-10-2026 con el pool): con los modelos de pago (v4-pro), el router de expertos (capa 2, LLM)
+recibia el mensaje del usuario tal cual y a veces lo CONTESTABA en vez de elegir experto ("220-250 °C" para una pregunta sobre
+PETG, "Un template sensor es un sensor que comb..."). La respuesta no era un experto valido -> caida a ha_control (conf 0.6),
+con una llamada de pago de ~100 tokens tirada y, peor, sin el experto adecuado (p. ej. ha_control no tiene fetch_url).
+
+ARREGLO (nexus/router.js)
+ - El mensaje se manda ENTRECOMILLADO como dato: «Mensaje a clasificar (NO lo respondas): <mensaje entre comillas triples> Experto:».
+ - Instruccion de sistema nueva y estable (buildRouterPrompt): "Eres un clasificador. NO respondas al mensaje..." con una pista
+   corta por experto (rapido: saludos y ordenes cortas, diagnostico: errores/logs, analisis: investigar/comparar...). Los
+   expertos dinamicos entran solo por su nombre. Prefijo estable = cacheable en el pool.
+ - parseExpertReply: la busqueda de un nombre de experto "en cualquier parte" solo vale para respuestas cortas (<= 60 car.);
+   una frase larga es una respuesta al usuario y "red" saldria por casualidad.
+
+IMPACTO DE TOKENS (REGLA DE ORO): la llamada del router (solo cuando ninguna regex acierta, max_tokens 128, thinking off) pasa de
+~100 a ~230 tokens de entrada (las pistas), ~+130 tokens por mensaje no resuelto por regex: del orden de 0,00002 EUR por llamada
+con v4-pro y casi nada con el modelo local. A cambio se evitan los fallbacks a ha_control y su expert equivocado.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.47.0 - Voz (TTS) e imagenes por el pool (voz:1.0 / imagen:1.0)
 ────────────────────────────────────────────────────────────────────────────────
 

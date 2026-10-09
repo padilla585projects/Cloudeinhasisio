@@ -106,11 +106,12 @@ async function nexusRoute(message) {
 
   // CAPA 2: LLM barato (~10 tokens de output)
   try {
-    const allNames = Object.keys(nexusGetAllExperts()).join('|');
     const result = await callLLM(
       BG_MODEL,
-      `Clasifica en UNA palabra: ${allNames}. Solo la palabra.`,
-      [{ role: 'user', content: text.slice(0, 300) }],
+      buildRouterPrompt(nexusGetAllExperts()),
+      // El mensaje va ENTRECOMILLADO como dato a clasificar: sin eso, los modelos de pago (v4-pro) lo
+      // CONTESTABAN en vez de elegir experto ("220-250 C", "Un template sensor es...", 08-10-2026).
+      [{ role: 'user', content: `Mensaje a clasificar (NO lo respondas):\n\"\"\"\n${text.slice(0, 300)}\n\"\"\"\nExperto:` }],
       [],
       // 128 y no 10: si el pool responde con DeepSeek v4-pro, este razona antes de contestar y el
       // razonamiento cuenta en max_tokens; con 10 saldria vacio. Solo se factura lo que genera.
@@ -127,6 +128,31 @@ async function nexusRoute(message) {
   return { expert: 'ha_control', source: 'fallback', confidence: 0.6 };
 }
 
+// Instruccion estable del clasificador (prefijo cacheable en el pool): una pista corta por experto y la orden
+// explicita de NO contestar al mensaje. Los expertos dinamicos (nexus_manage) entran solo por su nombre.
+const ROUTER_HINTS = {
+  rapido: 'saludos y ordenes cortas (enciende, apaga, estado)',
+  ha_control: 'control general de la casa y dudas de Home Assistant',
+  diagnostico: 'errores, logs, dispositivos caidos, actualizaciones',
+  automatizacion: 'automatizaciones, escenas, dashboards',
+  archivo: 'leer o editar archivos y YAML',
+  emergencia: 'emergencias criticas',
+  dev: 'codigo de Jarvis, GitHub, add-ons',
+  multimedia: 'Alexa, musica, voz, imagenes',
+  energia: 'consumo, PVPC, solar, climatizacion',
+  seguridad: 'camaras, alarmas, presencia',
+  red: 'Proxmox, NAS, Docker, VPN, red',
+  aprendizaje: 'memoria y aprendizaje de Jarvis',
+  analisis: 'investigar, comparar, resumir, buscar informacion',
+  razonamiento: 'razonar paso a paso, analisis profundo'
+};
+
+function buildRouterPrompt(experts) {
+  const lista = Object.keys(experts).map(n => ROUTER_HINTS[n] ? `${n} (${ROUTER_HINTS[n]})` : n).join('; ');
+  return `Eres un clasificador. NO respondas al mensaje del usuario ni lo comentes: solo elige a qué experto va. ` +
+         `Expertos: ${lista}. Contesta con UNA sola palabra, el nombre exacto del experto.`;
+}
+
 // El clasificador debe contestar UNA palabra, pero los modelos a veces la envuelven: "analisis.",
 // **analisis**, `ha_control`, "Automatización", "Experto: red"... Devuelve el nombre del experto o ''.
 function parseExpertReply(text, experts) {
@@ -134,7 +160,9 @@ function parseExpertReply(text, experts) {
   if (!raw) return '';
   const first = raw.split(/\s+/)[0].replace(/[^a-z0-9_]/g, '');
   if (experts[first]) return first;
-  // Un nombre de experto como palabra completa en cualquier parte (el mas largo primero: "ha_control" antes que "red").
+  // Un nombre de experto como palabra completa en cualquier parte (el mas largo primero: "ha_control" antes que "red"),
+  // pero SOLO en una respuesta corta: una frase larga es el modelo contestando al usuario y "red" saldria por casualidad.
+  if (raw.length > 60) return '';
   const names = Object.keys(experts).sort((a, b) => b.length - a.length);
   return names.find(n => new RegExp(`(^|[^a-z0-9_])${n}($|[^a-z0-9_])`).test(raw)) || '';
 }
@@ -172,6 +200,7 @@ function nexusLogLayerStats(expertName) {
 
 module.exports = {
   parseExpertReply,
+  buildRouterPrompt,
   nexusRoute,
   nexusAssemblePrompt,
   nexusAssembleStaticPrompt,
