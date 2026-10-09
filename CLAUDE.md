@@ -77,6 +77,7 @@ Si los archivos están en la raíz, HA no detecta actualizaciones. NUNCA mover a
         ├── infraguard.js     # Monitor de add-ons/infra vía Supervisor
         ├── nasguard.js       # Monitor del NAS OpenMediaVault (cada 6h)
         ├── latido.js         # Señal de vida al centinela externo (cada 5 min)
+        ├── scheduler.js      # scheduleJob: tareas de fondo con IA, 1 ejecución por intervalo aunque se reinicie (/data/bg_last_run.json)
         ├── spendwatch.js     # Avisos del gasto de IA de pago en el pool (cada 2 h, sin IA)
         ├── notifications.js  # Batching de notificaciones
         └── telegram_bot.js   # Bot de Telegram

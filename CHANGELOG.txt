@@ -3,6 +3,29 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.47.2 - Tareas de fondo con IA: una ejecucion por intervalo aunque se reinicie el add-on
+────────────────────────────────────────────────────────────────────────────────
+
+HALLAZGO (informe del Core, 08-10-2026): el bucle proactivo hizo 85 llamadas de IA en el dia (55 locales, 30 de pago, 0,063 EUR).
+Causa: cada tarea se programaba con setInterval + un setTimeout de arranque, asi que CADA reinicio del add-on (actualizaciones,
+corte de Proxmox...) volvia a lanzar proactivo, patrones, conocimiento y destilado a los 15-30 min aunque acabaran de ejecutarse,
+y el primer intervalo empezaba de cero. Ese dia hubo varias actualizaciones. El ciclo (hasta 5 vueltas) multiplica las llamadas.
+
+QUE CAMBIA
+ - Nuevo background/scheduler.js (scheduleJob): guarda la ultima ejecucion de cada tarea en /data/bg_last_run.json y la tarea
+   corre como mucho una vez por intervalo (10 % de holgura), sin importar los reinicios. Primera comprobacion a los 15-30 min
+   del arranque (como antes) y despues cada 5 min. La marca se escribe ANTES de ejecutar: un corte a mitad no la repite; un
+   error dentro de la tarea se captura. En el log: `[bg] proactivo: arranque saltado (ultima ejecucion hace N min...)`.
+ - Aplicado a las 4 tareas de fondo con IA: proactivo (cada 2 h), patrones (6 h), conocimiento (4 h) y destilado (6 h). Los
+   vigilantes sin IA (netguard, infraguard, nasguard, latido, spendwatch) no cambian.
+ - Sin cambios de frecuencia: sigue siendo cada 2/6/4/6 h; lo que desaparece son las ejecuciones EXTRA tras reinicios.
+ - Pendiente del Core (pedido a Adrian: «Jarvis 100 % por el pool» y el fondo en LOCAL): un modelo/cabecera solo-local para
+   estas tareas, para que no caigan a pago (hoy 30 de 85). Hasta que lo monte, siguen con jarvis-fondo:1.0 (local -> pago).
+
+IMPACTO DE TOKENS (REGLA DE ORO): BAJA. Quita las ejecuciones extra tras cada reinicio (cada una era un ciclo de hasta 5 llamadas
+de ~20k tokens): con 3-4 reinicios en un dia, ~15-20 llamadas menos. Sin reinicios no cambia nada.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.47.1 - Router de expertos: el clasificador ya no CONTESTA al mensaje
 ────────────────────────────────────────────────────────────────────────────────
 

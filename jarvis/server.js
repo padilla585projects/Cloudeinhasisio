@@ -24,6 +24,7 @@ const { nexusRoute, nexusAssemblePrompt, nexusAssembleStaticPrompt, nexusGetAllE
 const { nexusEvolutionTick, nexusWatchers, nexusGetScore } = require('./nexus/health');
 const { EXPERTS } = require('./nexus/experts');
 const { proactiveThinkingLoop } = require('./background/proactive');
+const { scheduleJob } = require('./background/scheduler');
 const { captureStateSnapshot, analyzePatterns } = require('./background/patterns');
 const { knowledgeExpansionLoop, distillLearnings } = require('./background/knowledge');
 const { checkSelfUpdate, checkSystemUpdates } = require('./background/updates');
@@ -1843,17 +1844,15 @@ app.listen(PORT, '0.0.0.0', () => {
   setInterval(captureStateSnapshot, 10 * 60_000);
   setTimeout(captureStateSnapshot, 60_000);
 
-  setInterval(analyzePatterns, 6 * 3600_000);
-  setTimeout(analyzePatterns, 30 * 60_000);
+  // Tareas de fondo con IA: el planificador guarda la ultima ejecucion en /data (v3.47.2) y cada una corre como
+  // mucho una vez por intervalo aunque el add-on se reinicie (antes cada reinicio las relanzaba a los 15-30 min).
+  scheduleJob('patrones', analyzePatterns, 6 * 3600_000, 30 * 60_000);
 
-  setInterval(proactiveThinkingLoop, 2 * 3600_000);
-  setTimeout(proactiveThinkingLoop, 30 * 60_000);
+  scheduleJob('proactivo', proactiveThinkingLoop, 2 * 3600_000, 30 * 60_000);
 
-  setInterval(knowledgeExpansionLoop, 4 * 3600_000);
-  setTimeout(knowledgeExpansionLoop, 20 * 60_000);
+  scheduleJob('conocimiento', knowledgeExpansionLoop, 4 * 3600_000, 20 * 60_000);
 
-  setInterval(distillLearnings, 6 * 3600_000);
-  setTimeout(distillLearnings, 15 * 60_000);
+  scheduleJob('destilado', distillLearnings, 6 * 3600_000, 15 * 60_000);
 
   setInterval(checkSystemUpdates, 12 * 3600_000);
   setTimeout(checkSystemUpdates, 8 * 60_000);
