@@ -1,6 +1,6 @@
 name: "Jarvis AI Agent"
 description: "Jarvis — Asistente IA para Home Assistant. Control por voz y texto."
-version: "3.47.3"
+version: "3.48.0"
 slug: "jarvis_ai_agent"
 init: false
 arch:
@@ -50,6 +50,7 @@ options:
   pool_api_key: ""
   pool_model: "jarvis:1.0"
   pool_model_fondo: "jarvis-fondo:1.0"
+  modo_ia: "pool"
 schema:
   openai_api_key: str
   serper_api_key: str?
@@ -73,3 +74,4 @@ schema:
   pool_api_key: password?
   pool_model: str?
   pool_model_fondo: str?
+  modo_ia: list(pool|pago)?

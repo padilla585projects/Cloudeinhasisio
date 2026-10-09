@@ -1338,6 +1338,7 @@ app.get('/api/cost', (req, res) => {
       model: state.saverMode ? C.BG_MODEL : C.MODEL,
       since: state.apiUsage.lastReset,
       // Gasto de pago del mes segun el pool (spendwatch; null hasta la primera lectura)
+      ai_mode: C.AI_MODE,
       pool_project_month_eur: state.poolSpend ? state.poolSpend.project_month_eur : null,
       pool_cap_eur: state.poolSpend ? state.poolSpend.cap_eur : null,
       pool_cap_pct: state.poolSpend ? state.poolSpend.pct : null,

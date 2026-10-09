@@ -22,6 +22,11 @@ fi
 
 # Pool de IA local (opcional) — chat+fondos a jarvis:1.0 con DeepSeek de respaldo.
 # Sin clave, todo sigue yendo a DeepSeek (igual que antes).
+# Modo de IA: «pool» (por defecto) o «pago» (APIs directas con claves propias; el pool queda ignorado)
+export AI_MODE="pool"
+if bashio::config.has_value 'modo_ia'; then
+  export AI_MODE="$(bashio::config 'modo_ia')"
+fi
 export POOL_URL=""
 export POOL_API_KEY=""
 export POOL_MODEL="jarvis:1.0"
@@ -106,11 +111,18 @@ if bashio::config.has_value 'centinela_clave'; then
 fi
 
 
-bashio::log.info "Iniciando Jarvis AI Agent v3.47.3..."
+bashio::log.info "Iniciando Jarvis AI Agent v3.48.0..."
 bashio::log.info "Modelos cloud: DeepSeek V4 Flash (bg) + V4 Pro (principal/dev)"
 bashio::log.info "Nucleos activos:"
-if [ -n "${POOL_API_KEY:-}" ] && [ -n "${POOL_URL:-}" ]; then
-  bashio::log.info "  · Pool IA local: ACTIVO (${POOL_URL}, modelo ${POOL_MODEL}) -> TODO por el pool, sin respaldos"
+if [ "${AI_MODE}" = "pago" ]; then
+  bashio::log.info "  · MODO IA: PAGO -> APIs directas con tus claves (DeepSeek/OpenAI/Serper/Gemini); el pool NO se usa"
+  if [ -z "${DEEPSEEK_API_KEY:-}" ] || [ -z "${OPENAI_API_KEY:-}" ]; then
+    bashio::log.warning "  · Modo PAGO sin deepseek_api_key u openai_api_key: el chat, la voz o las imagenes fallaran"
+  fi
+elif [ -n "${POOL_API_KEY:-}" ] && [ -n "${POOL_URL:-}" ]; then
+  bashio::log.info "  · MODO IA: POOL -> Pool IA local: ACTIVO (${POOL_URL}, modelo ${POOL_MODEL}) -> TODO por el pool, sin respaldos"
+else
+  bashio::log.warning "  · MODO IA: POOL pero sin pool_url/pool_api_key: funciona en modo directo (APIs con claves propias)"
 fi
 if [ -n "${DEEPSEEK_API_KEY:-}" ]; then
   bashio::log.info "  · DeepSeek V4: flash (bg/rapido) + pro (principal/dev/razonamiento)"

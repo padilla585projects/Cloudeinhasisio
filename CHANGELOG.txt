@@ -3,6 +3,31 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.48.0 - Interruptor de modo de IA: «Pool» o «Pago»
+────────────────────────────────────────────────────────────────────────────────
+
+PETICION DE ADRIAN (08-10-2026): «crea un modo "Pago" y otro "Pool", y asi activamos uno u otro».
+
+QUE HAY
+ - Nueva opcion del add-on `modo_ia`: `pool` (por defecto) o `pago`.
+ - POOL: igual que hoy. Todo por el pool de casa (chat, router, fondo local, busqueda, lectura, voz, imagenes, vision), sin
+   respaldos propios; el Core decide local/pago y aplica el tope de 15 EUR/mes.
+ - PAGO: APIs directas con las claves propias del add-on, como antes del pool: chat y fondo con DeepSeek (v4-pro / v4-flash),
+   razonamiento con v4-pro con thinking, vision y voz/Whisper/imagenes con OpenAI (Gemini para Imagen), busqueda con Serper o
+   DuckDuckGo, fetch_url directo. El pool NO se usa para nada: su URL y su clave siguen guardadas en las opciones pero se
+   ignoran. spendwatch, el calentamiento y los avisos del pool no arrancan. El gasto se ve en el cost-guard propio.
+ - Cambiar de modo: Ajustes -> Complementos -> Jarvis -> Configuracion -> `modo_ia` -> Guardar -> Reiniciar. El log de arranque
+   dice «MODO IA: POOL» o «MODO IA: PAGO» (y avisa si falta alguna clave en modo pago). /api/cost lleva `ai_mode`.
+ - Implementacion minima y segura: en `constants.js`, AI_MODE=pago deja POOL_URL y POOL_API_KEY vacios, y TODO el codigo ya
+   trataba «sin pool» como modo directo. No hay dos codigos de modo: es el mismo camino de siempre.
+ - Importante: el modo PAGO necesita las claves directas (deepseek_api_key, openai_api_key; serper/gemini opcionales). Si se
+   desactivan DeepSeek/OpenAI/Serper/Gemini, el modo Pago deja de poder usarse. Tambien: sin el Core, el modo Pago es el
+   salvavidas de Jarvis (el modo Pool no tiene respaldo por decision de Adrian).
+
+IMPACTO DE TOKENS (REGLA DE ORO): en modo POOL, ninguno. En modo PAGO el gasto vuelve a ser el de antes del pool (DeepSeek/OpenAI
+directo, ~$0.30-0.35/dia con uso normal) y cuenta en el cost-guard propio, sin el tope de 15 EUR del Core.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.47.3 - Tareas de fondo SOLO en local: jarvis-fondo-local:1.0 (sin pago)
 ────────────────────────────────────────────────────────────────────────────────
 

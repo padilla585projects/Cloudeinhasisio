@@ -107,6 +107,8 @@ Si los archivos están en la raíz, HA no detecta actualizaciones. NUNCA mover a
   clave, TODO va por el pool y NO hay respaldos propios (v3.44.0); sin ellas, modo
   directo (DeepSeek/OpenAI con sus claves) como antes del pool. La URL puede llevar o no `/openai/v1` al final
   (v3.39.1). La dirección concreta, en las opciones del add-on — no se publica aquí.
+- `AI_MODE` — `pool` (por defecto) o `pago` (opción `modo_ia`, v3.48.0). `pago` = APIs directas con claves propias y el pool IGNORADO
+  (constants.js vacía POOL_URL/POOL_API_KEY: todo el código lo trata como «sin pool»). Cambiar = guardar la opción y reiniciar.
 - `POOL_SPEND_ALERT_EUR` — cifra mensual (EUR) de los avisos de gasto en el pool cuando el Core aún no
   tiene tope por proyecto (v3.45.0; 15 por defecto = lo que fijó Adrián). Sin opción en el add-on.
 - `POOL_MODEL_FONDO` — modelo virtual del pool para trabajo de fondo (opcional, v3.42.0). Vacío o el antiguo

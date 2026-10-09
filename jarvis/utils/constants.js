@@ -13,8 +13,13 @@ const DEEPSEEK_URL       = 'https://api.deepseek.com/v1';
 // (jarvis:1.0) con DeepSeek de respaldo. Sin clave, TODO a DeepSeek (igual que
 // antes). La URL se pone en las opciones del add-on (no se hardcodea la IP
 // interna en el repo público). Coste del pool: $0 (inferencia local).
-const POOL_URL          = process.env.POOL_URL     || '';
-const POOL_API_KEY      = process.env.POOL_API_KEY || '';
+// MODO DE IA (v3.48.0, opcion `modo_ia`): «pool» (por defecto) = todo por el pool de casa; «pago» = APIs directas con las
+// claves propias (DeepSeek chat/razonamiento, OpenAI voz/imagenes/Whisper/vision, Serper o DuckDuckGo, Gemini), como
+// antes del pool. En «pago» la URL y la clave del pool se IGNORAN (quedan guardadas en las opciones): todo el codigo lo
+// trata como «sin pool», que ya era el camino del modo directo. Cambiar de modo = guardar la opcion y reiniciar el add-on.
+const AI_MODE           = String(process.env.AI_MODE || 'pool').toLowerCase() === 'pago' ? 'pago' : 'pool';
+const POOL_URL          = AI_MODE === 'pago' ? '' : (process.env.POOL_URL     || '');
+const POOL_API_KEY      = AI_MODE === 'pago' ? '' : (process.env.POOL_API_KEY || '');
 const POOL_MODEL        = process.env.POOL_MODEL   || 'jarvis:1.0';
 // Modelo virtual del pool para trabajo de FONDO (aplazable, mas barato: p. ej. jarvis-fondo:1.0).
 // Vacio = se usa POOL_MODEL (con prioridad batch igualmente).
@@ -95,7 +100,7 @@ module.exports = {
   ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, SERPER_API_KEY,
   MODEL, BG_MODEL, CLAUDE_MODEL, FONDO_MODEL, VISION_MODEL, HAS_LLM, POOL_SPEND_ALERT_EUR, POOL_SEARCH_READ, POOL_SEARCH_EXCERPT,
   DEEPSEEK_API_KEY, DEEPSEEK_URL, DEEPSEEK_MODEL, DEEPSEEK_R1_MODEL,
-  POOL_URL, POOL_API_KEY, POOL_MODEL, POOL_MODEL_FONDO, USE_POOL,
+  AI_MODE, POOL_URL, POOL_API_KEY, POOL_MODEL, POOL_MODEL_FONDO, USE_POOL,
   HA_TOKEN, HA_URL, LANGUAGE,
   PROXMOX_URL, PROXMOX_TOKEN, PROXMOX_NODE,
   OMV_URL, OMV_USER, OMV_PASSWORD,
