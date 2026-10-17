@@ -281,6 +281,10 @@ const EDGE_VOICES = [
   { id: 'es-ES-AbrilNeural', name: 'Abril', gender: 'F', desc: 'Española brillante', engine: 'edge' },
 ];
 
+const POOL_VOICES = [
+  { id: 'pool:es_ES-davefx-medium', name: 'Pool · Dave', gender: 'M', desc: 'Piper local, español (gratis)', engine: 'openai' },
+  { id: 'pool:es_ES-sharvard-medium', name: 'Pool · Sharvard', gender: 'N', desc: 'Piper local, español (gratis)', engine: 'openai' }
+];
 const OPENAI_VOICES = [
   { id: 'openai:alloy', name: 'Alloy', gender: 'N', desc: 'OpenAI neutra', engine: 'openai' },
   { id: 'openai:ash', name: 'Ash', gender: 'M', desc: 'OpenAI masculina', engine: 'openai' },
@@ -1357,6 +1361,8 @@ app.get('/api/tts/status', (req, res) => {
 app.get('/api/tts/voices', (req, res) => {
   const voices = [...EDGE_VOICES];
   if (C.USE_POOL || C.OPENAI_API_KEY) voices.push(...OPENAI_VOICES);
+  // Voces propias del pool (Piper local en el OMEN, español; gratis; si no responde cae a pago): v3.49.0
+  if (C.USE_POOL) voices.push(...POOL_VOICES);
   res.json({ voices });
 });
 
@@ -1368,6 +1374,11 @@ app.post('/api/tts', async (req, res) => {
   if (!clean) return res.status(400).json({ error: 'text vacío tras limpiar' });
 
   try {
+    if (voice.startsWith('pool:') && C.USE_POOL) {
+      const sp = await poolSpeech(clean, voice.replace('pool:', ''));
+      res.setHeader('Content-Type', sp.contentType || 'audio/mpeg');
+      return res.end(sp.buffer);
+    }
     if (voice.startsWith('openai:')) {
       const openaiVoice = voice.replace('openai:', '');
       if (C.USE_POOL) {

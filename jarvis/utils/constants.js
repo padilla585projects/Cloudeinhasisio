@@ -33,16 +33,20 @@ const CLAUDE_MODEL      = USE_POOL ? POOL_MODEL : 'deepseek-v4-pro';   // Dev ex
 // el plazo, 504 `timeout` y la tarea se omite hasta su siguiente ciclo). Decision de Adrian (08-10-2026): «Jarvis 100% por
 // el pool» y el fondo en local. Si la opcion pool_model_fondo esta vacia o vale el antiguo jarvis-fondo:1.0, se usa el local;
 // un valor distinto se respeta. POOL_FONDO_LOCAL=0 vuelve a la cadena local -> pago de jarvis-fondo:1.0.
-const FONDO_LOCAL_MODEL = 'jarvis-fondo-local:1.0';
+// v3.49.0: el Core pide SERVICIOS, no nombres de app (servicios-ia.md): local:1.0 (solo en casa, nunca pago) sustituye a
+// jarvis-fondo-local:1.0 (borrado el 12/10: las tareas de fondo dieron ~100 errores 404 en 7 dias) y rapido:1.0 a
+// jarvis-fondo:1.0. Los valores antiguos de la opcion pool_model_fondo se traducen solos; un valor distinto se respeta.
+const FONDO_LOCAL_MODEL = 'local:1.0';
 const FONDO_LOCAL       = process.env.POOL_FONDO_LOCAL !== '0';
+const FONDO_LEGACY      = !POOL_MODEL_FONDO || POOL_MODEL_FONDO === 'jarvis-fondo:1.0' || POOL_MODEL_FONDO === 'jarvis-fondo-local:1.0';
 const FONDO_MODEL       = USE_POOL
-  ? ((FONDO_LOCAL && (!POOL_MODEL_FONDO || POOL_MODEL_FONDO === 'jarvis-fondo:1.0')) ? FONDO_LOCAL_MODEL : (POOL_MODEL_FONDO || POOL_MODEL))
+  ? (FONDO_LEGACY ? (FONDO_LOCAL ? FONDO_LOCAL_MODEL : 'rapido:1.0') : POOL_MODEL_FONDO)
   : BG_MODEL;
 // Con pool, analisis y razonamiento tambien van por el pool (alias solo de pago del Core); sin pool, DeepSeek directo.
-const DEEPSEEK_MODEL    = USE_POOL ? (process.env.POOL_MODEL_ANALISIS || 'jarvis-analisis:1.0')           : 'deepseek-v4-flash'; // analisis + tools (non-thinking)
-const DEEPSEEK_R1_MODEL = USE_POOL ? (process.env.POOL_MODEL_RAZONAMIENTO || 'jarvis-razonamiento:1.0')   : 'deepseek-v4-pro';   // razonamiento profundo (thinking)
+const DEEPSEEK_MODEL    = USE_POOL ? (process.env.POOL_MODEL_ANALISIS || 'razonamiento:1.0')           : 'deepseek-v4-flash'; // analisis + tools (non-thinking)
+const DEEPSEEK_R1_MODEL = USE_POOL ? (process.env.POOL_MODEL_RAZONAMIENTO || 'razonamiento:1.0')   : 'deepseek-v4-pro';   // razonamiento profundo (thinking)
 // Vision de camaras: el pool (alias con imagenes -> pago) o, sin pool, OpenAI directo.
-const VISION_MODEL      = USE_POOL ? (process.env.POOL_MODEL_VISION || 'jarvis-vision:1.0') : 'gpt-4o-mini';
+const VISION_MODEL      = USE_POOL ? (process.env.POOL_MODEL_VISION || 'vision:1.0') : 'gpt-4o-mini';
 // ¿Hay ALGUN proveedor de IA configurado? Los bucles de fondo se saltan si no. Antes miraban solo la
 // clave de Anthropic (un resto de cuando Jarvis usaba Claude, hasta v3.36.0): sin ella, p. ej. el
 // analisis de patrones no se ejecutaba nunca aunque el pool o DeepSeek funcionaran.

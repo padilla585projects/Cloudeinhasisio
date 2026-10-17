@@ -111,8 +111,8 @@ Si los archivos están en la raíz, HA no detecta actualizaciones. NUNCA mover a
   (constants.js vacía POOL_URL/POOL_API_KEY: todo el código lo trata como «sin pool»). Cambiar = guardar la opción y reiniciar.
 - `POOL_SPEND_ALERT_EUR` — cifra mensual (EUR) de los avisos de gasto en el pool cuando el Core aún no
   tiene tope por proyecto (v3.45.0; 15 por defecto = lo que fijó Adrián). Sin opción en el add-on.
-- `POOL_MODEL_FONDO` — modelo virtual del pool para trabajo de fondo (opcional, v3.42.0). Vacío o el antiguo
-  `jarvis-fondo:1.0` = se usa `jarvis-fondo-local:1.0` (SOLO local, sin pago; v3.47.3; `POOL_FONDO_LOCAL=0` lo desactiva). Lo usan las tareas marcadas
+- `POOL_MODEL_FONDO` — modelo virtual del pool para trabajo de fondo (opcional, v3.42.0). Vacío o un nombre antiguo
+  (`jarvis-fondo:1.0`, `jarvis-fondo-local:1.0`) = se usa `local:1.0` (SOLO local, sin pago; v3.49.0; `POOL_FONDO_LOCAL=0` usa `rapido:1.0`). Lo usan las tareas marcadas
   `{background:true}` (`C.FONDO_MODEL`); van con `X-AI-Pool-Priority: batch`.
 
 ## Reglas del proyecto
@@ -471,8 +471,10 @@ Reglas de convivencia con el pool (la GPU es compartida, de una petición en una
   (`thinking:true|'max'`: experto razonamiento). NO se manda a `jarvis-vision`. Sin esto, el razonamiento
   de v4-pro/flash se come el `max_tokens` y una respuesta vacía acaba en Haiku (el Core solo lo apaga solo
   con `max_tokens` ≤256).
-- Modelos virtuales: `jarvis:1.0` (chat), `jarvis-fondo:1.0` (fondo, batch), `jarvis-analisis:1.0`,
-  `jarvis-razonamiento:1.0` y `jarvis-vision:1.0` (cámaras, solo pago). Voz, búsqueda web y visión
+- Modelos/servicios (v3.49.0, el pool decide el modelo): `jarvis:1.0` (chat y router; adaptador propio), `local:1.0` (fondo, SOLO
+  local, nunca pago), `rapido:1.0` (fondo con relevo a pago, solo con `POOL_FONDO_LOCAL=0`), `razonamiento:1.0` (análisis y
+  razonamiento; local primero) y `vision:1.0` (cámaras, Gemini flash: `max_tokens` ≥ 400). Los nombres antiguos (`jarvis-fondo*`,
+  `jarvis-analisis`, `jarvis-razonamiento`, `jarvis-vision`) NO se usan: el 12/10 el Core borró uno y el fondo dio 404 una semana. Voz, búsqueda web y visión
   también por el pool; quedan directos (el pool no los sirve): Edge TTS (gratis). Voz (`voz:1.0`) e imágenes/edición (`imagen:1.0`, con `aspect_ratio` y `mask`) van por el pool (v3.47.0). `fetch_url`, `search_hacs_resources` y `ha_knowledge`
   van por `/v1/tools/read` y `/v1/tools/search` (v3.46.0); `fetch_url` sigue directo solo para la red de casa y ficheros crudos/APIs.
 

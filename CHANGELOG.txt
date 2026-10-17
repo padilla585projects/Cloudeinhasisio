@@ -3,6 +3,36 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.49.0 - Nombres de SERVICIO del pool (local:1.0, rapido:1.0, razonamiento:1.0, vision:1.0) y aviso de tareas de fondo que fallan
+────────────────────────────────────────────────────────────────────────────────
+
+ENCARGO DEL CORE («Siguiente para el Pool», 17-10-2026; doc ai-pool/pool/docs/jarvis-al-pool.md y servicios-ia.md): la app pide
+un SERVICIO y el pool decide modelo, local/pago y equipo; los nombres con nombre de app se quedan solo para adaptadores propios
+(jarvis:1.0). Y un incidente: el 12/10 el Core borro `jarvis-fondo-local:1.0` creyendo que no se usaba, y las tareas de fondo de
+Jarvis (proactivo, patrones, conocimiento, destilado, resumen) dieron ~100 errores 404 en 7 dias SIN que nadie lo notara. El 16/10
+lo recrearon como alias de local:1.0 para que no fallen mientras se cambia el nombre.
+
+QUE CAMBIA (solo con pool; en modo pago no cambia nada)
+ - constants.js: FONDO_MODEL = local:1.0 (solo en casa, nunca pago); con POOL_FONDO_LOCAL=0, rapido:1.0 (local con relevo a pago).
+   La opcion pool_model_fondo con el valor antiguo (jarvis-fondo:1.0 o jarvis-fondo-local:1.0) o vacia se traduce sola; un valor
+   distinto se respeta. El valor por defecto de la opcion pasa a «local:1.0».
+ - DEEPSEEK_MODEL (experto analisis) y DEEPSEEK_R1_MODEL (experto razonamiento) -> razonamiento:1.0 (cadena del Core: qwen3.6 ->
+   DeepSeek v4-pro -> flash; antes jarvis-analisis / jarvis-razonamiento, solo de pago). El razonamiento sigue decidiendose por
+   ruta (thinking true solo en el experto razonamiento). VISION_MODEL -> vision:1.0 (Gemini flash, que razona antes de contestar:
+   callPool sube max_tokens a un minimo de 400 y no manda thinking). jarvis:1.0 se queda para chat y router.
+ - llm.js: isPoolModel/resolvePoolModel reconocen los servicios (chat, rapido, experto, razonamiento, vision, voz, imagen, local,
+   diseno-3d) ademas de jarvis*; un modelo que no es del pool sigue yendo a jarvis:1.0.
+ - AVISO DE TAREAS DE FONDO: callPool lleva la cuenta de fallos seguidos por ruta (X-AI-Pool-Use) en las llamadas background;
+   al 3.er fallo seguido avisa por Telegram + HA (utils/notify.js, source «fondo») con la ruta y el error, como mucho cada 12 h.
+   Un exito reinicia la cuenta; los aplazamientos por presupuesto (budget_deferred) y el chat interactivo no cuentan.
+ - VOZ: nuevas voces del pool «Pool · Dave» y «Pool · Sharvard» (Piper local en español, gratis; el Core cae a pago solo si no
+   puede) en /api/tts/voices (id pool:es_ES-davefx-medium / pool:es_ES-sharvard-medium). Los nombres de OpenAI (nova, onyx...)
+   usan la voz por defecto del pool. Voz a texto: sin cambios (whisper-1, el pool decide).
+
+IMPACTO DE TOKENS (REGLA DE ORO): sin llamadas nuevas. Experto analisis: de jarvis-analisis (solo pago) a razonamiento:1.0 con local
+primero -> igual o menos gasto. Vision sube max_tokens de 500 a >=400 (ya era 500, sin cambio). Fondo sigue a 0 EUR.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.48.0 - Interruptor de modo de IA: «Pool» o «Pago»
 ────────────────────────────────────────────────────────────────────────────────
 

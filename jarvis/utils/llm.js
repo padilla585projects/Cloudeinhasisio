@@ -321,14 +321,39 @@ function poolPriceKey(modelHeader) {
 
 // ¿Este nombre de modelo lo sirve el pool? Los modelos virtuales empiezan por "jarvis" (jarvis:1.0,
 // jarvis-fondo:1.0, jarvis-analisis:1.0, jarvis-razonamiento:1.0, jarvis-vision:1.0) y qwen* es local.
+// Servicios del pool (v3.49.0): chat:1.0, rapido:1.0, experto:1.0, razonamiento:1.0, vision:1.0, voz:1.0, imagen:1.0, local:1.0.
+const POOL_SERVICE_RE = /^(chat|rapido|experto|razonamiento|vision|voz|imagen|local|diseno-3d):/;
 function isPoolModel(model) {
   if (!model) return false;
-  return model.startsWith('jarvis') || model.startsWith('qwen') ||
+  return model.startsWith('jarvis') || model.startsWith('qwen') || POOL_SERVICE_RE.test(model) ||
          model === POOL_MODEL || (!!POOL_MODEL_FONDO && model === POOL_MODEL_FONDO);
 }
-// Nombre real que se pide al pool: los virtuales por su nombre; cualquier otro, el principal.
+// Nombre real que se pide al pool: los virtuales y servicios por su nombre; cualquier otro, el principal.
 function resolvePoolModel(model) {
-  return (model && model.startsWith('jarvis')) ? model : POOL_MODEL;
+  return (model && (model.startsWith('jarvis') || POOL_SERVICE_RE.test(model))) ? model : POOL_MODEL;
+}
+
+// Aviso cuando una tarea de FONDO lleva varios fallos seguidos en el pool (v3.49.0). El 12/10 se borro un modelo del Core y
+// las tareas de fondo fallaron con 404 unas 100 veces en 7 dias sin que nadie se enterase. 3 fallos seguidos de la misma
+// ruta -> un aviso (como mucho cada 12 h) por Telegram + HA. Los aplazamientos por presupuesto no cuentan.
+const BG_FAIL_ALERT_AFTER = 3;
+const BG_FAIL_ALERT_EVERY_MS = 12 * 3600_000;
+const _bgFails = {};
+let _lastBgAlert = 0;
+function bgTrack(use, err) {
+  const k = String(use || 'fondo');
+  if (!err) { delete _bgFails[k]; return; }
+  if (err.budgetBlocked) return;
+  _bgFails[k] = (_bgFails[k] || 0) + 1;
+  if (_bgFails[k] >= BG_FAIL_ALERT_AFTER && Date.now() - _lastBgAlert > BG_FAIL_ALERT_EVERY_MS) {
+    _lastBgAlert = Date.now();
+    try {
+      require('./notify').notify(
+        `⚠️ Una tarea de fondo de Jarvis (${k}) lleva ${_bgFails[k]} fallos seguidos en el pool. Ultimo error: ${String(err.message || err).slice(0, 140)}. ` +
+        `Si pone 404 o "model not found", el pool ha cambiado o borrado el nombre de un modelo.`,
+        { title: 'Jarvis — tarea de fondo fallando', source: 'fondo' }).catch(() => {});
+    } catch (_) {}
+  }
 }
 // Etiqueta X-AI-Pool-Use (<=40 car., solo [a-zA-Z0-9_.:-]) para el desglose del gasto por ruta en el Core.
 function poolUseLabel(use) {
@@ -401,6 +426,17 @@ async function poolWarm({ minIntervalMs = 0 } = {}) {
 // lleva el respaldo: Jarvis NO tiene respaldo propio. Un solo intento; ante error o plazo lanza.
 // max_tokens SIEMPRE. Manda thinking desactivado por defecto (ver mas abajo).
 async function callPool(model, system, messages, aiTools, maxTokens, options = {}) {
+  try {
+    const r = await callPoolInner(model, system, messages, aiTools, maxTokens, options);
+    if (options.background) bgTrack(options.use, null);
+    return r;
+  } catch (e) {
+    if (options.background && !e.noApiKey) bgTrack(options.use, e);
+    throw e;
+  }
+}
+
+async function callPoolInner(model, system, messages, aiTools, maxTokens, options = {}) {
   if (!POOL_API_KEY || !POOL_URL) {
     const e = new Error('Pool no configurado (pool_url / pool_api_key)');
     e.noApiKey = true;
@@ -410,6 +446,8 @@ async function callPool(model, system, messages, aiTools, maxTokens, options = {
   const sanitized = repairToolPairs(sanitizeMessagesForOpenAI(messages));
   const msgs = system ? [{ role: 'system', content: system }, ...sanitized] : [...sanitized];
   const body = { model: resolvePoolModel(model), max_tokens: maxTokens || 2048, messages: msgs };
+  // vision:1.0 (Gemini flash) razona antes de contestar: con pocos tokens corta la respuesta ("Az", length). Minimo 400.
+  if (/^(jarvis-)?vision:/.test(body.model)) body.max_tokens = Math.max(body.max_tokens, 400);
   if (aiTools && aiTools.length > 0) {
     body.tools = aiTools;
     body.tool_choice = 'auto';
@@ -420,7 +458,7 @@ async function callPool(model, system, messages, aiTools, maxTokens, options = {
   // solo con <=256) y una respuesta vacia acaba en Haiku; ademas, razonar cuesta tokens de salida.
   // El tramo local (llama.cpp) ignora el campo (probado por el Core). NO se manda a jarvis-vision: su
   // cadena empieza por OpenAI y no esta confirmado que lo tolere.
-  if (!/^jarvis-vision/.test(body.model)) {
+  if (!/^(jarvis-)?vision/.test(body.model)) {
     body.thinking = (options.thinking === true || options.thinking === 'max') ? { type: 'enabled' } : { type: 'disabled' };
   }
   // Plazo: interactivo 120 s, fondo 180 s (el Core corta a los 190). Sin respaldo propio, es mejor
@@ -759,5 +797,7 @@ module.exports = {
   poolRead,
   poolSpeech,
   poolImage,
-  poolSpendMe
+  poolSpendMe,
+  // Solo para pruebas: contador de fallos seguidos de las tareas de fondo
+  _bgReset: () => { for (const k of Object.keys(_bgFails)) delete _bgFails[k]; _lastBgAlert = 0; }
 };
