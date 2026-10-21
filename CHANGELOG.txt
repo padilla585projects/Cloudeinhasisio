@@ -3,6 +3,24 @@ CHANGELOG - Jarvis AI Agent para Home Assistant
 ================================================================================
 
 ────────────────────────────────────────────────────────────────────────────────
+v3.49.1 - Watchguard: recordatorios y recuperaciones de dispositivos en UN solo mensaje (fin de la avalancha de Telegram)
+────────────────────────────────────────────────────────────────────────────────
+
+INCIDENTE (21-10-2026, 07:21): tras restaurar la VM de HA (el disco USB del NAS/Proxmox se puso en solo lectura), Jarvis mando ~23 mensajes de
+Telegram seguidos «⚠️ Jarvis: *X* sigue caído (479 h ya)». Telegram respondio «Flood control exceeded» (23 errores en el registro de HA) y
+el canal cayo al respaldo de la campana de HA, que se llenó de 23 notificaciones persistentes.
+
+CAUSA (background/watchguard.js): los avisos de dispositivos NUEVOS caidos ya se agrupaban en un mensaje, pero los RECORDATORIOS diarios («sigue caído»)
+y los avisos de RECUPERACION («ha vuelto») se mandaban UNO POR ENTIDAD. Con el estado guardado restaurado de varios dias antes, ~23 entidades
+cruzaron a la vez el umbral de 24 h y cada una mando su mensaje.
+
+ARREGLO: recordatorios y recuperaciones se agrupan en un mensaje cada uno («N dispositivos siguen caídos:» / «N dispositivos han vuelto:», con
+las 8 mas antiguas y «…y N más»). Por vuelta salen como MAXIMO 3 mensajes (nuevos, recordatorios, recuperados), pase lo que pase. Con uno solo, el
+texto es el de siempre. 4 pruebas nuevas en watchguard.test.js (30 recordatorios a la vez -> 1 mensaje; 3 tipos a la vez -> 3 mensajes).
+
+IMPACTO DE TOKENS: cero (sin LLM). Menos mensajes y menos notificaciones en la campana de HA.
+
+────────────────────────────────────────────────────────────────────────────────
 v3.49.0 - Nombres de SERVICIO del pool (local:1.0, rapido:1.0, razonamiento:1.0, vision:1.0) y aviso de tareas de fondo que fallan
 ────────────────────────────────────────────────────────────────────────────────
 

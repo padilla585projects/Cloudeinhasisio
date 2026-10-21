@@ -78,20 +78,31 @@ async function revisarCaidos(st, estados, ahora, avisar) {
     // si no está caído, se limpia abajo (en el barrido de recuperados)
   }
 
-  // Recuperados: estaban en la lista y ya no están caídos.
+  // Recuperados: estaban en la lista y ya no están caídos. Se agrupan en UN mensaje (v3.49.1): tras un reinicio o una
+  // restauracion vuelven de golpe decenas de entidades y un mensaje por cada una satura Telegram ("Flood control exceeded").
+  const duracion = (min) => (min >= 120 ? Math.round(min / 60) + ' h' : min + ' min');
+  const recuperados = [];
   for (const id of Object.keys(st.down)) {
     if (vivos.has(id)) continue;
     const info = st.down[id];
-    if (info.avisado) {
-      const min = Math.round((ahora - info.since) / 60_000);
-      await avisar(`✅ Jarvis: *${info.nombre}* ha vuelto (estuvo caído ${min >= 120 ? Math.round(min/60)+' h' : min+' min'}).`);
-      emitidos++;
-    }
+    if (info.avisado) recuperados.push({ nombre: info.nombre, min: Math.round((ahora - info.since) / 60_000) });
     delete st.down[id];
   }
+  if (recuperados.length === 1) {
+    await avisar(`✅ Jarvis: *${recuperados[0].nombre}* ha vuelto (estuvo caído ${duracion(recuperados[0].min)}).`);
+    emitidos++;
+  } else if (recuperados.length > 1) {
+    const lista = recuperados.slice(0, 8).map(r => `  · ${r.nombre} (caído ${duracion(r.min)})`).join('\n');
+    const resto = recuperados.length > 8 ? `\n  …y ${recuperados.length - 8} más` : '';
+    await avisar(`✅ Jarvis: ${recuperados.length} dispositivos han vuelto:\n${lista}${resto}`);
+    emitidos++;
+  }
 
-  // Avisar de los que cruzan el umbral, o recordar los que siguen caídos.
+  // Avisar de los que cruzan el umbral, o recordar los que siguen caídos. Los recordatorios tambien van en UN solo
+  // mensaje (v3.49.1): el 21-10-2026, tras restaurar la VM de HA con un estado guardado de dias antes, ~23 entidades
+  // cruzaron a la vez las 24 h y se mandaron 23 mensajes seguidos (Telegram respondio "Flood control exceeded").
   const nuevos = [];
+  const recordar = [];
   for (const id of Object.keys(st.down)) {
     const info = st.down[id];
     const edad = ahora - info.since;
@@ -103,10 +114,19 @@ async function revisarCaidos(st, estados, ahora, avisar) {
       nuevos.push(info.nombre);
     } else if (ahora - info.reavisado >= RECHECK_MS) {
       info.reavisado = ahora;
-      const h = Math.round(edad / 3600_000);
-      await avisar(`⚠️ Jarvis: *${info.nombre}* sigue caído (${h} h ya).`);
-      emitidos++;
+      recordar.push({ nombre: info.nombre, h: Math.round(edad / 3600_000) });
     }
+  }
+
+  if (recordar.length === 1) {
+    await avisar(`⚠️ Jarvis: *${recordar[0].nombre}* sigue caído (${recordar[0].h} h ya).`);
+    emitidos++;
+  } else if (recordar.length > 1) {
+    recordar.sort((a, b) => b.h - a.h);
+    const lista = recordar.slice(0, 8).map(r => `  · ${r.nombre} (${r.h} h)`).join('\n');
+    const resto = recordar.length > 8 ? `\n  …y ${recordar.length - 8} más` : '';
+    await avisar(`⚠️ Jarvis: ${recordar.length} dispositivos siguen caídos:\n${lista}${resto}`);
+    emitidos++;
   }
 
   // Los nuevos se agrupan en un solo aviso (evita una ráfaga tras un reinicio).

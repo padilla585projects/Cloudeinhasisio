@@ -59,6 +59,34 @@ const ent = (id, state, name) => ({ entity_id: id, state, attributes: { friendly
     await revisarCaidos(st, [ent('switch.a', 'unavailable', 'A')], T0, m => av.push(m));
     ok(av.length === 1 && /sigue caído/.test(av[0]), '6. 25 h caído -> un recordatorio diario'); }
 
+  // 6b. 30 dispositivos cruzan a la vez las 24 h (restauracion de HA) -> UN solo mensaje, no 30
+  { const st = { down: {} }; const estados = [];
+    for (let i = 0; i < 30; i++) {
+      st.down['switch.d' + i] = { since: T0 - (480 + i) * H, avisado: true, reavisado: T0 - 25 * H, nombre: 'Disp ' + i };
+      estados.push(ent('switch.d' + i, 'unavailable', 'Disp ' + i));
+    }
+    const av = [];
+    const n = await revisarCaidos(st, estados, T0, m => av.push(m));
+    ok(av.length === 1 && n === 1 && /30 dispositivos siguen caídos/.test(av[0]), '6b. 30 recordatorios a la vez -> un solo mensaje');
+    ok(/…y 22 más/.test(av[0]) && av[0].split('\n').length === 10, '6c. lista de 8 + "…y 22 más"');
+    ok(av[0].indexOf('Disp 29') < av[0].indexOf('Disp 22') && !/Disp 21\b/.test(av[0]), '6d. ordenados por antigüedad (los más viejos primero)');
+    const av2 = [];
+    await revisarCaidos(st, estados, T0 + 2 * H, m => av2.push(m));
+    ok(av2.length === 0, '6e. no repite en la vuelta siguiente'); }
+
+  // 6f. un dispositivo + otros nuevos + otros recuperados a la vez -> como mucho 3 mensajes
+  { const st = { down: {
+      'switch.v1': { since: T0 - 30 * H, avisado: true, reavisado: T0 - 25 * H, nombre: 'Viejo 1' },
+      'switch.v2': { since: T0 - 31 * H, avisado: true, reavisado: T0 - 25 * H, nombre: 'Viejo 2' },
+      'switch.r1': { since: T0 - 3 * H, avisado: true, reavisado: T0 - 3 * H, nombre: 'Vuelve 1' },
+      'switch.r2': { since: T0 - 3 * H, avisado: true, reavisado: T0 - 3 * H, nombre: 'Vuelve 2' },
+      'switch.n1': { since: T0 - 40 * MIN, avisado: false, reavisado: 0, nombre: 'Nuevo 1' },
+      'switch.n2': { since: T0 - 40 * MIN, avisado: false, reavisado: 0, nombre: 'Nuevo 2' } } };
+    const av = [];
+    await revisarCaidos(st, [ent('switch.v1','unavailable','Viejo 1'), ent('switch.v2','unavailable','Viejo 2'), ent('switch.r1','on','Vuelve 1'), ent('switch.r2','on','Vuelve 2'), ent('switch.n1','unavailable','Nuevo 1'), ent('switch.n2','unavailable','Nuevo 2')], T0, m => av.push(m));
+    ok(av.length === 3, '6f. nuevos + recordatorios + recuperados a la vez -> 3 mensajes (uno por tipo)');
+    ok(av.some(m => /2 dispositivos han vuelto/.test(m) && /Vuelve 1 \(caído 3 h\)/.test(m)), '6g. las recuperaciones van agrupadas, con la duración de cada una'); }
+
   // --- log repetido ---
   // 7. Un error que se repite 12 veces -> avisa
   { const st = {}; const av = [];
